@@ -6,10 +6,9 @@ export const monsterStyles = {
       shadow-2xl overflow-hidden
       w-40 md:w-56
       transition-all duration-300
+      shrink-0
     `,
-    // Position logic separated for clarity
-    player: "left-2 md:left-4 z-10",
-    enemy: "right-2  md:right-4 md:top-4 z-0",
+    // Specific styles strictly for Z-index or minor transforms if needed
   },
   spriteSection: {
     wrapper: `

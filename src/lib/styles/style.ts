@@ -6,16 +6,26 @@ export const styles = {
       uppercase tracking-widest md:tracking-[0.2em]
       text-transparent bg-clip-text bg-gradient-to-b from-amber-300 via-amber-500 to-amber-800
       drop-shadow-[0_2px_2px_rgba(0,0,0,1)]
-      mb-4 mt-2 md:mb-6
+      relative z-50
+      mt-8 mb-4 md:mt-6 md:mb-8
+      py-2
     `,
-    main: "w-full max-w-2xl mx-auto p-2 md:p-4 font-mono select-none",
+    main: `
+      w-full max-w-2xl mx-auto 
+      p-2 md:p-4 
+      font-mono select-none 
+      min-h-screen 
+      flex flex-col
+    `,
     arena: `
       border-2 md:border-4 border-stone-600 rounded-lg 
-      p-3 md:p-6 
       bg-stone-800 relative 
-      h-64 md:h-96 
+      /* Height Fix: Use min-height to allow monsters to fit */
+      min-h-[300px] md:h-96 
       mb-3 md:mb-4 
-      grid grid-cols-2 
+      /* Layout Fix: Align to bottom, push away from edges */
+      flex justify-between items-end 
+      px-2 py-4 md:px-8 md:pb-8
       shadow-xl
     `,
     bottomGrid: "flex flex-col md:grid md:grid-cols-2 gap-4 md:h-48",
