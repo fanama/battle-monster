@@ -31,16 +31,18 @@ const getInitialState = (): BattleState => {
 function createBattleStore() {
   const { subscribe, set, update } = writable<BattleState>(getInitialState());
 
-  // Helper: Executes a move and calculates the new state (Pure Logic)
   const applyMove = (state: BattleState, attacker: Monster, defender: Monster, move: Move): BattleState => {
+    // 1. Get logs from the engine (This likely includes the first "K.O." or "Fainted" message)
     const turnLogs = engine.executeTurn(attacker, defender, move).map(l => l.message);
     const newLogs = [...state.logs, ...turnLogs];
 
     let winner = state.winner;
 
+    // 2. Check for Game Over
     if (defender.isFainted()) {
       winner = state.isPlayerTurn ? 'player' : 'enemy';
-      newLogs.push(`${defender.name} est K.O. !`, winner === 'player' ? 'Victoire !' : 'Défaite...');
+
+      newLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
     }
 
     return { ...state, logs: newLogs, winner };
@@ -88,10 +90,28 @@ function createBattleStore() {
     });
   };
 
+  const selectMonster = (monster: Monster) => {
+    update(state => {
+      if (state.isPlayerTurn) {
+
+
+
+        return { ...state, playerMonster: monster };
+
+
+      }
+      return { ...state, enemyMonster: monster };
+
+
+
+    });
+  };
+
   return {
     subscribe,
     attack: playerAttack,
-    reset: () => set(getInitialState())
+    reset: () => set(getInitialState()),
+    selectMonster: selectMonster
   };
 }
 

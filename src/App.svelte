@@ -4,10 +4,19 @@
   import Logs from "./lib/components/molecules/Logs.svelte";
   import MoveDisplayer from "./lib/components/atoms/MoveDisplayer.svelte";
   import { styles } from "./lib/styles/style";
+
+  import type { Monster } from "./core/entities/Monster";
+  import MonsterSelector from "./lib/components/atoms/MonsterSelector.svelte";
 </script>
 
 <main class={styles.layout.main}>
   <h1 class={styles.layout.title}>Battle Monster</h1>
+
+  <MonsterSelector
+    onclick={(selectMonster: Monster) => {
+      battleStore.selectMonster(selectMonster);
+    }}
+  />
 
   <div class={styles.layout.arena}>
     <MonsterDisplayer monster={$battleStore.playerMonster} isPlayer={true} />
