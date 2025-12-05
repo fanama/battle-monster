@@ -18,11 +18,10 @@ const engine = new BattleEngine();
 const repo = new MonsterRepository();
 
 const getInitialState = (): BattleState => {
-  const enemy = repo.getStarter('water');
   return {
-    playerMonster: repo.getStarter('water'),
-    enemyMonster: enemy,
-    logs: [`Un ${enemy.name} sauvage apparaît !`],
+    playerMonster: repo.getStarter('fire'),
+    enemyMonster: repo.getStarter('water'),
+    logs: [`Un enemi apparaît !`],
     isPlayerTurn: true,
     winner: null
   };

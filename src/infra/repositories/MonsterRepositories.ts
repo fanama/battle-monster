@@ -2,6 +2,9 @@ import { Monster } from '../../core/entities/Monster';
 import type { MonsterType } from '../../core/entities/Move';
 import { MoveRepository } from './MoveRepositories';
 
+import FireImage from '../../assets/monster_1.png'
+import WaterImage from '../../assets/monster_2.png'
+
 // Initialize the MoveRepository once
 const moveRepo = new MoveRepository();
 
@@ -34,7 +37,7 @@ export class MonsterRepository {
         11, // sagesse
         // ------------------------------
         fireMoves,
-        'https://img.pokemondb.net/artwork/large/charmander.jpg' // Placeholder
+        FireImage // Placeholder
       );
     } else {
       const waterMoves = moveRepo.getMovesByType('water')
@@ -54,7 +57,7 @@ export class MonsterRepository {
         14, // sagesse
         // ------------------------------
         waterMoves,
-        'https://img.pokemondb.net/sprites/black-white/anim/normal/squirtle.gif' // Placeholder
+        WaterImage
       );
     }
   }

@@ -8,6 +8,7 @@
 
 <main class={styles.layout.main}>
   <h1 class={styles.layout.title}>Battle Monster</h1>
+
   <div class={styles.layout.arena}>
     <MonsterDisplayer monster={$battleStore.playerMonster} isPlayer={true} />
     <MonsterDisplayer monster={$battleStore.enemyMonster} isPlayer={false} />
@@ -20,9 +21,7 @@
       <div class={styles.actionBar.textureOverlay}></div>
 
       {#each $battleStore.playerMonster.moves as move, i}
-        <div class={styles.actionBar.moveWrapper}>
-          <MoveDisplayer {move} onClick={() => battleStore.attack(i)} />
-        </div>
+        <MoveDisplayer {move} onClick={() => battleStore.attack(i)} />
       {/each}
 
       {#if $battleStore.winner}
@@ -45,8 +44,9 @@
 
 <style>
   :global(body) {
-    /* Optional: Sets a dark background for the whole page to match the stone theme */
     background-color: #1c1917;
     color: #e7e5e4;
+    /* Prevent overscroll bounce on mobile */
+    overscroll-behavior-y: none;
   }
 </style>
