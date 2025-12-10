@@ -11,17 +11,24 @@
   $: progressPercent = isReady
     ? 100
     : ((move.maxCoolDown! - currentCooldown) / move.maxCoolDown!) * 100;
+
+  $: typeClasses = {
+    fire: "bg-red-900/40 border-red-500 hover:bg-red-800/60",
+    water: "bg-blue-900/40 border-blue-500 hover:bg-blue-800/60",
+    grass: "bg-green-900/40 border-green-500 hover:bg-green-800/60",
+    normal: "bg-gray-900/40 border-gray-500 hover:bg-gray-800/60",
+  }[move.type];
 </script>
 
 <button
   disabled={!isReady}
   on:click={onClick}
   class={`
-    p-2 rounded-lg border-2 w-fit transition-all duration-300 shadow-xl **text-center**
+    p-2 rounded-lg border-2 w-fit transition-all duration-300 shadow-xl text-center
     ${
     isReady
       ? // Ready state classes: Green border, subtle background, interactive hover
-        "border-green-500 bg-green-900/40 text-white cursor-pointer hover:bg-green-800/60 opacity-100"
+        `${typeClasses} text-white cursor-pointer opacity-100`
       : // Cooldown state classes: Muted border, low opacity, disabled visual
         "border-gray-700 bg-gray-800/70 text-gray-400 cursor-default opacity-50"
   }

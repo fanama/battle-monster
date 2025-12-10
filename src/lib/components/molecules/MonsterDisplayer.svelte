@@ -10,7 +10,8 @@
 </script>
 
 <div
-  class:attack-animation={isAttacking}
+  class:attack-player={isAttacking && isPlayer}
+  class:attack-enemy={isAttacking && !isPlayer}
   class="
     {monsterStyles.container.base} 
     {isPlayer ? monsterStyles.container.player : monsterStyles.container.enemy}
@@ -72,13 +73,27 @@
 </div>
 
 <style>
-  .attack-animation {
-    animation: attack 0.5s ease-in-out;
+  /* Player is on the Right, moves Left (Negative X) to center */
+  .attack-player {
+    animation: attack-lunge-left 0.4s ease-in-out;
   }
 
-  @keyframes attack {
-    0% { transform: translateY(0); }
-    50% { transform: translateY(-20px); }
-    100% { transform: translateY(0); }
+  /* Enemy is on the Left, moves Right (Positive X) to center */
+  .attack-enemy {
+    animation: attack-lunge-right 0.4s ease-in-out;
+  }
+
+  @keyframes attack-lunge-left {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(-60%); } /* Lunges Left */
+    75% { transform: translateX(100%); } /* Lunges Left */
+    100% { transform: translateX(0); }
+  }
+
+  @keyframes attack-lunge-right {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(60%); } /* Lunges Right */
+    75% { transform: translateX(-100%); } /* Lunges Right */
+    100% { transform: translateX(0); }
   }
 </style>
