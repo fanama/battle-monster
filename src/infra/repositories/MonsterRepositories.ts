@@ -114,20 +114,41 @@ export class MonsterRepository {
   }
 
   getRandomMonster(targetLevel: number): Monster {
-    const randomIndex = Math.floor(Math.random() * this.definitions.length);
-    const baseDef = this.definitions[randomIndex];
+    const monsterTypes: MonsterType[] = ['fire', 'water', 'grass', 'normal'];
+    const namePrefixes = ['Spark', 'Aqua', 'Terra', 'Aero', 'Chrono', 'Psycho', 'Shadow', 'Lumina'];
+    const nameSuffixes = ['mander', 'beast', 'wing', 'fin', 'spire', 'pion', 'ling', 'fang'];
+    
+    const randomType = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+    const randomName = namePrefixes[Math.floor(Math.random() * namePrefixes.length)] + nameSuffixes[Math.floor(Math.random() * nameSuffixes.length)];
+    const randomImage = Math.random() > 0.5 ? FireImage : WaterImage;
 
-    const newDef: MonsterDefinition = JSON.parse(JSON.stringify(baseDef));
+    const newDef: MonsterDefinition = {
+        id: (Math.random() * 100000).toString(),
+        name: randomName,
+        type: randomType,
+        level: targetLevel,
+        image: randomImage,
+        maxHp: Math.floor(80 + Math.random() * 40),
+        stats: {
+            strength: Math.floor(8 + Math.random() * 7),
+            speed: Math.floor(8 + Math.random() * 7),
+            constitution: Math.floor(8 + Math.random() * 7),
+            intelligence: Math.floor(8 + Math.random() * 7),
+            charisma: Math.floor(8 + Math.random() * 7),
+            wisdom: Math.floor(8 + Math.random() * 7)
+        }
+    };
 
-    const levelDifference = targetLevel - newDef.level;
+    const levelDifference = targetLevel - 1;
     const statMultiplier = 1 + (levelDifference * 0.15);
 
-    newDef.level = targetLevel;
     newDef.maxHp = Math.floor(newDef.maxHp * statMultiplier);
     
     (Object.keys(newDef.stats) as Array<keyof typeof newDef.stats>).forEach(stat => {
         newDef.stats[stat] = Math.floor(newDef.stats[stat] * statMultiplier);
     });
+
+    
 
     return this.createInstance(newDef);
   }
