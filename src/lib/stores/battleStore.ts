@@ -6,7 +6,7 @@ import type { Move } from '../../core/entities/Move';
 import { MoveRepository } from '../../infra/repositories/MoveRepositories';
 
 
-// --- Types ---
+// --- Types --
 interface BattleState {
   playerMonster: Monster | null;
   enemyMonster: Monster | null;
@@ -14,6 +14,8 @@ interface BattleState {
   isPlayerTurn: boolean;
   winner: 'player' | 'enemy' | null;
   battleNumber: number;
+  isAttacking: boolean;
+  isEnemyAttacking: boolean;
 }
 
 class BattleStore {
@@ -38,6 +40,8 @@ class BattleStore {
       isPlayerTurn: true,
       winner: null,
       battleNumber: 1,
+      isAttacking: false,
+      isEnemyAttacking: false,
     };
   }
 
@@ -46,12 +50,21 @@ class BattleStore {
       if (!state.isPlayerTurn || state.winner || !state.playerMonster || !state.enemyMonster) return state;
 
       const move = state.playerMonster.moves[moveIndex];
+      
+      // Trigger animation
+      state.isAttacking = true;
+
       let newState = this._applyMove(state as any, state.playerMonster, state.enemyMonster, move);
 
       if (!newState.winner) {
         setTimeout(() => this._triggerEnemyTurn(), 2000);
-        return { ...newState, isPlayerTurn: false };
+        newState = { ...newState, isPlayerTurn: false };
       }
+      
+      // End animation after a delay
+      setTimeout(() => {
+        this.store.update(s => ({ ...s, isAttacking: false }));
+      }, 500);
 
       return newState;
     });
@@ -88,6 +101,8 @@ class BattleStore {
         isPlayerTurn: true,
         winner: null,
         battleNumber: 1,
+        isAttacking: false,
+        isEnemyAttacking: false,
     });
   };
 
@@ -122,7 +137,16 @@ class BattleStore {
       if (state.winner || !state.playerMonster || !state.enemyMonster) return state;
 
       const aiMove = this._selectRandomMove(state.enemyMonster.moves);
+      
+      // Trigger enemy animation
+      state.isEnemyAttacking = true;
+
       const newState = this._applyMove(state as any, state.enemyMonster, state.playerMonster, aiMove);
+
+      // End enemy animation after a delay
+      setTimeout(() => {
+        this.store.update(s => ({ ...s, isEnemyAttacking: false }));
+      }, 500);
 
       return { ...newState, isPlayerTurn: true };
     });

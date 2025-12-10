@@ -7,6 +7,7 @@
 
   import type { Monster } from "./core/entities/Monster";
   import MonsterSelector from "./lib/components/atoms/MonsterSelector.svelte";
+
 </script>
 
 <main class={styles.layout.main}>
@@ -33,11 +34,11 @@
     {/if}
 
     <div class={styles.layout.arena}>
-      <MonsterDisplayer monster={$battleStore.playerMonster} isPlayer={true} />
-      <MonsterDisplayer monster={$battleStore.enemyMonster} isPlayer={false} />
+      <MonsterDisplayer monster={$battleStore.playerMonster} isPlayer={true} isAttacking={$battleStore.isAttacking} />
+      <MonsterDisplayer monster={$battleStore.enemyMonster} isPlayer={false} isAttacking={$battleStore.isEnemyAttacking} />
     </div>
 
-    <div class={styles.layout.bottomGrid}>
+    <div class="{styles.layout.bottomGrid} relative">
       <Logs bind:logs={$battleStore.logs} />
 
       <div class={styles.actionBar.container}>

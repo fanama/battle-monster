@@ -1,4 +1,3 @@
-
 export const styles = {
   layout: {
     title: `
@@ -12,7 +11,7 @@ export const styles = {
       py-2
     `,
     main: `
-      w-full max-w-2xl mx-auto 
+      w-full max-w-4xl mx-auto 
       p-2 md:p-4 
       font-mono select-none 
       min-h-screen 
@@ -21,7 +20,7 @@ export const styles = {
     arena: `
       border-2 md:border-4 border-stone-600 rounded-lg 
       bg-stone-800 relative 
-      min-h-[300px] md:h-96 
+      flex-grow min-h-[320px] md:min-h-[400px]
       mb-3 md:mb-4 
       flex justify-between items-end 
       px-2 py-4 md:px-8 md:pb-8
