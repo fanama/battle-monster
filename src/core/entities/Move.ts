@@ -6,6 +6,7 @@ export interface Move {
   power: number;
   type: MonsterType;
   isPhysical: boolean;
+  level: number;
   coolDown?: number;
   maxCoolDown?: number;
 }

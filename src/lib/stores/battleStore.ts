@@ -1,88 +1,55 @@
-import { writable } from 'svelte/store';
+import { writable, type Writable, get } from 'svelte/store';
 import type { Monster } from '../../core/entities/Monster';
-import { BattleEngine } from '../../core/services/BattleEngine';
+import { BattleEngine, type BattleLog } from '../../core/services/BattleEngine';
 import { MonsterRepository } from '../../infra/repositories/MonsterRepositories';
 import type { Move } from '../../core/entities/Move';
+import { MoveRepository } from '../../infra/repositories/MoveRepositories';
+
 
 // --- Types ---
 interface BattleState {
-  playerMonster: Monster;
-  enemyMonster: Monster;
+  playerMonster: Monster | null;
+  enemyMonster: Monster | null;
   logs: string[];
   isPlayerTurn: boolean;
   winner: 'player' | 'enemy' | null;
+  battleNumber: number;
 }
 
-// --- Setup ---
-const engine = new BattleEngine();
-const repo = new MonsterRepository();
+class BattleStore {
+  private readonly store: Writable<BattleState>;
+  public subscribe;
 
-const getInitialState = (): BattleState => {
-  return {
-    playerMonster: repo.getStarter('fire'),
-    enemyMonster: repo.getStarter('water'),
-    logs: [`Un enemi apparaît !`],
-    isPlayerTurn: true,
-    winner: null
-  };
-};
-
-// --- Store ---
-function createBattleStore() {
-  const { subscribe, set, update } = writable<BattleState>(getInitialState());
-
-  const applyMove = (state: BattleState, attacker: Monster, defender: Monster, move: Move): BattleState => {
-    // 1. Get logs from the engine (This likely includes the first "K.O." or "Fainted" message)
-    const turnLogs = engine.executeTurn(attacker, defender, move).map(l => l.message);
-    const newLogs = [...state.logs, ...turnLogs];
-
-    let winner = state.winner;
-
-    // 2. Check for Game Over
-    if (defender.isFainted()) {
-      winner = state.isPlayerTurn ? 'player' : 'enemy';
-
-      newLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
-    }
-
-    return { ...state, logs: newLogs, winner };
-  };
-
-  function selectRandomMove(moves: Move[]): Move {
+  private readonly engine = new BattleEngine();
+  private readonly monsterRepo = new MonsterRepository();
+  private readonly moveRepo = new MoveRepository();
 
 
-    // Generate a random index between 0 (inclusive) and moves.length (exclusive)
-    const randomIndex = Math.floor(Math.random() * moves.length);
-
-    // Return the move at the randomly generated index
-    return moves[randomIndex];
+  constructor() {
+    this.store = writable(this._getInitialState());
+    this.subscribe = this.store.subscribe;
   }
 
-  // 1. Enemy Turn Logic
-  const triggerEnemyTurn = () => {
-    update(state => {
-      if (state.winner) return state;
+  private _getInitialState(): BattleState {
+    return {
+      playerMonster: null,
+      enemyMonster: null,
+      logs: ['Choisissez votre monstre pour commencer.'],
+      isPlayerTurn: true,
+      winner: null,
+      battleNumber: 1,
+    };
+  }
 
-      // Simple AI: Pick first move
-      // const aiMove = state.enemyMonster.moves[2]
-      const aiMove = selectRandomMove(state.enemyMonster.moves)
-      const newState = applyMove(state, state.enemyMonster, state.playerMonster, aiMove);
-
-      return { ...newState, isPlayerTurn: true };
-    });
-  };
-
-  // 2. Player Turn Logic
-  const playerAttack = (moveIndex: number) => {
-    update(state => {
-      if (!state.isPlayerTurn || state.winner) return state;
+  public attack = (moveIndex: number) => {
+    this.store.update(state => {
+      if (!state.isPlayerTurn || state.winner || !state.playerMonster || !state.enemyMonster) return state;
 
       const move = state.playerMonster.moves[moveIndex];
-      const newState = applyMove(state, state.playerMonster, state.enemyMonster, move);
+      let newState = this._applyMove(state as any, state.playerMonster, state.enemyMonster, move);
 
-      // If game isn't over, queue enemy turn
       if (!newState.winner) {
-        setTimeout(triggerEnemyTurn, 2000);
+        setTimeout(() => this._triggerEnemyTurn(), 2000);
         return { ...newState, isPlayerTurn: false };
       }
 
@@ -90,29 +57,81 @@ function createBattleStore() {
     });
   };
 
-  const selectMonster = (monster: Monster) => {
-    update(state => {
-      if (state.isPlayerTurn) {
+  public nextBattle = () => {
+    this.store.update(state => {
+      if (state.winner !== 'player' || !state.playerMonster) return state;
+      
+      const nextBattleNumber = state.battleNumber + 1;
+      const nextEnemyLevel = state.playerMonster.level;
 
+      state.playerMonster.currentHp = state.playerMonster.maxHp;
 
+      const newEnemy = this.monsterRepo.getRandomMonster(nextEnemyLevel);
 
-        return { ...state, playerMonster: monster };
+      return {
+          ...state,
+          enemyMonster: newEnemy,
+          winner: null,
+          isPlayerTurn: true,
+          logs: [`Un nouvel ennemi de niveau ${newEnemy.level} apparaît !`],
+          battleNumber: nextBattleNumber
+      };
+  });
+  };
 
-
-      }
-      return { ...state, enemyMonster: monster };
-
-
-
+  public selectMonster = (monster: Monster) => {
+    const newEnemy = this.monsterRepo.getRandomMonster(monster.level);
+    this.store.set({
+        playerMonster: monster,
+        enemyMonster: newEnemy,
+        logs: [`En garde ! Un ${newEnemy.name} sauvage apparaît !`],
+        isPlayerTurn: true,
+        winner: null,
+        battleNumber: 1,
     });
   };
 
-  return {
-    subscribe,
-    attack: playerAttack,
-    reset: () => set(getInitialState()),
-    selectMonster: selectMonster
+  public reset = () => {
+    this.store.set(this._getInitialState());
   };
+
+  private _applyMove(state: BattleState, attacker: Monster, defender: Monster, move: Move): BattleState {
+    const turnLogs: BattleLog[] = this.engine.executeTurn(attacker, defender, move);
+    const newLogs = [...state.logs, ...turnLogs.map(l => l.message)];
+
+    let winner = state.winner;
+
+    if (defender.isFainted()) {
+        winner = attacker === state.playerMonster ? 'player' : 'enemy';
+        newLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
+    }
+
+    const levelUpLog = turnLogs.find(log => log.payload?.leveledUp);
+    if (levelUpLog && attacker === state.playerMonster) {
+        const newMoves = this.moveRepo.getMovesForMonster(attacker);
+        attacker.moves = newMoves;
+        newLogs.push(`${attacker.name} a appris de nouvelles attaques !`);
+    }
+
+    return { ...state, logs: newLogs, winner };
+  }
+
+
+  private _triggerEnemyTurn = () => {
+    this.store.update(state => {
+      if (state.winner || !state.playerMonster || !state.enemyMonster) return state;
+
+      const aiMove = this._selectRandomMove(state.enemyMonster.moves);
+      const newState = this._applyMove(state as any, state.enemyMonster, state.playerMonster, aiMove);
+
+      return { ...newState, isPlayerTurn: true };
+    });
+  };
+
+  private _selectRandomMove(moves: Move[]): Move {
+    const randomIndex = Math.floor(Math.random() * moves.length);
+    return moves[randomIndex];
+  }
 }
 
-export const battleStore = createBattleStore();
+export const battleStore = new BattleStore();

@@ -17,16 +17,32 @@
   <div class={monsterStyles.spriteSection.overlay}></div>
   <SpriteDisplayer {monster} {isPlayer} />
 
-  <div class={monsterStyles.nameTag.wrapper}>
-    <h2 class={monsterStyles.nameTag.text}>
-      {monster.name}
-    </h2>
+  <div class="{monsterStyles.nameTag.wrapper_base} {isPlayer ? monsterStyles.nameTag.wrapper_player : monsterStyles.nameTag.wrapper_enemy}">
+    <div class="flex justify-between items-baseline pr-2">
+      <h2 class={monsterStyles.nameTag.text}>
+        {monster.name}
+      </h2>
+      <div class="{isPlayer ? monsterStyles.nameTag.level_player : monsterStyles.nameTag.level_enemy}">Lvl {monster.level}</div>
+    </div>
   </div>
 
   <div class={monsterStyles.info.container}>
     <div class={monsterStyles.info.healthWrapper}>
       <HealthBar current={monster.currentHp} max={monster.maxHp} />
     </div>
+
+    <!-- EXP Bar -->
+    {#if isPlayer}
+    <div class="px-2 mt-1">
+        <div class="flex justify-between items-center mb-0.5">
+            <span class="text-xs font-bold text-sky-300">EXP</span>
+            <span class="text-xs text-stone-400">{monster.experience} / {monster.experienceToNextLevel}</span>
+        </div>
+        <div class="w-full bg-stone-700 rounded-full h-1.5 shadow-inner">
+            <div class="bg-sky-400 h-1.5 rounded-full" style="width: {Math.min(100, (monster.experience / monster.experienceToNextLevel) * 100)}%"></div>
+        </div>
+    </div>
+    {/if}
 
     <div class={monsterStyles.info.moveGrid}>
       {#each monster.moves as move}

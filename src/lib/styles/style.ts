@@ -1,3 +1,4 @@
+
 export const styles = {
   layout: {
     title: `
@@ -20,10 +21,8 @@ export const styles = {
     arena: `
       border-2 md:border-4 border-stone-600 rounded-lg 
       bg-stone-800 relative 
-      /* Height Fix: Use min-height to allow monsters to fit */
       min-h-[300px] md:h-96 
       mb-3 md:mb-4 
-      /* Layout Fix: Align to bottom, push away from edges */
       flex justify-between items-end 
       px-2 py-4 md:px-8 md:pb-8
       shadow-xl
@@ -34,7 +33,7 @@ export const styles = {
     container: `
         grid grid-cols-2 gap-2 md:gap-3 
         p-2 md:p-3 
-        rounded-xl relative overflow-hidden
+        rounded-xl relative
         bg-stone-900 border-2 md:border-4 border-stone-600
         shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_5px_15px_rgba(0,0,0,0.5)]
         min-h-[140px] md:min-h-auto
@@ -54,6 +53,27 @@ export const styles = {
         transition-all duration-500 animate-in fade-in zoom-in-95
       `,
     victory: "text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]",
-    defeat: "text-red-700 drop-shadow-[0_0_8px_rgba(185,28,28,0.4)]",
+    defeat: "text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.4)]",
   },
-}
+  buttons: {
+    base: `
+      mb-4 self-center
+      py-2 px-8 rounded-lg
+      font-serif font-bold uppercase tracking-widest
+      border-2 shadow-lg
+      transition-all duration-200
+      transform active:scale-95
+      focus:outline-none focus:ring-4
+    `,
+    primary: `
+      bg-amber-500 border-amber-300 text-stone-900
+      hover:bg-amber-400 hover:shadow-amber-400/30
+      focus:ring-amber-400/50
+    `,
+    danger: `
+      bg-rose-700 border-rose-500 text-white
+      hover:bg-rose-600 hover:shadow-rose-600/30
+      focus:ring-rose-400/50
+    `,
+  },
+};
