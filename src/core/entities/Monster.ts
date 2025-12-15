@@ -45,11 +45,11 @@ export class Monster {
     return Math.floor(100 * Math.pow(level, 1.5));
   }
 
-  public gainExperience(amount: number): {leveledUp: boolean, logs: string[]} {
+  public gainExperience(amount: number): { leveledUp: boolean, logs: string[] } {
     this.experience += amount;
     const logs: string[] = [];
     logs.push(`${this.name} gained ${amount} experience points!`);
-    
+
     let leveledUp = false;
     while (this.experience >= this.experienceToNextLevel) {
       this.experience -= this.experienceToNextLevel;
@@ -57,21 +57,65 @@ export class Monster {
       leveledUp = true;
       logs.push(`${this.name} grew to level ${this.level}!`);
     }
-    return {leveledUp, logs};
+    return { leveledUp, logs };
   }
 
   private levelUp(): void {
     this.level++;
     this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
 
-    // Improve stats
-    this.maxHp += 10;
-    this.currentHp = this.maxHp; // Heal on level up
-    this.strength += 2;
-    this.constitution += 2;
-    this.intelligence += 2;
-    this.speed += 1;
-    this.wisdom += 1;
-    this.charisma +=1;
+    // 1. Get the growth modifiers based on the Monster's type
+    const growth = this.getStatGrowth(this.type);
+
+    // 2. Apply the growth to current stats
+    this.maxHp += growth.maxHp;
+    this.currentHp = this.maxHp; // Full heal on level up
+
+    this.strength += growth.strength;
+    this.speed += growth.speed;
+    this.constitution += growth.constitution;
+    this.intelligence += growth.intelligence;
+    this.wisdom += growth.wisdom;
+    this.charisma += growth.charisma;
+  }
+
+  /**
+   * Returns the stat increases per level based on the element type.
+   */
+  private getStatGrowth(type: MonsterType) {
+    // Default/Base growth (minimums)
+    const base = {
+      maxHp: 10,
+      strength: 1,
+      speed: 1,
+      constitution: 1,
+      intelligence: 1,
+      wisdom: 1,
+      charisma: 1
+    };
+
+    switch (type) {
+      case 'fire':
+        // Fire: High Offense (Strength/Int) and Speed, lower defense
+        return { ...base, strength: 3, speed: 2, intelligence: 2 };
+
+      case 'water':
+        // Water: High Health and Defense (Constitution), decent Wisdom
+        return { ...base, maxHp: 15, constitution: 3, wisdom: 2, strength: 2 };
+
+      case 'grass':
+        // Grass: High Special (Int/Wis) and Sustainability
+        return { ...base, intelligence: 3, wisdom: 3, constitution: 2 };
+
+      case 'normal':
+        // Normal: Balanced jack-of-all-trades
+        return {
+          maxHp: 12, strength: 2, speed: 2, constitution: 2,
+          intelligence: 2, wisdom: 2, charisma: 2
+        };
+
+      default:
+        return base;
+    }
   }
 }

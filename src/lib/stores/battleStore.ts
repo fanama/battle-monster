@@ -50,7 +50,7 @@ class BattleStore {
       if (!state.isPlayerTurn || state.winner || !state.playerMonster || !state.enemyMonster) return state;
 
       const move = state.playerMonster.moves[moveIndex];
-      
+
       // Trigger animation
       state.isAttacking = true;
 
@@ -60,7 +60,7 @@ class BattleStore {
         setTimeout(() => this._triggerEnemyTurn(), 2000);
         newState = { ...newState, isPlayerTurn: false };
       }
-      
+
       // End animation after a delay
       setTimeout(() => {
         this.store.update(s => ({ ...s, isAttacking: false }));
@@ -73,36 +73,43 @@ class BattleStore {
   public nextBattle = () => {
     this.store.update(state => {
       if (state.winner !== 'player' || !state.playerMonster) return state;
-      
-      const nextBattleNumber = state.battleNumber + 1;
-      const nextEnemyLevel = state.playerMonster.level;
 
+      const nextBattleNumber = state.battleNumber + 1;
+      const playerLevel = state.playerMonster.level;
+
+      const levelVariance = Math.random() * 2 + 1
+      const levelSign = Math.random() > 0.3 ? 1 : -1;
+
+      // Ensure enemy is at least level 1
+      const nextEnemyLevel = playerLevel + Math.trunc(levelSign * levelVariance);
+
+      // Full heal the player for the next fight
       state.playerMonster.currentHp = state.playerMonster.maxHp;
 
       const newEnemy = this.monsterRepo.getRandomMonster(nextEnemyLevel);
 
       return {
-          ...state,
-          enemyMonster: newEnemy,
-          winner: null,
-          isPlayerTurn: true,
-          logs: [`Un nouvel ennemi de niveau ${newEnemy.level} apparaît !`],
-          battleNumber: nextBattleNumber
+        ...state,
+        enemyMonster: newEnemy,
+        winner: null,
+        isPlayerTurn: true,
+        logs: [`Un nouvel ennemi de niveau ${newEnemy.level} apparaît !`],
+        battleNumber: nextBattleNumber
       };
-  });
-  };
+    });
+  }
 
   public selectMonster = (monster: Monster) => {
     const newEnemy = this.monsterRepo.getRandomMonster(monster.level);
     this.store.set({
-        playerMonster: monster,
-        enemyMonster: newEnemy,
-        logs: [`En garde ! Un ${newEnemy.name} sauvage apparaît !`],
-        isPlayerTurn: true,
-        winner: null,
-        battleNumber: 1,
-        isAttacking: false,
-        isEnemyAttacking: false,
+      playerMonster: monster,
+      enemyMonster: newEnemy,
+      logs: [`En garde ! Un ${newEnemy.name} sauvage apparaît !`],
+      isPlayerTurn: true,
+      winner: null,
+      battleNumber: 1,
+      isAttacking: false,
+      isEnemyAttacking: false,
     });
   };
 
@@ -117,15 +124,15 @@ class BattleStore {
     let winner = state.winner;
 
     if (defender.isFainted()) {
-        winner = attacker === state.playerMonster ? 'player' : 'enemy';
-        newLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
+      winner = attacker === state.playerMonster ? 'player' : 'enemy';
+      newLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
     }
 
     const levelUpLog = turnLogs.find(log => log.payload?.leveledUp);
     if (levelUpLog && attacker === state.playerMonster) {
-        const newMoves = this.moveRepo.getMovesForMonster(attacker);
-        attacker.moves = newMoves;
-        newLogs.push(`${attacker.name} a appris de nouvelles attaques !`);
+      const newMoves = this.moveRepo.getMovesForMonster(attacker);
+      attacker.moves = newMoves;
+      newLogs.push(`${attacker.name} a appris de nouvelles attaques !`);
     }
 
     return { ...state, logs: newLogs, winner };
@@ -137,7 +144,7 @@ class BattleStore {
       if (state.winner || !state.playerMonster || !state.enemyMonster) return state;
 
       const aiMove = this._selectRandomMove(state.enemyMonster.moves);
-      
+
       // Trigger enemy animation
       state.isEnemyAttacking = true;
 
