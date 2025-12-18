@@ -7,7 +7,6 @@
 
   import type { Monster } from "./core/entities/Monster";
   import MonsterSelector from "./lib/components/atoms/MonsterSelector.svelte";
-
 </script>
 
 <main class={styles.layout.main}>
@@ -15,27 +14,43 @@
 
   {#if !$battleStore.playerMonster}
     <div class="flex flex-col items-center gap-4">
-        <p class="text-center text-lg font-mono text-amber-200">Choisissez votre monstre pour commencer</p>
-        <MonsterSelector
-          onclick={(selectedMonster: Monster) => {
-            battleStore.selectMonster(selectedMonster);
-          }}
-        />
+      <p class="text-center text-lg font-mono text-amber-200">
+        Choisissez votre monstre pour commencer
+      </p>
+      <MonsterSelector
+        onclick={(selectedMonster: Monster) => {
+          battleStore.selectMonster(selectedMonster);
+        }}
+      />
     </div>
   {:else}
-    {#if $battleStore.winner === 'player'}
-      <button class="{styles.buttons.base} {styles.buttons.primary}" on:click={() => battleStore.nextBattle()}>
+    {#if $battleStore.winner === "player"}
+      <button
+        class="{styles.buttons.base} {styles.buttons.primary}"
+        on:click={() => battleStore.nextBattle()}
+      >
         Prochain combat
       </button>
-    {:else if $battleStore.winner === 'enemy'}
-      <button class="{styles.buttons.base} {styles.buttons.danger}" on:click={() => battleStore.reset()}>
+    {:else if $battleStore.winner === "enemy"}
+      <button
+        class="{styles.buttons.base} {styles.buttons.danger}"
+        on:click={() => battleStore.reset()}
+      >
         Recommencer
       </button>
     {/if}
 
     <div class={styles.layout.arena}>
-      <MonsterDisplayer monster={$battleStore.playerMonster} isPlayer={true} isAttacking={$battleStore.isAttacking} />
-      <MonsterDisplayer monster={$battleStore.enemyMonster} isPlayer={false} isAttacking={$battleStore.isEnemyAttacking} />
+      <MonsterDisplayer
+        monster={$battleStore.playerMonster}
+        isPlayer={true}
+        isAttacking={$battleStore.isAttacking}
+      />
+      <MonsterDisplayer
+        monster={$battleStore.enemyMonster}
+        isPlayer={false}
+        isAttacking={$battleStore.isEnemyAttacking}
+      />
     </div>
 
     <div class="{styles.layout.bottomGrid} relative">
@@ -49,17 +64,17 @@
             <MoveDisplayer {move} onClick={() => battleStore.attack(i)} />
           {/each}
         {:else}
-        <div
-          class="
+          <div
+            class="
           {styles.winner.base}
           {$battleStore.winner === 'player'
-          ? styles.winner.victory
-          : styles.winner.defeat}
+              ? styles.winner.victory
+              : styles.winner.defeat}
           "
           >
-          {$battleStore.winner === "player"
-          ? "⚔ Victoire ⚔"
-          : "💀 Défaite..."}
+            {$battleStore.winner === "player"
+              ? "⚔ Victoire ⚔"
+              : "💀 Défaite..."}
           </div>
 
           <!-- Monster Selector on Win/Loss -->
@@ -83,3 +98,4 @@
     overscroll-behavior-y: none;
   }
 </style>
+

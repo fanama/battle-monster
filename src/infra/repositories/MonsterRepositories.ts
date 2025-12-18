@@ -60,39 +60,33 @@ export class MonsterRepository {
   ];
 
   private createInstance(def: MonsterDefinition): Monster {
-    const tempMonster = new Monster(
-      def.id,
-      def.name,
-      def.type,
-      def.level,
-      def.maxHp,
-      def.maxHp,
-      def.stats.strength,
-      def.stats.speed,
-      def.stats.constitution,
-      def.stats.intelligence,
-      def.stats.charisma,
-      def.stats.wisdom,
-      [],
-      def.image
-    );
+    // 1. Get all potential moves the monster is eligible for
+    // We pass a literal object that matches the Monster interface requirements
+    const allEligibleMoves = moveRepo.getMovesForMonster({
+      type: def.type,
+      level: def.level
+    } as any);
 
-    const moves = moveRepo.getMovesForMonster(tempMonster);
+    // 2. Shuffle and pick a maximum of 4 moves
+    const selectedMoves = allEligibleMoves
+      .sort(() => 0.5 - Math.random()) // Randomize order
+      .slice(0, 4);                    // Take only the first 4
 
+    // 3. Create the final Monster instance
     return new Monster(
       def.id,
       def.name,
       def.type,
       def.level,
       def.maxHp,
-      def.maxHp,
+      def.maxHp, // currentHp starts at maxHp
       def.stats.strength,
       def.stats.speed,
       def.stats.constitution,
       def.stats.intelligence,
       def.stats.charisma,
       def.stats.wisdom,
-      moves,
+      selectedMoves,
       def.image
     );
   }
@@ -115,15 +109,46 @@ export class MonsterRepository {
 
   getRandomMonster(targetLevel: number): Monster {
     const monsterTypes: MonsterType[] = ['fire', 'water', 'grass', 'normal'];
-    const namePrefixes = ['Spark', 'Aqua', 'Terra', 'Aero', 'Chrono', 'Psycho', 'Shadow', 'Lumina'];
-    const nameSuffixes = ['mander', 'beast', 'wing', 'fin', 'spire', 'pion', 'ling', 'fang'];
-
     const randomType = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
-    const randomName = namePrefixes[Math.floor(Math.random() * namePrefixes.length)] + nameSuffixes[Math.floor(Math.random() * nameSuffixes.length)];
-    const randomImage = Math.random() > 0.5 ? FireImage : WaterImage;
 
+    // 1. Type-specific name pools
+    const namePools: Record<MonsterType, { prefixes: string[], suffixes: string[] }> = {
+      fire: {
+        prefixes: ['Pyre', 'Ember', 'Blaze', 'Solar', 'Magma'],
+        suffixes: ['mander', 'core', 'fury', 'wing', 'flame']
+      },
+      water: {
+        prefixes: ['Aqua', 'Hydro', 'Tidal', 'Mist', 'River'],
+        suffixes: ['fin', 'scale', 'bubble', 'wave', 'soul']
+      },
+      grass: {
+        prefixes: ['Terra', 'Leaf', 'Flora', 'Root', 'Bloom'],
+        suffixes: ['thorn', 'vine', 'sprout', 'wood', 'pion']
+      },
+      normal: {
+        prefixes: ['Swift', 'Bold', 'Iron', 'Zen', 'Chrono'],
+        suffixes: ['beast', 'tail', 'fang', 'claw', 'ling']
+      }
+    };
+
+    // 2. Select name and image based on type
+    const pool = namePools[randomType];
+    const randomName =
+      pool.prefixes[Math.floor(Math.random() * pool.prefixes.length)] +
+      pool.suffixes[Math.floor(Math.random() * pool.suffixes.length)];
+
+    // Select sprite based on type (assuming you have imported these)
+    const imageMap: Record<MonsterType, any> = {
+      fire: FireImage,
+      water: WaterImage,
+      grass: FireImage,
+      normal: FireImage
+    };
+    const randomImage = imageMap[randomType];
+
+    // 3. Define Base Stats
     const newDef: MonsterDefinition = {
-      id: (Math.random() * 100000).toString(),
+      id: crypto.randomUUID(), // Better than Math.random for IDs
       name: randomName,
       type: randomType,
       level: targetLevel,
@@ -139,6 +164,8 @@ export class MonsterRepository {
       }
     };
 
+    // 4. Apply Level Scaling
+    // Every level above 1 adds 15% to total stats
     const levelDifference = targetLevel - 1;
     const statMultiplier = 1 + (levelDifference * 0.15);
 
@@ -147,8 +174,6 @@ export class MonsterRepository {
     (Object.keys(newDef.stats) as Array<keyof typeof newDef.stats>).forEach(stat => {
       newDef.stats[stat] = Math.floor(newDef.stats[stat] * statMultiplier);
     });
-
-
 
     return this.createInstance(newDef);
   }
