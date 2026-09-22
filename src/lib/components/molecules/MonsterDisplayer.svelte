@@ -4,27 +4,85 @@
   import SpriteDisplayer from "../atoms/SpriteDisplayer.svelte";
   import { monsterStyles } from "../../styles/monsterStyles";
   import type { Move } from "../../../core/entities/Move";
+  import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
+  import { abilityModifier } from "../../../core/entities/Monster";
+  import type { CombatFeedback } from "../../../core/services/BattleEngine";
 
   export let monster: Monster | null | undefined;
   export let isPlayer: boolean;
   export let isAttacking: boolean = false;
+  export let lastMove: Move | null = null;
+  export let feedback: CombatFeedback | null = null;
 
-  export let lastMove: Move | null = null; // New prop to track the move used
+  // Panneau de stats complet (joueur) — repliable.
+  let showStats = false;
+
+  $: stats = monster
+    ? (Object.keys(STAT_LABELS) as Array<keyof typeof STAT_LABELS>)
+    : [];
+
+  $: typeColor = {
+    fire: "bg-red-500",
+    water: "bg-blue-500",
+    grass: "bg-green-500",
+    normal: "bg-gray-400",
+  }[monster?.type ?? "normal"];
 
   // Reactive statement to check if the move was a utility move (no damage)
   $: isUtilityMove = lastMove && lastMove.power === 0;
+
+  $: isHit = feedback && (feedback.kind === 'damage' || feedback.kind === 'fumble' || feedback.kind === 'miss');
+  $: isDamageTaken = feedback && feedback.kind === 'damage';
+
+  // Text shown by the floating number
+  $: floatLabel = feedback
+    ? feedback.kind === 'damage'
+      ? `-${feedback.damage}`
+      : feedback.kind === 'heal'
+        ? `+${feedback.damage}`
+        : feedback.kind === 'buff'
+          ? `+${feedback.damage} ⬆`
+          : feedback.kind === 'fumble'
+            ? 'FUMBLE !'
+            : 'RATÉ !'
+    : '';
 </script>
 
 <div
   class:attack-player={isAttacking && isPlayer && !isUtilityMove}
   class:attack-enemy={isAttacking && !isPlayer && !isUtilityMove}
   class:jump-animation={isAttacking && isUtilityMove}
+  class:shake={!!isDamageTaken}
+  class:shake-crit={!!(isHit && feedback?.isCrit)}
   class="
     {monsterStyles.container.base} 
     {isPlayer ? monsterStyles.container.player : monsterStyles.container.enemy}
+    relative
   "
 >
   {#if monster}
+    {#if feedback && feedback.kind !== 'none'}
+      <div class="feedback-fx absolute inset-0 z-30 pointer-events-none">
+        <!-- Red flash on the monster that got struck -->
+        {#if isDamageTaken}
+          <div class="absolute inset-0 hit-flash {feedback.isCrit ? 'hit-flash-crit' : ''}"></div>
+        {/if}
+
+        <!-- Floating number: damage / heal / buff / fumble / miss -->
+        <div
+          class="float-num
+            {feedback.kind === 'damage' ? 'num-damage' : ''}
+            {feedback.kind === 'heal' ? 'num-heal' : ''}
+            {feedback.kind === 'buff' ? 'num-buff' : ''}
+            {feedback.kind === 'fumble' ? 'num-fumble' : ''}
+            {feedback.kind === 'miss' ? 'num-miss' : ''}
+            {feedback.isCrit ? 'num-crit' : ''}"
+        >
+          {floatLabel}
+        </div>
+      </div>
+    {/if}
+
     <div class={monsterStyles.spriteSection.wrapper}>
       <div class={monsterStyles.spriteSection.overlay}></div>
       <SpriteDisplayer {monster} {isPlayer} />
@@ -54,6 +112,16 @@
         <HealthBar current={monster.currentHp} max={monster.maxHp} />
       </div>
 
+      <div
+        class="flex justify-between items-center px-2 text-[10px] uppercase tracking-wider text-stone-400"
+      >
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full {typeColor} inline-block"></span>
+          {TYPE_LABELS[monster.type]}
+        </span>
+        <span class="font-mono">CA {monster.getAC()}</span>
+      </div>
+
       {#if isPlayer}
         <div class="px-2 mt-1">
           <div class="flex justify-between items-center mb-0.5">
@@ -81,6 +149,37 @@
           </div>
         {/each}
       </div>
+
+      {#if isPlayer}
+        <button
+          class="mt-1 w-full text-[10px] uppercase tracking-wider text-sky-300
+            border border-sky-500/40 bg-sky-950/40 rounded-md px-2 py-1
+            hover:bg-sky-900/50 transition-colors"
+          on:click={() => (showStats = !showStats)}
+        >
+          {showStats ? '▲ Masquer les stats' : '▼ Voir les stats'}
+        </button>
+
+        {#if showStats}
+          <div class="mt-1 px-2 py-1.5 bg-black/30 rounded-md border border-stone-700/60">
+            {#each stats as stat}
+              <div class="flex justify-between items-center text-xs py-0.5">
+                <span class="text-stone-400">{STAT_LABELS[stat]}</span>
+                <span class="font-mono">
+                  {monster[stat]}
+                  <span class="text-stone-500">
+                    ({abilityModifier(monster[stat]) >= 0 ? '+' : ''}{abilityModifier(monster[stat])})
+                  </span>
+                </span>
+              </div>
+            {/each}
+            <div class="flex justify-between items-center text-xs py-0.5 border-t border-stone-700/60 mt-1 pt-1">
+              <span class="text-stone-400">CA</span>
+              <span class="font-mono">{monster.getAC()}</span>
+            </div>
+          </div>
+        {/if}
+      {/if}
     </div>
   {:else}
     <div
@@ -94,11 +193,11 @@
 <style>
   /* --- Attacks (Slide/Lunge) --- */
   .attack-player {
-    animation: attack-lunge-left 0.4s ease-in-out;
+    animation: attack-lunge-left 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
   }
 
   .attack-enemy {
-    animation: attack-lunge-right 0.4s ease-in-out;
+    animation: attack-lunge-right 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
   }
 
   /* --- Utility (Heal/Boost Jump) --- */
@@ -110,8 +209,11 @@
     0% {
       transform: translateX(0);
     }
-    50% {
-      transform: translateX(-60%);
+    30% {
+      transform: translateX(-62%) scale(1.06);
+    }
+    70% {
+      transform: translateX(8%);
     }
     100% {
       transform: translateX(0);
@@ -122,8 +224,11 @@
     0% {
       transform: translateX(0);
     }
-    50% {
-      transform: translateX(60%);
+    30% {
+      transform: translateX(62%) scale(1.06);
+    }
+    70% {
+      transform: translateX(-8%);
     }
     100% {
       transform: translateX(0);
@@ -137,9 +242,84 @@
     }
     50% {
       transform: translateY(-40px) scale(1.1);
-    } /* Jump up and slightly enlarge */
+    }
     100% {
       transform: translateY(0) scale(1);
     }
+  }
+
+  /* --- Receiver hit reaction: shake --- */
+  .shake {
+    animation: shake-hit 0.4s ease both;
+    will-change: transform;
+  }
+
+  .shake-crit {
+    animation: shake-hit-crit 0.5s ease both;
+  }
+
+  @keyframes shake-hit {
+    0%, 100% { transform: translate(0, 0); }
+    15% { transform: translate(-7px, 3px); }
+    35% { transform: translate(6px, -4px); }
+    55% { transform: translate(-5px, 2px); }
+    75% { transform: translate(3px, -2px); }
+  }
+
+  @keyframes shake-hit-crit {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    20% { transform: translate(-10px, 5px) scale(1.08); }
+    45% { transform: translate(9px, -6px) scale(1.05); }
+    70% { transform: translate(-6px, 3px) scale(1.02); }
+  }
+
+  /* --- Red flash on the struck monster --- */
+  .hit-flash {
+    background: radial-gradient(circle, rgba(255, 60, 60, 0.7), rgba(255, 60, 60, 0.2) 70%);
+    animation: hit-flash-out 0.55s ease-out forwards;
+  }
+
+  .hit-flash-crit {
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 90, 90, 0.3) 65%);
+    animation: hit-flash-out 0.7s ease-out forwards;
+  }
+
+  @keyframes hit-flash-out {
+    0% { opacity: 0.95; }
+    100% { opacity: 0; }
+  }
+
+  /* --- Floating number --- */
+  .float-num {
+    position: absolute;
+    left: 50%;
+    top: 22%;
+    z-index: 40;
+    font-weight: 800;
+    font-size: 1.5rem;
+    line-height: 1;
+    white-space: nowrap;
+    transform: translate(-50%, 0);
+    animation: float-up 1.1s ease-out forwards;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.75);
+  }
+
+  .num-damage { color: #ff5252; }
+  .num-heal { color: #4ade80; }
+  .num-buff { color: #fbbf24; }
+  .num-fumble { color: #ff7043; }
+  .num-miss { color: #a8a29e; }
+  .num-crit {
+    font-size: 2.1rem;
+    font-weight: 900;
+    color: #ffd54f;
+  }
+
+  @keyframes float-up {
+    0% { opacity: 0; transform: translate(-50%, 14px) scale(0.5); }
+    12% { opacity: 1; transform: translate(-50%, 0) scale(1.2); }
+    30% { transform: translate(-50%, -8px) scale(1); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -56px) scale(0.85); }
   }
 </style>

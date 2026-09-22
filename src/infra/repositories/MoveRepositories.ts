@@ -1,5 +1,5 @@
-import type { Move, MonsterType } from "../../core/entities/Move.ts";
-import type { Monster } from "../../core/entities/Monster.ts";
+import type { Move, MonsterType } from "../../core/entities/Move";
+import type { Monster } from "../../core/entities/Monster";
 
 /**
  * Repository for managing and retrieving all available combat moves.
@@ -20,7 +20,7 @@ export class MoveRepository {
       type: 'normal',
       isPhysical: false,
       level: 5,
-      healPercentage: 0.5,
+      isHeal: true,
       maxCoolDown: 3
     },
     // --- FIRE Moves ---
@@ -35,7 +35,7 @@ export class MoveRepository {
       type: 'fire',
       isPhysical: false,
       level: 8,
-      statBoosts: { attack: 1.5 }, // Increases attack by 50%
+      statBoosts: { stat: 'strength', value: 2 }, // +2 Force permanent (D&D buff rule)
       maxCoolDown: 4
     },
     // --- WATER Moves ---
@@ -95,7 +95,7 @@ export class MoveRepository {
    * @param monster The monster for which to retrieve moves.
    * @returns An array of Move objects the monster can use.
    */
-  public getMovesForMonster(monster: Monster): Move[] {
+  public getMovesForMonster(monster: Pick<Monster, 'type' | 'level'>): Move[] {
     return Object.values(MoveRepository.moves).filter(
       move => (move.type === monster.type || move.type === 'normal') && move.level <= monster.level
     );

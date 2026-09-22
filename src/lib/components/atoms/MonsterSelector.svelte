@@ -1,12 +1,9 @@
 <script lang="ts">
   import type { Monster } from "../../../core/entities/Monster";
-  import { MonsterRepository } from "../../../infra/repositories/MonsterRepositories";
+  import { container } from "../../../lib/container";
 
-  // Assuming you might import the styles object, or we mirror its aesthetic here
-  // based on the design system provided.
-
-  const monsterRepo = new MonsterRepository();
-  const monsters = monsterRepo.getAllMonsters();
+  // Les 3 starters définis (aucun hasard) — via le composition root.
+  const monsters = container.starters.getAll();
 
   let selectedMonster: Monster | undefined;
   export let onclick: (monster: Monster) => void;

@@ -1,27 +1,51 @@
-import type { Move, MonsterType, StatBoosts } from './Move';
+import type { MonsterStat, Move, MonsterType } from './Move';
+
+/**
+ * D&D ability modifier: floor((stat - 10) / 2). E.g. 10 → +0, 12 → +1, 18 → +4.
+ */
+export function abilityModifier(stat: number): number {
+  return Math.floor((stat - 10) / 2);
+}
+
+/** Rang du monstre (dnd : PNJ / minion / boss) — sert au calcul d'XP. */
+export type MonsterRank = 'normal' | 'boss';
+
+/** D&D hit dice per monster type (max PV = max dice + mod(Constitution)). */
+const HIT_DICE: Record<MonsterType, number> = {
+  fire: 8,
+  water: 10,
+  grass: 10,
+  normal: 8,
+};
+
+/**
+ * Mise à l'échelle du pool de PV par niveau : `BASE + level × PER_LEVEL`.
+ * Recalibré (1.8 + 0.85·lvl, cf. rebalance §5) pour absorber les critiques
+ * magiques sans one-shot sans pour autant allonger les combats.
+ */
+const HP_SCALE_BASE = 1.8;
+const HP_SCALE_PER_LEVEL = 0.85;
 
 /**
  * Represents a Monster entity in the game.
- * Handles stats, leveling logic, and temporary battle modifiers.
+ * Handles stats, leveling logic, and stat buffs.
  */
 export class Monster {
   public moves: Move[];
   public experience: number;
   public experienceToNextLevel: number;
-
-  // --- Temporary Battle Modifiers ---
-  // These are multipliers applied during combat and reset afterward.
-  public attackMultiplier: number = 1;
-  public defenseMultiplier: number = 1;
-  public speedMultiplier: number = 1;
+  public maxHp: number;
+  public currentHp: number;
+  /** Rang du monstre : 'boss' → XP accrue (dnd : 10/20/50). */
+  public rank: MonsterRank = 'normal';
+  /** Bonus d'armure (reliques/équipement), ajouté à la CA. */
+  public armorBonus: number = 0;
 
   constructor(
     public readonly id: string,
     public readonly name: string,
     public readonly type: MonsterType,
     public level: number,
-    public maxHp: number,
-    public currentHp: number,
     // Base Stats
     public strength: number,
     public speed: number,
@@ -39,8 +63,20 @@ export class Monster {
       coolDown: 0
     }));
 
+    this.maxHp = this.calculateMaxHp();
+    this.currentHp = this.maxHp;
     this.experience = 0;
     this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
+  }
+
+  /**
+   * Max PV (D&D rule): max(Dé de Vie) + mod(Constitution), scaled by level so
+   * the pool grows with progression. Minimum 1 PV.
+   */
+  private calculateMaxHp(): number {
+    const base = (HIT_DICE[this.type] ?? 8) + abilityModifier(this.constitution);
+    const factor = HP_SCALE_BASE + this.level * HP_SCALE_PER_LEVEL;
+    return Math.max(1, Math.floor(base * factor));
   }
 
   // --- Combat Logic ---
@@ -60,22 +96,57 @@ export class Monster {
   }
 
   /**
-   * Applies temporary stat boosts (e.g., 1.2 for +20% or 0.8 for -20%).
+   * Restores HP (potion/soin partiel), capped at max HP.
+   * Returns the amount actually restored.
    */
-  public applyBoosts(boosts: StatBoosts): void {
-    if (boosts.attack) this.attackMultiplier *= boosts.attack;
-    if (boosts.defense) this.defenseMultiplier *= boosts.defense;
-    if (boosts.speed) this.speedMultiplier *= boosts.speed;
+  heal(amount: number): number {
+    const restored = Math.min(this.maxHp, this.currentHp + amount) - this.currentHp;
+    this.currentHp += restored;
+    return restored;
+  }
+
+  /** Remet tous les cooldowns de moves à zéro (début de combat). */
+  resetCooldowns(): void {
+    this.moves.forEach(move => {
+      move.coolDown = 0;
+    });
   }
 
   /**
-   * Resets all multipliers to default (1.0). 
-   * IMPORTANT: Call this at the start or end of every battle.
+   * Armor Class (CA), D&D rule: 10 + mod(Vitesse) + BonusArmure.
+   * L'armure provient des reliques (+2 par exemple).
    */
-  public resetModifiers(): void {
-    this.attackMultiplier = 1;
-    this.defenseMultiplier = 1;
-    this.speedMultiplier = 1;
+  getAC(): number {
+    return 10 + abilityModifier(this.speed) + this.armorBonus;
+  }
+
+  /**
+   * Applies a permanent additive stat boost (D&D buff rule). A Constitution
+   * buff raises the max PV pool accordingly (PV max follows automatically).
+   */
+  public boostStat(stat: MonsterStat, value: number): void {
+    switch (stat) {
+      case 'strength':
+        this.strength += value;
+        break;
+      case 'speed':
+        this.speed += value;
+        break;
+      case 'constitution':
+        this.constitution += value;
+        this.maxHp = this.calculateMaxHp();
+        this.currentHp = Math.min(this.currentHp, this.maxHp);
+        break;
+      case 'intelligence':
+        this.intelligence += value;
+        break;
+      case 'charisma':
+        this.charisma += value;
+        break;
+      case 'wisdom':
+        this.wisdom += value;
+        break;
+    }
   }
 
   // --- Experience & Leveling Logic ---
@@ -102,7 +173,7 @@ export class Monster {
   }
 
   /**
-   * Increases level and scales base stats.
+   * Increases level and scales base stats + recomputes the PV pool.
    */
   private levelUp(): void {
     this.level++;
@@ -110,15 +181,15 @@ export class Monster {
 
     const growth = this.getStatGrowth(this.type);
 
-    this.maxHp += growth.maxHp;
-    this.currentHp = this.maxHp; // Heal to full on level up
-
     this.strength += growth.strength;
     this.speed += growth.speed;
     this.constitution += growth.constitution;
     this.intelligence += growth.intelligence;
     this.wisdom += growth.wisdom;
     this.charisma += growth.charisma;
+
+    this.maxHp = this.calculateMaxHp();
+    this.currentHp = this.maxHp; // Heal to full on level up
   }
 
   /**
@@ -126,7 +197,6 @@ export class Monster {
    */
   private getStatGrowth(type: MonsterType) {
     const base = {
-      maxHp: 10,
       strength: 1,
       speed: 1,
       constitution: 1,
@@ -139,12 +209,12 @@ export class Monster {
       case 'fire':
         return { ...base, strength: 3, speed: 2, intelligence: 2 };
       case 'water':
-        return { ...base, maxHp: 15, constitution: 3, wisdom: 2, strength: 2 };
+        return { ...base, constitution: 3, wisdom: 2, strength: 2 };
       case 'grass':
         return { ...base, intelligence: 3, wisdom: 3, constitution: 2 };
       case 'normal':
         return {
-          maxHp: 12, strength: 2, speed: 2, constitution: 2,
+          strength: 2, speed: 2, constitution: 2,
           intelligence: 2, wisdom: 2, charisma: 2
         };
       default:
