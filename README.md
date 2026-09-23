@@ -19,6 +19,7 @@ Jeu de combat au tour par tour entre monstres, façon Pokémon/Dragon Quest, ave
   - Expérience, montée de niveau et croissance de stats selon le type.
 - Génération procédurale des ennemis régionalisés (nom, type, stats, niveau).
 - **Combats dynamiques** : sprites SVG procéduraux, lunge/shake/flash, nombres de dégâts flottants, traînée rouge sur la barre de vie, pulsation basse PV.
+- **Persistance** : progression sauvegardée automatiquement (`localStorage`) après chaque combat → **écran titre** avec « Continuer la partie » / « Nouvelle partie » au rechargement.
 - Interface responsive (mobile + desktop), esthétique « dark/fantasy », logs de combat scrollables, HUD de run (progression, reliques, score, CA & type affichés).
 
 ## Règles du jeu (moteur D&D)
@@ -61,7 +62,7 @@ Approche « Clean Architecture » simplifiée, le domaine est dépendant de rien
 src/
 ├── core/                     # Domaine pur — aucune dépendance externe
 │   ├── entities/
-│   │   ├── Monster.ts        # Monster : stats, abilityModifier, CA, PV, exp, level-up, buffs, heal, cooldowns
+│   │   ├── Monster.ts        # Monster : stats, abilityModifier, CA, PV, exp, level-up, buffs, heal, cooldowns (+ DTO de sauvegarde MonsterIO)
 │   │   ├── Move.ts           # Types & contrat des mouvements
 │   │   ├── Relic.ts          # Reliques + helpers (%) et offre injectable (random)
 │   │   ├── Region.ts         # Définition des 4 régions
@@ -70,11 +71,12 @@ src/
 │       ├── BattleEngine.ts   # Résolution d20 (pure) → effets → logs/feedback (dés injectables)
 │       ├── effectiveness.ts  # Table de types partagée (physique vs magie dampée) — moteur, IA, UI
 │       ├── BattleController.ts # Orchestrateur de round/tour + run, IA ennemie, « résout » aussi l'initiative (DI, testable sans Svelte)
-│       └── ports.ts          # Contrats DI : MoveProvider, EnemyFactory
-├── infra/repositories/       # Implémentent les ports (« base de données » en mémoire)
+│       └── ports.ts          # Contrats DI : MoveProvider, EnemyFactory, SaveRepository/RunSave
+├── infra/repositories/       # Implémentent les ports (« base de données » en mémoire / localStorage)
 │   ├── MoveRepositories.ts   # Catalogue des mouvements (par type & niveau)
 │   ├── StarterCatalog.ts     # Les 3 starters fixes (choix du run)
 │   ├── RandomEnemyFactory.ts # Génération procédurale des ennemis + boss
+│   ├── LocalStorageRunRepository.ts # Persistance de la run (menu « Continuer »)
 │   └── monsterFactory.ts     # Instanciation commune (moves éligibles tirés)
 ├── lib/
 │   ├── container.ts          # Composition root (injection de dépendance)
@@ -89,7 +91,7 @@ src/
 ### Conventions
 
 - **Domaine autonome** : `core/` ne doit pas importer Svelte ni Vite — testable en isolation.
-- **Injection de dépendance** : le composition root câble `BattleEngine` (dés), `BattleController` (engine + ports), et le store (controller). Rien d'autre n'instancie les concrètes.
+- **Injection de dépendance** : le composition root câble `BattleEngine` (dés), `BattleController` (engine + ports), et le store (controller + `SaveRepository`). Rien d'autre n'instancie les concrètes.
 - **Le store orchestre l'UI, le contrôleur orchestre le jeu** : `BattleController` gère les tours, l'IA ennemie et la progression de run ; `battleStore.ts` ne garde que les timers d'animation et la liaison avec les composants (vues passives).
 - **Fiabilité** : `bun run check` doit rester à **0 erreur / 0 warning**.
 

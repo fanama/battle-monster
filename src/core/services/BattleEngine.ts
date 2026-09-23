@@ -30,6 +30,10 @@ export interface TurnResult {
 export interface BattleModifiers {
   /** Bonus de dégâts final en % (ex. 10 → ×1.10). */
   damagePercent?: number;
+  /** Range de critiques élargi (2 → critiques sur 19-20). */
+  critRange?: number;
+  /** Bonus d'EXP gagnée en % (ex. 25 → ×1.25). */
+  experiencePercent?: number;
 }
 
 /** Générateur de dés injectable — permet des tests déterministes. */
@@ -129,8 +133,9 @@ export class BattleEngine {
    *  - sort :          1d20 + mod(Savoir/i) + BonusSort
    *  - CA : 10 + mod(Vitesse)
    *  - 20 naturel → touche + critique ; 1 naturel → fumble (raté).
+   *  - `critRange` élargit les jets de critique (ex. 2 → 19-20), reliques joueur.
    */
-  resolveAttack(attacker: Monster, defender: Monster, move: Move): AttackOutcome {
+  resolveAttack(attacker: Monster, defender: Monster, move: Move, critRange = 1): AttackOutcome {
     const attackStat = move.isPhysical ? attacker.strength : attacker.intelligence;
     const attackMod = abilityModifier(attackStat);
     const bonus = moveHitBonus(move);
@@ -138,7 +143,7 @@ export class BattleEngine {
     const roll = this.dice.roll(1, 20);
     const total = roll + attackMod + bonus;
     const fumble = roll === 1;
-    const crit = roll === 20;
+    const crit = !fumble && roll >= 21 - Math.max(1, critRange);
     const hit = !fumble && (roll === 20 || total >= ac);
     return { hit, crit, fumble, roll, total, ac, attackMod, bonus };
   }
@@ -188,15 +193,16 @@ export class BattleEngine {
 
   /**
    * XP gagnée : base 100 × évolution de niveau × rang du vaincu (boss ×1.5,
-   * cf. dnd 10/20/50). Minimum 50.
+   * cf. dnd 10/20/50) × reliques d'EXP. Minimum 50.
    */
-  calculateExperienceGained(attacker: Monster, defender: Monster): number {
+  calculateExperienceGained(attacker: Monster, defender: Monster, experiencePercent = 0): number {
     const levelDifference = defender.level - attacker.level;
     const levelMultiplier = Math.pow(1.9, levelDifference);
     const baseExperience = 100; // Base exp for any defeat
     const rankMultiplier = RANK_XP_MULTIPLIER[defender.rank] ?? 1;
+    const relicMultiplier = 1 + experiencePercent / 100;
 
-    let experience = Math.floor(baseExperience * levelMultiplier * rankMultiplier);
+    let experience = Math.floor(baseExperience * levelMultiplier * rankMultiplier * relicMultiplier);
 
     if (experience <= 0) {
       experience = 50;
@@ -234,8 +240,12 @@ export class BattleEngine {
   }
 
   /** Récompenses de défaite : exp + montée de niveau(s) de l'attaquant. */
-  applyDefeatRewards(attacker: Monster, defender: Monster): { leveledUp: boolean; logs: BattleLog[] } {
-    const experience = this.calculateExperienceGained(attacker, defender);
+  applyDefeatRewards(
+    attacker: Monster,
+    defender: Monster,
+    experiencePercent?: number
+  ): { leveledUp: boolean; logs: BattleLog[] } {
+    const experience = this.calculateExperienceGained(attacker, defender, experiencePercent);
     const { leveledUp, logs: expMessages } = attacker.gainExperience(experience);
     return { leveledUp, logs: expMessages.map(message => ({ message })) };
   }
@@ -267,7 +277,7 @@ export class BattleEngine {
     // 4. Damaging move: D&D d20 attack resolution
     let isFumble = false;
     if (actualMoveInstance.power > 0) {
-      const outcome = this.resolveAttack(attacker, defender, actualMoveInstance);
+      const outcome = this.resolveAttack(attacker, defender, actualMoveInstance, modifiers?.critRange ?? 1);
 
       if (outcome.fumble) {
         isFumble = true;
@@ -284,14 +294,11 @@ export class BattleEngine {
 
         const critMark = outcome.crit ? ' 💥 CRITIQUE !' : '';
         const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)} = ${outcome.total}]`;
-        const damageSignature = actualMoveInstance.isPhysical
-          ? `[${roll.desc}${sign(abilityModifier(attacker.strength))}${sign(outcome.bonus)} = ${roll.total}]`
-          : `[${roll.desc} = ${roll.total}]`;
         const effective = multiplier !== 1 ? ` (×${multiplier})` : '';
 
         logs.push({
           message: `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
-            `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${damageSignature}${effective} = ${final}.`,
+            `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${final}.`,
         });
       } else {
         feedback = { kind: 'miss', damage: 0, isCrit: false };
@@ -326,7 +333,7 @@ export class BattleEngine {
     // 8. Post-Turn Check
     if (defender.isFainted()) {
       logs.push({ message: `☠️ ${defender.name} est K.O. !` });
-      const { leveledUp, logs: expLogs } = this.applyDefeatRewards(attacker, defender);
+      const { leveledUp, logs: expLogs } = this.applyDefeatRewards(attacker, defender, modifiers?.experiencePercent);
       expLogs.forEach(log => logs.push(log));
 
       if (leveledUp) {

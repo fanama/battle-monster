@@ -1,11 +1,13 @@
 import { writable, type Writable } from 'svelte/store';
 import type { BattleState, RunState } from '../../core/entities/BattleState';
-import type { Monster } from '../../core/entities/Monster';
+import { Monster } from '../../core/entities/Monster';
+import { MonsterIO } from '../../core/entities/Monster';
 import type { Move } from '../../core/entities/Move';
 import type { Relic } from '../../core/entities/Relic';
-import { relicDamagePercent, relicLifestealPercent } from '../../core/entities/Relic';
+import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent } from '../../core/entities/Relic';
 import { REGIONS } from '../../core/entities/Region';
 import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
+import { SAVE_VERSION, type RunSave, type SaveRepository } from '../../core/services/ports';
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
 const ENEMY_TURN_DELAY = 1200;
@@ -26,14 +28,23 @@ export class BattleStore {
   public subscribe;
 
   private readonly controller: BattleController;
+  private readonly saveRepository: SaveRepository;
 
   /** Timers de nettoyage des feedbacks flottants (un par camp). */
   private readonly feedbackTimers: Partial<Record<'playerFeedback' | 'enemyFeedback', ReturnType<typeof setTimeout>>> = {};
 
-  constructor(controller: BattleController) {
+  /** Tous les `setTimeout` de round / animation — annulés au (re)start d'un run. */
+  private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+
+  /** Une partie sauvegardée existe → le menu titre propose « Continuer ». */
+  public readonly savedRun: Writable<boolean>;
+
+  constructor(controller: BattleController, saveRepository: SaveRepository) {
     this.controller = controller;
+    this.saveRepository = saveRepository;
     this.store = writable(this._getInitialState());
     this.subscribe = this.store.subscribe;
+    this.savedRun = writable(saveRepository.load() != null);
   }
 
   private _getInitialState(): BattleState {
@@ -64,6 +75,7 @@ export class BattleStore {
   // --- Run lifecycle ---
 
   public startRun = (monster: Monster) => {
+    this._clearTimers();
     const run: RunState = {
       phase: 'encounter',
       regionIndex: 0,
@@ -75,19 +87,82 @@ export class BattleStore {
     const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(monster, run);
     const region = REGIONS[run.regionIndex];
 
-    this.store.set({
+    const state: BattleState = {
       ...this._getInitialState(),
       playerMonster: monster,
       enemyMonster,
       logs: [`— ${region.name} — ${region.description}`, ...logs],
       run,
       isBossFight: isBoss,
-    });
+    };
+    this.store.set(state);
+    this._persistState(state);
   };
 
-  /** Défaite → permadeath : retour à la sélection de starter. */
+  /** Défaite → permadeath : retour à la sélection de starter, sauvegarde effacée. */
   public newRun = () => {
+    this._clearTimers();
+    this._clearSaved();
     this.store.set(this._getInitialState());
+  };
+
+  // --- Persistance (menu titre « Continuer ») ---
+
+  /**
+   * Restaure une partie sauvegardée : reconstruit le monstre joueur, re-spawn
+   * l'ennemi du combat courant (ou rétablit l'overlay relique / région).
+   */
+  public loadSaved = (): boolean => {
+    const save = this.saveRepository.load();
+    if (!save) return false;
+
+    this._clearTimers();
+    const player = MonsterIO.fromSnapshot(save.playerMonster);
+    const run: RunState = { ...save.run };
+
+    let enemyMonster: Monster | null = null;
+    let isBoss = false;
+    let spawnLogs: string[] = [];
+    if (run.phase === 'encounter') {
+      const spawned = this.controller.spawnNextEnemy(player, run);
+      enemyMonster = spawned.enemyMonster;
+      isBoss = spawned.isBoss;
+      spawnLogs = spawned.logs;
+    }
+
+    this.store.set({
+      ...this._getInitialState(),
+      playerMonster: player,
+      enemyMonster,
+      isBossFight: isBoss,
+      run,
+      isPlayerTurn: true,
+      logs: ['— Sauvegarde restaurée —', ...spawnLogs],
+    });
+    return true;
+  };
+
+  /** Infos affichées par le menu titre (« Continuer »). */
+  public getSaveInfo(): {
+    regionIndex: number;
+    playerName: string;
+    playerLevel: number;
+    score: number;
+  } | null {
+    const save = this.saveRepository.load();
+    if (!save) return null;
+    return {
+      regionIndex: save.run.regionIndex,
+      playerName: save.playerMonster.name,
+      playerLevel: save.playerMonster.level,
+      score: save.run.score,
+    };
+  }
+
+  /** Menu titre « Nouvelle partie » : supprime la sauvegarde (reste sur le starter). */
+  public deleteSave = (): void => {
+    this._clearTimers();
+    this._clearSaved();
   };
 
   // --- Battle actions ---
@@ -109,6 +184,8 @@ export class BattleStore {
         move,
         damagePercent: relicDamagePercent(state.run.relics),
         lifestealPercent: relicLifestealPercent(state.run.relics),
+        critRange: relicMaxCritRange(state.run.relics),
+        experiencePercent: relicExperiencePercent(state.run.relics),
       });
 
       const playerAction = round.playerTurn;
@@ -164,9 +241,11 @@ export class BattleStore {
       );
 
       const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(player, run);
-      return this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
+      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
         `✨ ${relic.icon} ${relic.name} : ${relic.description}`,
       ]);
+      this._persistState(next);
+      return next;
     });
   };
 
@@ -175,7 +254,9 @@ export class BattleStore {
       if (state.run.phase !== 'relic' || !state.playerMonster) return state;
       const run: RunState = { ...state.run, phase: 'encounter', relicOffers: null };
       const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(state.playerMonster, run);
-      return this._nextBattleState(state, run, enemyMonster, isBoss, logs, ['Vous passez votre chemin.']);
+      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, ['Vous passez votre chemin.']);
+      this._persistState(next);
+      return next;
     });
   };
 
@@ -198,9 +279,11 @@ export class BattleStore {
       player.currentHp = player.maxHp;
 
       const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(player, run);
-      return this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
+      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
         `— ${region.name} — ${region.description}`,
       ]);
+      this._persistState(next);
+      return next;
     });
   };
 
@@ -243,8 +326,17 @@ export class BattleStore {
 
   /** Termine la partie selon le vainqueur du round (une seule application). */
   private _applyRoundWinner(state: BattleState): BattleState {
-    if (state.winner === 'player') return this._onPlayerWin(state);
-    if (state.winner === 'enemy') return { ...state, run: { ...state.run, phase: 'runover' } };
+    if (state.winner === 'player') {
+      const s = this._onPlayerWin(state);
+      // Victoire → persiste (relique / région conquise) ou efface (Champion).
+      this._persistState(s);
+      return s;
+    }
+    if (state.winner === 'enemy') {
+      // Permadeath : la sauvegarde du run est supprimée.
+      this._clearSaved();
+      return { ...state, run: { ...state.run, phase: 'runover' } };
+    }
     return state;
   }
 
@@ -253,7 +345,7 @@ export class BattleStore {
    * logs, feedback, animation, puis rend la main au joueur et applique l'issue.
    */
   private _enemyLater(action: PlayTurnResult, roundWinner: 'player' | 'enemy' | null): void {
-    setTimeout(() => {
+    this._later(() => {
       this.store.update(state => {
         if (state.winner) return state;
         let s: BattleState = {
@@ -273,7 +365,7 @@ export class BattleStore {
 
   /** Rejoue le tour du joueur dans un round où l'ennemi passait en premier. */
   private _playerLater(action: PlayTurnResult, roundWinner: 'player' | 'enemy' | null): void {
-    setTimeout(() => {
+    this._later(() => {
       this.store.update(state => {
         if (state.winner) return state;
         let s: BattleState = {
@@ -304,12 +396,59 @@ export class BattleStore {
   };
 
   private _endAnimLater(flag: 'isAttacking' | 'isEnemyAttacking'): void {
-    setTimeout(() => {
+    this._later(() => {
       this.store.update(s => ({ ...s, [flag]: false }));
     }, ANIMATION_END_DELAY);
   }
+
+  /** Exécute `cb` dans `ms`, en traçant le timer pour pouvoir l'annuler. */
+  private _later(cb: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer);
+      cb();
+    }, ms);
+    this.pendingTimers.add(timer);
+  }
+
+  /** Annule tous les timers en vol (round, animations, feedback) — newRun/load/startRun. */
+  private _clearTimers(): void {
+    this.pendingTimers.forEach(timer => clearTimeout(timer));
+    this.pendingTimers.clear();
+    for (const key of ['playerFeedback', 'enemyFeedback'] as const) {
+      if (this.feedbackTimers[key]) {
+        clearTimeout(this.feedbackTimers[key]!);
+        this.feedbackTimers[key] = undefined;
+      }
+    }
+  }
+
+  // --- Persistance (helpers) ---
+
+  /** Sauvegarde l'état si la run est en cours ; efface si la partie est finie. */
+  private _persistState(state: BattleState): void {
+    if (!state.playerMonster) return;
+
+    if (state.run.phase === 'starter' || state.run.phase === 'runover' || state.run.phase === 'victory') {
+      this._clearSaved();
+      return;
+    }
+
+    const save: RunSave = {
+      version: SAVE_VERSION,
+      savedAt: Date.now(),
+      playerMonster: MonsterIO.toSnapshot(state.playerMonster),
+      run: state.run,
+    };
+    this.saveRepository.save(save);
+    this.savedRun.set(true);
+  }
+
+  private _clearSaved(): void {
+    this.saveRepository.clear();
+    this.savedRun.set(false);
+  }
 }
 
-export function createBattleStore(controller: BattleController): BattleStore {
-  return new BattleStore(controller);
+export function createBattleStore(controller: BattleController, saveRepository: SaveRepository): BattleStore {
+  return new BattleStore(controller, saveRepository);
 }

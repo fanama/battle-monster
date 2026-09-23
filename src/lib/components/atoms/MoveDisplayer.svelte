@@ -1,49 +1,42 @@
 <script lang="ts">
   import type { Move, MonsterType } from "../../../core/entities/Move";
+  import { TYPE_LABELS } from "../../../core/entities/Move";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
+  import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
+
   export let move: Move;
   export let targetType: MonsterType | null = null;
-  export let onClick: () => void = () => {}; // Ensure coolDown is treated as 0 if undefined
+  export let onClick: () => void = () => {};
 
   $: currentCooldown = move.coolDown ?? 0;
-  $: isReady = currentCooldown === 0; // Calculate the percentage of recovery completed: (max - current) / max * 100
-  // Note: We use the non-null assertion operator '!' on maxCoolDown because if a move
-  // has a coolDown, it implicitly must have a maxCoolDown.
+  $: isReady = currentCooldown === 0;
 
   $: progressPercent = isReady
     ? 100
     : ((move.maxCoolDown! - currentCooldown) / move.maxCoolDown!) * 100;
 
-$: typeClasses = {
-    fire: "bg-red-900/40 border-red-500 hover:bg-red-800/60",
-    water: "bg-blue-900/40 border-blue-500 hover:bg-blue-800/60",
-    grass: "bg-green-900/40 border-green-500 hover:bg-green-800/60",
-    normal: "bg-gray-900/40 border-gray-500 hover:bg-gray-800/60",
-  }[move.type];
+  $: tc = TYPE_COLORS[move.type];
 
-  $: typeDot = {
-    fire: "bg-red-500",
-    water: "bg-blue-500",
-    grass: "bg-green-500",
-    normal: "bg-gray-400",
-  }[move.type];
+  // Nature de l'action (colorée et explicite)
+  $: nature = move.power > 0
+    ? (move.isPhysical ? 'physique' : 'magie')
+    : move.isHeal ? 'soin' : 'buff';
 
-  $: typeLabel = {
-    fire: "FEU",
-    water: "EAU",
-    grass: "PLANTE",
-    normal: "NORMAL",
-  }[move.type];
+  $: natureChip = {
+    physique: 'text-amber-200 border-amber-500/50 bg-amber-950/50',
+    magie: 'text-violet-200 border-violet-500/50 bg-violet-950/50',
+    soin: 'text-emerald-200 border-emerald-500/50 bg-emerald-950/50',
+    buff: 'text-orange-200 border-orange-500/50 bg-orange-950/50',
+  }[nature];
 
-  $: typeBadge = {
-    fire: "text-red-300 border-red-500/40 bg-red-950/40",
-    water: "text-blue-300 border-blue-500/40 bg-blue-950/40",
-    grass: "text-green-300 border-green-500/40 bg-green-950/40",
-    normal: "text-gray-300 border-gray-500/40 bg-gray-900/40",
-  }[move.type];
+  $: natureLabel = {
+    physique: '⚔ Physique',
+    magie: '✨ Magie',
+    soin: '💚 Soin',
+    buff: '⬆ Buff',
+  }[nature];
 
-  // Indicateur « super efficace / peu efficace » contre la cible (réutilise la
-  // même table que le moteur : physique ×2/×0.5, magie dampée ×1.5/×0.67).
+  // Indicateur « super efficace / peu efficace » contre la cible
   $: effectiveness =
     targetType && move.power > 0
       ? typeEffectiveness(move.type, targetType, move.isPhysical)
@@ -60,58 +53,66 @@ $: typeClasses = {
   disabled={!isReady}
   on:click={onClick}
   class={`
-    p-2 rounded-lg border-2 w-fit transition-all duration-300 shadow-xl text-center
+    relative flex flex-col gap-1.5
+    min-w-[120px] md:min-w-[170px] w-fit
+    p-2 rounded-xl border-2 shadow-lg text-center overflow-hidden
+    transition-all duration-300
     ${
       isReady
-        ? `${typeClasses} text-white cursor-pointer opacity-100 hover:-translate-y-0.5 active:scale-95`
+        ? `${tc.cardBg} ${tc.borderStrong} text-white cursor-pointer hover:-translate-y-0.5 active:scale-95 ${tc.glow}`
         : "border-gray-700 bg-gray-800/70 text-gray-400 cursor-default opacity-50"
     }
   `}
 >
-  <div class="flex items-center justify-between gap-3 mb-1">
-    <span class="flex items-center gap-2">
-      <span class={`w-2.5 h-2.5 rounded-full ${typeDot} inline-block`}></span>
-      <span class="font-extrabold text-base">
+  <!-- Filet coloré par type en haut de carte -->
+  <span class="absolute top-0 inset-x-0 h-0.5 {tc.gradient}"></span>
+
+  <div class="flex items-center justify-between gap-1 md:gap-2 min-w-0">
+    <span class="flex items-center gap-1.5 md:gap-2 min-w-0 flex-1">
+      <span class="w-2 h-2 rounded-full {tc.dot} inline-block shrink-0 shadow"></span>
+      <span class="font-extrabold text-sm md:text-base truncate">
         {move.name}
       </span>
     </span>
 
     {#if isReady}
       <span
-        class="text-green-400 font-semibold flex items-center text-sm ready-pulse"
+        class="text-green-400 font-semibold flex items-center text-xs md:text-sm ready-pulse shrink-0"
       >
         ⚡ PRÊT
       </span>
     {:else}
-      <span class="text-xs italic">
+      <span class="text-[10px] md:text-xs italic shrink-0">
         ⏳ {currentCooldown} tours
       </span>
     {/if}
   </div>
 
-  <div class="flex items-center justify-between mt-1">
+  <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-0.5">
     <span
-      class={`text-[10px] uppercase tracking-wider border rounded px-1.5 py-0.5 ${typeBadge}`}
+      class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold {tc.badge}"
     >
-      {typeLabel}
+      {TYPE_ICONS[move.type]} {TYPE_LABELS[move.type]}
     </span>
 
-    {#if targetType && move.power > 0}
-      <span
-        class={`text-[10px] uppercase tracking-wider border rounded px-1.5 py-0.5 ${effectivenessBadge}`}
-      >
-        {effectiveness > 1 ? '⚔ Super eff.' : effectiveness < 1 ? '🛡 Peu eff.' : ''}
-      </span>
-    {/if}
-
     {#if isReady}
-      <span class="text-[11px] font-bold text-stone-300">
-        {move.power > 0 ? 'Dégâts' : move.isHeal ? 'Soin' : 'Buff'}
+      <span
+        class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold {natureChip}"
+      >
+        {natureLabel}
       </span>
+
+      {#if targetType && move.power > 0}
+        <span
+          class={`text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold ${effectivenessBadge}`}
+        >
+          {effectiveness > 1 ? '⚔ Super eff.' : effectiveness < 1 ? '🛡 Peu eff.' : ''}
+        </span>
+      {/if}
     {:else}
-      <span class="h-1.5 w-full bg-gray-600 rounded-full overflow-hidden ml-1" style="max-width: 56px">
+      <span class="h-2 w-full bg-gray-600/70 rounded-full overflow-hidden ml-1" style="max-width: 64px">
         <div
-          class="h-full bg-yellow-400 transition-all duration-300"
+          class="h-full bg-gradient-to-r from-yellow-500 to-amber-400 transition-all duration-300"
           style={`width: ${progressPercent}%`}
         ></div>
       </span>

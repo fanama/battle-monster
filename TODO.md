@@ -105,7 +105,7 @@ Les items « grosse feature » (armure/loot, apprentissage de moves, potions/ban
 - [x] ✅ **IA ennemie** : `BattleController.selectEnemyMove(moves, actor, target)` — respecte les cooldowns, **évite les soins à PV pleins**, **privilégie les moves super-efficaces** (table de types).
 - [ ] **Apprentissage de moves** : UI de choix (« apprendre X / oublier Y ») plutôt que remplacement aléatoire. *(hors périmètre actuel.)*
 - [ ] **Objets / soins en combat** : potions limitées (règle potion `2d4 + mod CON`), changement de monstre en combat (banque de 2-3 monstres). *(hors périmètre actuel.)*
-- [ ] **Variété visuelle** : sprites placeholder dupliqués — `grass` et `normal` utilisent l'image fire (`RandomEnemyFactory.ts` IMAGE_MAP). 1 sprite original par type minimum. *(hors périmètre actuel.)*
+- [x] ✅ **Variété visuelle (étape 1)** : `SpriteDisplayer.svelte` redessiné en **SVG procédural distinct par type** — dragonnet feu (ailes/cornes/queue à flamme), nageur eau (nageoires/queue à double lobe/branchies), sprout plante (oreilles-feuilles/crête), boule de poils normal — + expressions pilotées par les stats (colère/joie/fatigue) + **couronne + aura pour le rang `boss`** (2026-09). Reste : les PNG `monster_1.png`/`monster_2.png` ne sont plus jamais rendus (inutilisés) → retrait prévu §10.
 - [ ] **Mort du monstre joueur** : reset complet (= perte de progression) ; prévoir éventuellement un « centre de soins / revanche » moins frustrant. *(hors périmètre actuel — permadeath immédiat conservé.)*
 - [x] ✅ **XP par rang** : `Monster.rank: 'normal' | 'boss'` ; `createBoss` pose `rank='boss'` ; `calculateExperienceGained` × `RANK_XP_MULTIPLIER { normal: 1, boss: 1.5 }` (niveau d20 : 10/20/50). Affiche le bonus quand l'ennemi est rangé.
 - [x] ✅ **Stats du monstre** : panneau **repliable** dans `MonsterDisplayer` (les 6 stats + modificateurs + CA), libellés centralisés dans `STAT_LABELS` (`core/entities/Move.ts`, partagé avec l'UI).
@@ -116,9 +116,11 @@ Les items « grosse feature » (armure/loot, apprentissage de moves, potions/ban
 
 ## 6. Feature : persistance
 
-- [ ] Sauvegarde de progression -- localStorage (monstre joueur, level, exp, numéro de combat). Le store est déjà sérialisable.
-- [ ] Écran titre / menu (nouvelle partie, continuer).
-- [ ] Mélange d'ambiance : musique (Web Audio simple), bruitages attaque/soin/KO. (Le **feedback visuel** — flash, shake, nombres flottants — est ✅ fait, voir §7.0.)
+- [x] ✅ **Sauvegarde auto de progression (localStorage)** — DTO JSON-safe `MonsterSnapshot` + `MonsterIO.toSnapshot/fromSnapshot` (`core/entities/Monster.ts`) ; port `SaveRepository` + `RunSave` (`core/services/ports.ts`), impl. `LocalStorageRunRepository` (`infra/repositories/`) ; le store (`battleStore.ts`) persiste après `startRun` / `pickRelic` / `skipRelic` / `advanceRegion` / victoire (relique, région ou Champion) ;
+- [x] ✅ **Écran titre / menu** (`App.svelte`, phase `starter`) : si une sauvegarde existe → « Une partie en cours… » (région, monstre, niveau, score) avec **▶ Continuer la partie** (`loadSaved`, re-spawn de l'ennemi / overlay relique-région RESTAURÉ) et **Nouvelle partie** (`deleteSave`) ; sinon sélecteur de starter direct. `newRun` (permadeath / Champion) vide la sauvegarde.
+- [x] ✅ **Sécurité timers** : `_clearTimers()` (file annulable `pendingTimers` + feedback) appelé à `startRun` / `newRun` / `loadSaved` / `deleteSave` — supprime la course des `_enemyLater`/`_playerLater` sur un nouveau run (cf. §10 P0).
+- [ ] **Mélange d'ambiance** : musique (Web Audio simple), bruitages attaque/soin/KO. (Le **feedback visuel** — flash, shake, nombres flottants — est ✅ fait, voir §7.0.)
+- Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test headless (startRun → save ; roundtrip JSON du snapshot ; loadSaved restaure ; deleteSave/newRun purgent) OK.
 
 ---
 
@@ -138,8 +140,9 @@ Les items « grosse feature » (armure/loot, apprentissage de moves, potions/ban
 - [ ] `MonsterSelector` : `<option value={monster}>` avec objets (les starters sont désormais stables via `StarterCatalog`, mais instables en identité à chaque instanciation). Sélectionner par `id` (string) et garder les monstres en mémoire.
 - [ ] `option value={undefined} selected` peut se comporter bizarrement (placeholder jamais désélectionné) → gérer un état null explicite.
 - [ ] Accessibilité : `aria-disabled`/`aria-live` pour le journal de combat, focus sur le premier move actif, contrastes.
-- [ ] Layout : le sélecteur de monstre en overlay `absolute -bottom-24` (`App.svelte:81`) est fragile selon l'écran. Intégrer dans le flux au lieu du positionnement absolu.
-- [ ] Index.html : `lang="fr"`, titre explicite, favicon de l'app (au lieu de vite.svg).
+- [x] ✅ **Layout mobile** : le sélecteur de monstre (`MonsterSelector`) est désormais intégré dans le flux centré de l'écran starter (plus d'overlay `absolute -bottom-24` fragile).
+- [x] ✅ **Index.html** : `lang="fr"`, titre « Battle Monster », favicon inline (l'ancien `/vite.svg` → erreur 404), `viewport-fit=cover` + `theme-color`.
+- [x] ✅ **Passage mobile (2026-09)** : `min-h-dvh` (barre d'adresse iOS), action bar **au-dessus des logs** + **sticky bottom** avec safe-area (`pb-[env(safe-area-inset-bottom)]`), cartes monstres proportionnelles (`w-1/2 max-w-[160px]`, plus d'overflow à 320 px), `MoveDisplayer` compact (textes `sm`, `truncate`, badges en `flex-wrap`), `Logs` réduit (`h-40` mobile), `RelicChooser` échelle responsive, `touch-action: manipulation` + suppression du tap-highlight global. Vérifié : `bun run check` 0/0, `bun run build` OK.
 
 ---
 
@@ -170,5 +173,40 @@ Les items « grosse feature » (armure/loot, apprentissage de moves, potions/ban
 - [ ] **Hall of fame** : persister les meilleurs scores par run (localStorage) et les afficher sur l'écran de fin.
 - [ ] **Équipe & capture** : banque de monstres, swap au KO, chance de capture après combat sauvage (Pokelike).
 - [ ] **Événements roguelike** : rencontres « objet trouvé » non garanties, offres d'échange, énigmes.
-- [ ] **Initiative d20 par tour** (TODO §5) — conservé volontairement pour le rythme actuel.
+- [x] ✅ **Initiative d20 par tour** — implémenté dans §5 (`BattleController.resolveRound` : `1d20 + mod(Vitesse)`, égalité → joueur, tour sauté si K.O.).
 - [ ] **Curiosités régionales** : boss à ré-apparition (farm d'exp), types de régions plus variés, difficulté adaptative (lower si score faible).
+
+---
+
+## 10. Analyse complète de l'app — améliorations proposées (2026-09)
+
+Synthèse issue de la revue de l'app entière (Svelte 5 / TS / Tailwind 4, clean archi §3, gameplay balancé §5, SVG procédural). Importances : **P0 fiabilité**, **P1 gameplay**, **P2 UX/hygiène**. Rien d'implémenté — ce sont les propositions à trier.
+
+### Fiabilité & corrections (P0)
+- [x] ✅ **Annuler les timers de round du store** : `battleStore._enemyLater` / `_playerLater` / `_endAnimLater` passent par `_later()` (file annulable `pendingTimers`), plus un `_clearTimers()` (replays + feedback) appelé à `startRun`/`newRun`/`loadSaved`/`deleteSave` — plus de pollution d'un nouveau run par un timer en vol. *(Réglé avec la persistance §6.)*
+- [ ] **Supprimer le code mort** : `MoveRepository.getMoveById/getMoveByName/getAllMoves/getMovesByType` (`MoveRepositories.ts:59-90`) jamais appelés ; `styles.winner` (`style.ts:44-56`) inutilisé (la victoire passe par les phases `relic`/`regionClear`/`victory`).
+- [ ] **Textures distantes** : `style.ts:41` et `MonsterSelector.svelte:52` chargent `https://www.transparenttextures.com/...` → dépendance réseau externe (rendu dépendant du réseau, offline cassé). Remplacer par un motif inline (data-URI/CSS).
+- [ ] **Disposer `trailTimer`** dans `HealthBar.svelte` (jamais nettoyé, mineur).
+- [ ] **Shuffle uniforme** : `monsterFactory.ts` `sort(() => 0.5 - random())` est biaisé → Fisher–Yates.
+
+### Gameplay & profondeur (P1)
+- [ ] **Donner un rôle mécanique à SAG (Instinct)** : stats sans effet de jeu (croissance + expression uniquement). Proposer : modificateur aux soins (`2d4 + mod(Constitution) + mod(Instinct)`), et/ou résistance aux effets de statut.
+- [ ] **Donner un rôle à CHA (Charisme)** : idem inutilisé. Proposer : qualité/quantité des offres de reliques (re-roll selon CHA), bonus de score, ou critère d'appoint à l'initiative.
+- [ ] **Effets de statut d20** : Brûlure / Poison / Paralysie (sauvegarde pour agir) + nouveaux moves par type + tick de fin de round (`BattleEngine` reste pur).
+- [ ] **Relique après boss** : pas seulement plein soin — proposer un choix de relique (comme §9).
+- [ ] **Difficulté adaptative / élites** : rang intermédiaire `elite` (XP ×1.25) ou scaling si mauvaise série (réutilise `deck` de `BattleState`).
+- [ ] **Hall of fame** : persister les meilleurs scores de run (`localStorage`) et les afficher à l'écran de fin (en lien §9).
+
+### UX & polish (P2)
+- [ ] **Tooltips des moves** : puissance, recharge (`maxCoolDown`), type, « super-eff./peu eff. » + afficher l'efficacité de type aussi côté ennemi (`MoveDisplayer` ne montre que le joueur).
+- [ ] **VFX par type** : remplacer le lunge générique (`isAttacking`) par des animations selon le type du move (onde/éclaboussure/feuilles/roc) — tirer parti du `typeEffectiveness` partagé.
+- [ ] **Sons Web Audio** : attaque/soin/critique/boss (en lien §6).
+- [ ] **Accessibilité** : `aria-live` sur `Logs`, états `aria-pressed`/`disabled` sur les moves, focus trap sur les overlays (`RelicChooser`), respect `prefers-reduced-motion`.
+- [x] ✅ **Écran titre / menu + persistance** — fait dans §6 (menu « Continuer », sauvegarde auto `localStorage`).
+
+### Hygiène & infra (P2)
+- [ ] **Retirer les PNG inutilisés** : `src/assets/monster_1.png` et `monster_2.png` + champ `image`/`spriteUrl` (`Monster.ts` ctor, `monsterFactory`, `IMAGE_MAP` de `StarterCatalog`/`RandomEnemyFactory`) — le rendu est 100 % SVG procédural (SpriteDisplayer).
+- [ ] **index.html** : `lang="fr"`, titre explicite, favicon inline — le `<link href="/vite.svg">` pointé n'existe pas (404).
+- [ ] **Restes template** : `src/lib/Counter.svelte`, `src/assets/svelte.svg` (déjà §2).
+- [ ] **Tests Vitest** (déjà §4) — prioriser `resolveRound`/initiative, `selectEnemyMove` (IA), `battleStore` avec timers mockés.
+- [ ] **ESLint + Prettier** (déjà §8).

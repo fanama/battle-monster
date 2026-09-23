@@ -3,14 +3,17 @@
   export let current: number;
   export let max: number;
 
-  // 1. Calcul du pourcentage (borné entre 0 et 100 pour éviter les bugs visuels)
+  // 1. Calcul du pourcentage (borné entre 0 et 100)
   $: percent = Math.max(0, Math.min(100, (current / max) * 100));
 
-  // 2. Changement de couleur dynamique (Vert > Jaune > Rouge)
-  $: color = percent > 50 ? "#4caf50" : percent > 20 ? "#ffeb3b" : "#f44336";
+  // 2. Dégradé dynamique (Vert > Jaune > Rouge) selon l'état
+  $: gradient = percent > 50
+    ? 'linear-gradient(90deg, #15803d, #4ade80)'
+    : percent > 25
+      ? 'linear-gradient(90deg, #d97706, #fde047)'
+      : 'linear-gradient(90deg, #b91c1c, #f87171)';
 
   // --- Damage trail (semblable à la HP bar du projet dnd) ---
-  // La barre principale réagit vite ; une traînée rouge la « rattrape » lentement.
   let trailPercent = 100;
   let visiblePercent = 100;
   let trailTimer: ReturnType<typeof setTimeout> | undefined;
@@ -31,34 +34,43 @@
 </script>
 
 <div
-  class="w-full h-4 rounded border-2 border-black overflow-hidden relative bg-gray-500/60"
+  class="w-full h-4 md:h-5 rounded-md border-2 border-black overflow-hidden relative bg-gray-500/70 shadow-inner"
+  role="progressbar"
+  aria-valuenow={current}
+  aria-valuemin={0}
+  aria-valuemax={max}
 >
   <!-- Traînée de dégâts (retardée) -->
   <div
-    class="absolute inset-y-0 left-0 h-full bg-red-700/80"
+    class="absolute inset-y-0 left-0 h-full bg-red-800/90"
     style="width: {trailPercent}%; transition: width 0.7s ease 0.15s;"
   ></div>
 
-  <!-- Barre de vie principale (réactive) -->
+  <!-- Barre de vie principale (réactive, dégradé) -->
   <div
     class="absolute inset-y-0 left-0 h-full"
-    style="width: {percent}%; background-color: {color}; transition: width 0.25s ease-out;"
+    style="width: {percent}%; background: {gradient}; transition: width 0.25s ease-out;"
   ></div>
 
   <!-- Pulsation quand les PV sont bas -->
   {#if percent <= 25}
-    <div class="absolute inset-0 low-hp-pulse"></div>
+    <div class="absolute inset-0 low-hp-pulse rounded-md"></div>
   {/if}
-</div>
 
-<div class="text-xs text-white font-bold text-right mt-1">
-  {current}/{max} HP
+  <!-- Valeurs inscrites dans la barre -->
+  <span
+    class="absolute inset-0 flex items-center justify-center
+      text-[9px] md:text-[10px] font-bold text-white drop-shadow-md
+      pointer-events-none"
+  >
+    {current}/{max} HP
+  </span>
 </div>
 
 <style>
   @keyframes low-pulse {
-    0%, 100% { background-color: rgba(220, 38, 38, 0.05); }
-    50% { background-color: rgba(220, 38, 38, 0.4); }
+    0%, 100% { background-color: rgba(220, 38, 38, 0.1); }
+    50% { background-color: rgba(220, 38, 38, 0.45); }
   }
 
   .low-hp-pulse {

@@ -3,6 +3,7 @@ import { BattleEngine, defaultDice } from '../core/services/BattleEngine';
 import { RandomEnemyFactory } from '../infra/repositories/RandomEnemyFactory';
 import { MoveRepository } from '../infra/repositories/MoveRepositories';
 import { StarterCatalog } from '../infra/repositories/StarterCatalog';
+import { LocalStorageRunRepository } from '../infra/repositories/LocalStorageRunRepository';
 import { createBattleStore, type BattleStore } from './stores/battleStore';
 
 /**
@@ -16,6 +17,7 @@ export interface Container {
   starters: StarterCatalog;
   enemies: RandomEnemyFactory;
   controller: BattleController;
+  saveRepo: LocalStorageRunRepository;
   store: BattleStore;
 }
 
@@ -25,6 +27,7 @@ export function createContainer(): Container {
   // Persistance / API (infra) implémentant les ports de core/.
   const starters = new StarterCatalog(moves);
   const enemies = new RandomEnemyFactory(moves);
+  const saveRepo = new LocalStorageRunRepository();
 
   // Domaine, câblé via injection de dépendance. Une SEULE instance de `Dice`
   // est partagée entre l'engine et le controller (initiative, jets, dégâts).
@@ -32,10 +35,10 @@ export function createContainer(): Container {
   const engine = new BattleEngine({ dice });
   const controller = new BattleController({ engine, moveProvider: moves, enemyFactory: enemies, dice });
 
-  // Store Svelte — wrapper mince autour du controller.
-  const store = createBattleStore(controller);
+  // Store Svelte — wrapper mince autour du controller (+ persistance).
+  const store = createBattleStore(controller, saveRepo);
 
-  return { engine, moves, starters, enemies, controller, store };
+  return { engine, moves, starters, enemies, controller, saveRepo, store };
 }
 
 export const container = createContainer();

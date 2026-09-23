@@ -9,37 +9,34 @@
 
   import type { Monster } from "./core/entities/Monster";
   import { REGIONS } from "./core/entities/Region";
-  import MonsterSelector from "./lib/components/atoms/MonsterSelector.svelte";
+  import Home from "./lib/components/molecules/Home.svelte";
 
   const battleStore = container.store;
+  const savedRun = battleStore.savedRun;
 
   $: run = $battleStore.run;
   $: phase = run.phase;
   $: player = $battleStore.playerMonster;
   $: region = REGIONS[run.regionIndex];
+
+  // Menu titre : si une partie est sauvegardée → bouton « Continuer ».
+  $: saveInfo = $savedRun ? battleStore.getSaveInfo() : null;
 </script>
 
 <main class="{styles.layout.main} relative">
-  <h1 class={styles.layout.title}>Battle Monster</h1>
+  {#if phase !== "starter"}
+    <h1 class={styles.layout.title}>Battle Monster</h1>
+  {/if}
 
   {#if phase === "starter"}
-    <div class="flex flex-col items-center gap-5 flex-1 justify-center">
-      <div class="text-center max-w-md">
-        <p class="text-lg font-serif font-bold text-amber-200">
-          Choisissez votre monstre pour commencer
-        </p>
-        <p class="text-sm text-stone-400 mt-2 leading-relaxed">
-          Roguelike : traversez les régions, battez les ⚔️ ennemis sauvages,
-          collectez 🃏 des reliques passives et vainquez 👑 le boss de chaque
-          région. Une défaite = fin de la partie.
-        </p>
-      </div>
-      <MonsterSelector
-        onclick={(selectedMonster: Monster) => {
-          battleStore.startRun(selectedMonster);
-        }}
-      />
-    </div>
+    <Home
+      saveInfo={saveInfo}
+      onContinue={() => battleStore.loadSaved()}
+      onNewGame={() => battleStore.deleteSave()}
+      onStartRun={(monster: Monster) => {
+        battleStore.startRun(monster);
+      }}
+    />
 
   {:else if phase === "runover"}
     <div
@@ -92,11 +89,25 @@
     />
 
     <div class={styles.layout.arena}>
+      <span
+        class="absolute top-2 left-2 z-10 font-mono font-bold uppercase tracking-widest
+          text-[10px] text-sky-300 border border-sky-400/40 bg-sky-950/60 rounded px-1.5 py-0.5"
+      >
+        Vous
+      </span>
+      <span
+        class="absolute top-2 right-2 z-10 font-mono font-bold uppercase tracking-widest
+          text-[10px] text-rose-300 border border-rose-500/40 bg-rose-950/60 rounded px-1.5 py-0.5"
+      >
+        Ennemi
+      </span>
+
       {#if $battleStore.isBossFight}
         <div
           class="absolute top-2 left-1/2 -translate-x-1/2 z-20 font-serif font-bold uppercase
-            tracking-widest text-rose-300 text-sm md:text-base animate-pulse
-            border border-rose-500/60 bg-rose-950/70 rounded-md px-3 py-1"
+            tracking-widest text-amber-100 text-sm md:text-base animate-pulse
+            border-2 border-amber-300/70 bg-gradient-to-b from-rose-800 to-rose-900
+            rounded-md px-3 py-1 shadow-[0_0_12px_rgba(251,191,36,0.45)]"
         >
           👑 Boss de région
         </div>
@@ -145,20 +156,27 @@
     </div>
 
     <div class="{styles.layout.bottomGrid} relative">
-      <Logs bind:logs={$battleStore.logs} />
+      <div class="order-2 min-w-0 md:order-1">
+        <Logs bind:logs={$battleStore.logs} />
+      </div>
 
-      <div class={styles.actionBar.container}>
-        <div class={styles.actionBar.textureOverlay}></div>
+      <div
+        class="order-1 md:order-2 sticky bottom-0 md:static z-30
+          pb-[env(safe-area-inset-bottom)] md:pb-0"
+      >
+        <div class="{styles.actionBar.container}">
+          <div class={styles.actionBar.textureOverlay}></div>
 
-        {#if phase === "encounter" && !$battleStore.winner && player}
-          {#each player.moves as move, i}
-            <MoveDisplayer
-              {move}
-              targetType={$battleStore.enemyMonster?.type ?? null}
-              onClick={() => battleStore.attack(i)}
-            />
-          {/each}
-        {/if}
+          {#if phase === "encounter" && !$battleStore.winner && player}
+            {#each player.moves as move, i}
+              <MoveDisplayer
+                {move}
+                targetType={$battleStore.enemyMonster?.type ?? null}
+                onClick={() => battleStore.attack(i)}
+              />
+            {/each}
+          {/if}
+        </div>
       </div>
     </div>
   {/if}
@@ -169,5 +187,17 @@
     background-color: #1c1917;
     color: #e7e5e4;
     overscroll-behavior-y: none;
+  }
+
+  :global(*),
+  :global(*::before),
+  :global(*::after) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  :global(.pattern-dots) {
+    background-image: radial-gradient(rgba(251, 191, 36, 0.5) 1px, transparent 1px);
+    background-size: 12px 12px;
   }
 </style>

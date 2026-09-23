@@ -6,6 +6,7 @@
   import type { Move } from "../../../core/entities/Move";
   import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
   import { abilityModifier } from "../../../core/entities/Monster";
+  import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import type { CombatFeedback } from "../../../core/services/BattleEngine";
 
   export let monster: Monster | null | undefined;
@@ -21,18 +22,7 @@
     ? (Object.keys(STAT_LABELS) as Array<keyof typeof STAT_LABELS>)
     : [];
 
-  $: typeColor = {
-    fire: "bg-red-500",
-    water: "bg-blue-500",
-    grass: "bg-green-500",
-    normal: "bg-gray-400",
-  }[monster?.type ?? "normal"];
-
-  // Reactive statement to check if the move was a utility move (no damage)
-  $: isUtilityMove = lastMove && lastMove.power === 0;
-
-  $: isHit = feedback && (feedback.kind === 'damage' || feedback.kind === 'fumble' || feedback.kind === 'miss');
-  $: isDamageTaken = feedback && feedback.kind === 'damage';
+  $: tc = TYPE_COLORS[(monster?.type ?? 'normal')];
 
   // Text shown by the floating number
   $: floatLabel = feedback
@@ -46,6 +36,11 @@
             ? 'FUMBLE !'
             : 'RATÉ !'
     : '';
+
+  $: isHit = feedback && (feedback.kind === 'damage' || feedback.kind === 'fumble' || feedback.kind === 'miss');
+  $: isDamageTaken = feedback && feedback.kind === 'damage';
+
+  $: isUtilityMove = lastMove && lastMove.power === 0;
 </script>
 
 <div
@@ -55,7 +50,7 @@
   class:shake={!!isDamageTaken}
   class:shake-crit={!!(isHit && feedback?.isCrit)}
   class="
-    {monsterStyles.container.base} 
+    {monsterStyles.container.base}
     {isPlayer ? monsterStyles.container.player : monsterStyles.container.enemy}
     relative
   "
@@ -83,7 +78,10 @@
       </div>
     {/if}
 
-    <div class={monsterStyles.spriteSection.wrapper}>
+    <!-- Bandeau dégradé coloré selon le type -->
+    <div class="h-1 md:h-1.5 w-full {tc.gradient}"></div>
+
+    <div class={monsterStyles.spriteSection.wrapper} style="background: {tc.ambient}">
       <div class={monsterStyles.spriteSection.overlay}></div>
       <SpriteDisplayer {monster} {isPlayer} />
     </div>
@@ -108,31 +106,39 @@
     </div>
 
     <div class={monsterStyles.info.container}>
-      <div class={monsterStyles.info.healthWrapper}>
-        <HealthBar current={monster.currentHp} max={monster.maxHp} />
+      <div class="flex items-center gap-1.5">
+        <span
+          class="text-[9px] md:text-[10px] uppercase tracking-wider px-2 py-0.5
+            rounded-full border font-bold {tc.badge}"
+        >
+          {TYPE_ICONS[monster.type]} {TYPE_LABELS[monster.type]}
+        </span>
+        <span
+          class="ml-auto text-[9px] md:text-[10px] uppercase tracking-wider px-2 py-0.5
+            rounded-full border font-bold border-sky-400/50 bg-sky-950/50 text-sky-100"
+        >
+          🛡 CA {monster.getAC()}
+        </span>
       </div>
 
-      <div
-        class="flex justify-between items-center px-2 text-[10px] uppercase tracking-wider text-stone-400"
-      >
-        <span class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full {typeColor} inline-block"></span>
-          {TYPE_LABELS[monster.type]}
-        </span>
-        <span class="font-mono">CA {monster.getAC()}</span>
+      <div class={monsterStyles.info.healthWrapper}>
+        <HealthBar current={monster.currentHp} max={monster.maxHp} />
+        {#if monster.rank === 'boss'}
+          <span class="absolute top-0.5 right-1 text-xs md:text-base" title="Boss">👑</span>
+        {/if}
       </div>
 
       {#if isPlayer}
-        <div class="px-2 mt-1">
+        <div class="px-1 mt-0.5">
           <div class="flex justify-between items-center mb-0.5">
             <span class="text-xs font-bold text-sky-300">EXP</span>
             <span class="text-xs text-stone-400">
               {monster.experience} / {monster.experienceToNextLevel}
             </span>
           </div>
-          <div class="w-full bg-stone-700 rounded-full h-1.5 shadow-inner">
+          <div class="w-full bg-stone-700 rounded-full h-1.5 shadow-inner overflow-hidden">
             <div
-              class="bg-sky-400 h-1.5 rounded-full"
+              class="h-1.5 rounded-full bg-gradient-to-r from-sky-600 to-cyan-400"
               style="width: {Math.min(
                 100,
                 (monster.experience / monster.experienceToNextLevel) * 100,
@@ -142,17 +148,27 @@
         </div>
       {/if}
 
+      <div class="mt-0.5 flex items-center gap-1 uppercase tracking-widest text-[9px] md:text-[10px] font-bold text-stone-500">
+        <span class="w-1.5 h-1.5 rounded-full {tc.dot}"></span> Attaques
+      </div>
+
       <div class={monsterStyles.info.moveGrid}>
         {#each monster.moves as move}
-          <div class="truncate">
-            {move.name}
+          <div class="flex items-center gap-1.5 truncate">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0 {TYPE_COLORS[move.type].dot}"></span>
+            <span class="truncate font-medium">{move.name}</span>
+            {#if move.coolDown && move.coolDown > 0}
+              <span class="ml-auto shrink-0 text-amber-400 font-bold" title="En recharge">
+                ⏳{move.coolDown}
+              </span>
+            {/if}
           </div>
         {/each}
       </div>
 
       {#if isPlayer}
         <button
-          class="mt-1 w-full text-[10px] uppercase tracking-wider text-sky-300
+          class="mt-0.5 w-full text-[10px] uppercase tracking-wider text-sky-300
             border border-sky-500/40 bg-sky-950/40 rounded-md px-2 py-1
             hover:bg-sky-900/50 transition-colors"
           on:click={() => (showStats = !showStats)}

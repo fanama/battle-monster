@@ -2,11 +2,11 @@ export const monsterStyles = {
   container: {
     base: `
       relative flex flex-col items-center
-      bg-stone-800 border-2 md:border-4 rounded-xl
+      bg-gradient-to-b from-stone-800 to-stone-900 border-2 md:border-4 rounded-xl
       shadow-2xl overflow-hidden
-      w-40 md:w-56
+      w-1/2 max-w-[160px] md:max-w-none md:w-56
       transition-all duration-300
-      shrink-0
+      shrink-0 min-w-0
     `,
     player: "border-sky-400 shadow-lg shadow-sky-400/20",
     enemy: "border-rose-500 shadow-lg shadow-rose-500/20",
@@ -18,7 +18,7 @@ export const monsterStyles = {
       bg-stone-900 border-b-4 border-stone-950 
       flex items-center justify-center overflow-hidden
     `,
-    overlay: "absolute inset-0 bg-gradient-to-t from-stone-900 to-transparent z-0",
+    overlay: "absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/10 to-transparent z-0",
   },
   nameTag: {
     wrapper_base: `
@@ -39,14 +39,14 @@ export const monsterStyles = {
   },
   info: {
     container: "w-full p-2 pt-3 md:p-3 md:pt-4 flex flex-col gap-1 md:gap-2",
-    healthWrapper: "bg-stone-950/50 p-1 rounded border border-stone-600",
+    healthWrapper: "relative bg-stone-950/50 p-1 rounded border border-stone-600",
     moveGrid: `
-      grid grid-cols-1 md:grid-cols-2 
+      grid grid-cols-1 
       gap-x-2
-      text-[10px] md:text-xs text-stone-400 
+      text-[10px] md:text-xs text-stone-300 
       px-1 
-      h-16 md:h-20 
-      font-mono overflow-y-auto
+      h-14 md:h-20 
+      overflow-y-auto
     `,
   },
 };

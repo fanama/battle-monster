@@ -8,7 +8,7 @@ import {
   relicHealStartPercent,
   type Relic,
 } from '../entities/Relic';
-import { BattleEngine, defaultDice, type CombatFeedback, type Dice } from './BattleEngine';
+import { BattleEngine, defaultDice, type BattleModifiers, type CombatFeedback, type Dice } from './BattleEngine';
 import type { EnemyFactory, MoveProvider } from './ports';
 
 // Réglages roguelike (orchestration, pas d'UI)
@@ -37,6 +37,10 @@ export interface PlayTurnOptions {
   damagePercent?: number;
   /** % de vol de vie (reliques joueur uniquement). */
   lifestealPercent?: number;
+  /** Range de critiques élargi (reliques joueur, 2 → 19-20). */
+  critRange?: number;
+  /** Bonus d'EXP en % (reliques joueur). */
+  experiencePercent?: number;
 }
 
 export interface PlayTurnResult {
@@ -64,6 +68,10 @@ export interface ResolveRoundOptions {
   damagePercent?: number;
   /** % de vol de vie (reliques joueur). */
   lifestealPercent?: number;
+  /** Range de critiques élargi (reliques joueur). */
+  critRange?: number;
+  /** Bonus d'EXP en % (reliques joueur). */
+  experiencePercent?: number;
 }
 
 export interface ResolveRoundResult {
@@ -168,6 +176,8 @@ export class BattleController {
         attackerSide: 'player',
         damagePercent: opts.damagePercent,
         lifestealPercent: opts.lifestealPercent,
+        critRange: opts.critRange,
+        experiencePercent: opts.experiencePercent,
       });
       if (!enemy.isFainted()) {
         enemyTurn = this.playTurn({
@@ -195,6 +205,8 @@ export class BattleController {
           attackerSide: 'player',
           damagePercent: opts.damagePercent,
           lifestealPercent: opts.lifestealPercent,
+          critRange: opts.critRange,
+          experiencePercent: opts.experiencePercent,
         });
         winner = playerTurn.winner;
       } else {
@@ -213,8 +225,15 @@ export class BattleController {
   playTurn(opts: PlayTurnOptions): PlayTurnResult {
     const { attacker, defender, move, attackerSide } = opts;
 
-    const engineModifiers = opts.damagePercent !== undefined && opts.damagePercent > 0
-      ? { damagePercent: opts.damagePercent }
+    const hasModifiers = (opts.damagePercent ?? 0) > 0
+      || (opts.critRange ?? 1) > 1
+      || (opts.experiencePercent ?? 0) > 0;
+    const engineModifiers: BattleModifiers | undefined = hasModifiers
+      ? {
+          damagePercent: opts.damagePercent,
+          critRange: opts.critRange,
+          experiencePercent: opts.experiencePercent,
+        }
       : undefined;
     const turn = this.engine.executeTurn(attacker, defender, move, engineModifiers);
     const logs = turn.logs.map(log => log.message);

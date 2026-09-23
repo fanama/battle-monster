@@ -15,6 +15,10 @@ export interface RelicEffect {
   lifestealPercent?: number;
   /** % de dégâts infligés supplémentaires. */
   damagePercent?: number;
+  /** Range de critiques (1 = 20 seulement, 2 = 19-20, 3 = 18-20…). */
+  critRange?: number;
+  /** % d'EXP gagnée supplémentaire. */
+  experiencePercent?: number;
 }
 
 export interface Relic {
@@ -82,6 +86,62 @@ export const RELIC_CATALOG: Relic[] = [
     icon: '⚔️',
     effect: { damagePercent: 10 },
   },
+  {
+    id: 'relic-claws',
+    name: 'Griffes de Sang',
+    description: 'Vol de vie 12 % · Dégâts +5 %',
+    icon: '🩸',
+    effect: { lifestealPercent: 12, damagePercent: 5 },
+  },
+  {
+    id: 'relic-cloak',
+    name: "Cape de l'Ombre",
+    description: 'Vitesse +2 · CA +1',
+    icon: '🧥',
+    effect: { stat: { speed: 2 }, acBonus: 1 },
+  },
+  {
+    id: 'relic-vitality',
+    name: 'Amulette de Vitalité',
+    description: 'Constitution +2 · Soin de départ +10 %',
+    icon: '📿',
+    effect: { stat: { constitution: 2 }, healStartPercent: 10 },
+  },
+  {
+    id: 'relic-crit',
+    name: 'Talisman Critique',
+    description: 'Critiques sur 19-20',
+    icon: '🎯',
+    effect: { critRange: 2 },
+  },
+  {
+    id: 'relic-apprentice',
+    name: "Médaillon de l'Apprenti",
+    description: "+25 % d'EXP gagnée",
+    icon: '🏅',
+    effect: { experiencePercent: 25 },
+  },
+  {
+    id: 'relic-beast-gauntlet',
+    name: 'Gantelet de la Bête',
+    description: 'Force +4',
+    icon: '💪',
+    effect: { stat: { strength: 4 } },
+  },
+  {
+    id: 'relic-codex',
+    name: 'Codex du Sage',
+    description: 'Savoir +4',
+    icon: '📖',
+    effect: { stat: { intelligence: 4 } },
+  },
+  {
+    id: 'relic-sea-tears',
+    name: 'Larmes de la Mer',
+    description: 'Soigne 25 % des PV max au début de combat',
+    icon: '🌊',
+    effect: { healStartPercent: 25 },
+  },
 ];
 
 /** % de dégâts supplémentaires cumulés (reliques joueur). */
@@ -97,6 +157,16 @@ export function relicLifestealPercent(relics: Relic[]): number {
 /** % de PV max soignés au début de combat, cumulés. */
 export function relicHealStartPercent(relics: Relic[]): number {
   return relics.reduce((sum, r) => sum + (r.effect.healStartPercent ?? 0), 0);
+}
+
+/** Range de critiques le plus élargi (2 → critiques sur 19-20). */
+export function relicMaxCritRange(relics: Relic[]): number {
+  return relics.reduce((max, r) => Math.max(max, r.effect.critRange ?? 0), 0);
+}
+
+/** % d'EXP gagnée supplémentaire, cumulés. */
+export function relicExperiencePercent(relics: Relic[]): number {
+  return relics.reduce((sum, r) => sum + (r.effect.experiencePercent ?? 0), 0);
 }
 
 /**

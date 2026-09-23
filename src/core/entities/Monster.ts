@@ -222,3 +222,79 @@ export class Monster {
     }
   }
 }
+
+/** DTO JSON-safe d'un monstre — utilisé par la persistance (localStorage). */
+export interface MonsterSnapshot {
+  id: string;
+  name: string;
+  type: MonsterType;
+  level: number;
+  strength: number;
+  speed: number;
+  constitution: number;
+  intelligence: number;
+  charisma: number;
+  wisdom: number;
+  moves: Move[];
+  spriteUrl: string;
+  experience: number;
+  currentHp: number;
+  rank: MonsterRank;
+  armorBonus: number;
+}
+
+export namespace MonsterIO {
+  /**
+   * Sérialisation JSON-safe d'un monstre (avec cooldowns & état courant).
+   * `maxHp` / `experienceToNextLevel` sont recalculés à la reconstruction
+   * (déterministes depuis `level` et les stats).
+   */
+  export function toSnapshot(monster: Monster): MonsterSnapshot {
+    return {
+      id: monster.id,
+      name: monster.name,
+      type: monster.type,
+      level: monster.level,
+      strength: monster.strength,
+      speed: monster.speed,
+      constitution: monster.constitution,
+      intelligence: monster.intelligence,
+      charisma: monster.charisma,
+      wisdom: monster.wisdom,
+      moves: monster.moves.map(move => ({ ...move })),
+      spriteUrl: monster.spriteUrl,
+      experience: monster.experience,
+      currentHp: monster.currentHp,
+      rank: monster.rank,
+      armorBonus: monster.armorBonus,
+    };
+  }
+
+  /**
+   * Reconstruction d'un monstre depuis un snapshot : repasse par le constructeur
+   * (qui recale `maxHp`, `currentHp` et `experienceToNextLevel`), puis restaure
+   * l'état sauvegardé (expérience, PV courants, cooldowns, rang, armure).
+   */
+  export function fromSnapshot(snapshot: MonsterSnapshot): Monster {
+    const monster = new Monster(
+      snapshot.id,
+      snapshot.name,
+      snapshot.type,
+      snapshot.level,
+      snapshot.strength,
+      snapshot.speed,
+      snapshot.constitution,
+      snapshot.intelligence,
+      snapshot.charisma,
+      snapshot.wisdom,
+      snapshot.moves,
+      snapshot.spriteUrl
+    );
+    monster.experience = snapshot.experience;
+    monster.currentHp = snapshot.currentHp;
+    monster.rank = snapshot.rank;
+    monster.armorBonus = snapshot.armorBonus ?? 0;
+    monster.moves = snapshot.moves.map(move => ({ ...move }));
+    return monster;
+  }
+}
