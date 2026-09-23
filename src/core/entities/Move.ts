@@ -1,10 +1,12 @@
-export type MonsterType = 'fire' | 'water' | 'grass' | 'normal';
+export type MonsterType = 'fire' | 'water' | 'grass' | 'normal' | 'electric' | 'rock';
 
 export const TYPE_LABELS: Record<MonsterType, string> = {
   fire: 'Feu',
   water: 'Eau',
   grass: 'Plante',
   normal: 'Normal',
+  electric: 'Électricité',
+  rock: 'Roche',
 };
 
 export type MonsterStat =
@@ -46,4 +48,17 @@ export interface Move {
   // Healing moves follow the D&D potion rule: 2d4 + mod(Constitution)
   isHeal?: boolean;
   statBoosts?: StatBoost;
+}
+
+/**
+ * Précision d'un move : bonus de toucher ajouté au jet `1d20` (inversé à la
+ * puissance). Les attaques faibles sont **fiables**, les puissantes sont
+ * **hasardeuses** (ratio précision/puissance classique RPG) — il ne s'agit pas
+ * du bonus de dégâts (celui-ci reste tiré de `power` dans le moteur).
+ *
+ * `max(0, floor((120 - power) / 15))` → touché +6 (p. 30) … +0 (p. ≥ 120).
+ */
+export function moveAccuracyBonus(move: Move): number {
+  if (move.power <= 0) return 0;
+  return Math.max(0, Math.floor((120 - move.power) / 15));
 }

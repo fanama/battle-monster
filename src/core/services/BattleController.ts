@@ -1,7 +1,7 @@
 import type { Monster } from '../entities/Monster';
 import { abilityModifier } from '../entities/Monster';
 import type { RunState } from '../entities/BattleState';
-import type { Move } from '../entities/Move';
+import type { Move, MonsterType } from '../entities/Move';
 import { REGIONS } from '../entities/Region';
 import {
   rollRelicOffers,
@@ -16,6 +16,8 @@ const WILD_WIN_HEAL_PCT = 30; // % de PV max soignés après un combat sauvage
 const WILD_SCORE_MULTIPLIER = 15;
 const BOSS_SCORE_BONUS = 150;
 const RELIC_SCORE_BONUS = 15;
+const WILD_GOLD_BASE = 8; // or gagné par combat sauvage : base + niveau ennemi
+const BOSS_GOLD = 60; // or gagné en battant le boss de région
 
 export interface BattleControllerDeps {
   engine: BattleEngine;
@@ -271,39 +273,36 @@ export class BattleController {
 
   // --- Spawn & progression de run ---
 
-  /**
-   * Prépare le combat suivant : reset des cooldowns, soin de début de combat
-   * (reliques), puis ennemis sauvage ou boss de région.
-   */
-  spawnNextEnemy(player: Monster, run: RunState): { enemyMonster: Monster; isBoss: boolean; logs: string[] } {
+  /** Prépare un combat : reset des cooldowns + soin de début (reliques). */
+  private prepareCombat(player: Monster, run: RunState): void {
     player.resetCooldowns();
-
     const healPercent = relicHealStartPercent(run.relics);
     if (healPercent > 0 && player.currentHp < player.maxHp) {
       player.heal(Math.floor(player.maxHp * healPercent / 100));
     }
+  }
 
+  /** Lance un combat sauvage (niveau & type tirés dans la région ; `opts.type` force le type — nœud de la carte). */
+  enterWildCombat(
+    player: Monster,
+    run: RunState,
+    opts: { type?: MonsterType } = {}
+  ): { enemyMonster: Monster; logs: string[] } {
+    this.prepareCombat(player, run);
     const region = REGIONS[run.regionIndex];
-    const isBoss = run.encounterIndex >= region.encounters;
-
-    if (isBoss) {
-      const bossLevel = region.maxLevel + 2;
-      const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
-      return {
-        enemyMonster: enemy,
-        isBoss,
-        logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`],
-      };
-    }
-
     const level = region.minLevel + Math.floor(this.random() * (region.maxLevel - region.minLevel + 1));
-    const type = region.types[Math.floor(this.random() * region.types.length)];
+    const type = opts.type ?? region.types[Math.floor(this.random() * region.types.length)];
     const enemy = this.enemyFactory.createRandomEnemy(level, { type });
-    return {
-      enemyMonster: enemy,
-      isBoss,
-      logs: [`Un ${enemy.name} sauvage (niv. ${enemy.level}) apparaît !`],
-    };
+    return { enemyMonster: enemy, logs: [`Un ${enemy.name} sauvage (niv. ${enemy.level}) apparaît !`] };
+  }
+
+  /** Lance le combat contre le boss de région. */
+  enterBossCombat(player: Monster, run: RunState): { enemyMonster: Monster; logs: string[] } {
+    this.prepareCombat(player, run);
+    const region = REGIONS[run.regionIndex];
+    const bossLevel = region.maxLevel + 2;
+    const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
+    return { enemyMonster: enemy, logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`] };
   }
 
   /** Applique une relique au monstre (stats permanentes + armure). */
@@ -319,18 +318,18 @@ export class BattleController {
     }
   }
 
-  /** Ajoute la relique au run (score + inventaire) et repasse en phase encounter. */
+  /** Ajoute la relique au run (score + inventaire) ; enchaîne hors phase relic. */
   grantRelic(run: RunState, relic: Relic): RunState {
     return {
       ...run,
       relics: [...run.relics, relic],
       score: run.score + RELIC_SCORE_BONUS,
-      phase: 'encounter',
+      phase: run.phase === 'relic' ? 'encounter' : run.phase,
       relicOffers: null,
     };
   }
 
-  /** Récompenses de victoire : score, soins, phase suivante (relique / région / victoire). */
+  /** Récompenses de victoire : score, or, soins, phase suivante (relique / région / victoire). */
   handlePlayerVictory(input: VictoryInput): VictoryResult {
     const { player, enemy, run: currentRun, isBossFight } = input;
     const run: RunState = { ...currentRun };
@@ -341,7 +340,9 @@ export class BattleController {
 
     if (isBossFight) {
       run.score += BOSS_SCORE_BONUS;
+      run.gold += BOSS_GOLD;
       player.currentHp = player.maxHp; // Full heal after a boss
+      logs.push(`💰 +${BOSS_GOLD} or (boss).`);
       logs.push(`⚔️ ${region.name} conquise !`);
 
       if (run.regionIndex >= REGIONS.length - 1) {
@@ -353,14 +354,16 @@ export class BattleController {
       return { run, logs };
     }
 
-    // Wild win: partial heal + relic offer
+    // Wild win: partial heal + or + relic offer
     const heal = Math.floor(player.maxHp * WILD_WIN_HEAL_PCT / 100);
     player.heal(heal);
 
-    run.encounterIndex += 1;
+    const goldReward = WILD_GOLD_BASE + enemy.level;
+    run.gold += goldReward;
     run.phase = 'relic';
     run.relicOffers = rollRelicOffers(3, this.random);
     logs.push(`🧪 ${player.name} récupère ${heal} PV.`);
+    logs.push(`💰 +${goldReward} or.`);
 
     return { run, logs };
   }

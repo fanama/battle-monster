@@ -8,7 +8,7 @@ import { createMonsterFromDefinition, type MonsterDefinition } from './monsterFa
 import FireImage from '../../assets/monster_1.png';
 import WaterImage from '../../assets/monster_2.png';
 
-const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal'];
+const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal', 'electric', 'rock'];
 
 // Type-specific name pools
 const NAME_POOLS: Record<MonsterType, { prefixes: string[]; suffixes: string[] }> = {
@@ -27,15 +27,25 @@ const NAME_POOLS: Record<MonsterType, { prefixes: string[]; suffixes: string[] }
   normal: {
     prefixes: ['Swift', 'Bold', 'Iron', 'Zen', 'Chrono'],
     suffixes: ['beast', 'tail', 'fang', 'claw', 'ling']
+  },
+  electric: {
+    prefixes: ['Volt', 'Spark', 'Shock', 'Zap', 'Static'],
+    suffixes: ['volt', 'bolt', 'charge', 'surge', 'watt']
+  },
+  rock: {
+    prefixes: ['Gran', 'Crag', 'Boulder', 'Stone', 'Titan'],
+    suffixes: ['shard', 'rock', 'peak', 'crust', 'maw']
   }
 };
 
-// Sprites par type (placeholder : grass/normal réutilisent fire)
+// Sprites par type (placeholder : les sprites sont rendus en SVG procédural)
 const IMAGE_MAP: Record<MonsterType, string> = {
   fire: FireImage,
   water: WaterImage,
   grass: FireImage,
-  normal: FireImage
+  normal: FireImage,
+  electric: FireImage,
+  rock: WaterImage,
 };
 
 /**

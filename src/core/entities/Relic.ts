@@ -27,6 +27,24 @@ export interface Relic {
   description: string;
   icon: string;
   effect: RelicEffect;
+  /** Prix en or (boutique). Les reliques gagnées en combat restent gratuites. */
+  price: number;
+}
+
+/** Article vendu en boutique. */
+export type ShopItemKind = 'relic' | 'heal';
+
+export interface ShopItem {
+  id: string;
+  kind: ShopItemKind;
+  price: number;
+  label: string;
+  icon: string;
+  desc: string;
+  /** Relique vendue (si `kind === 'relic'`). */
+  relic?: Relic;
+  /** Acheté dans la boutique courante (état local). */
+  bought?: boolean;
 }
 
 export const RELIC_CATALOG: Relic[] = [
@@ -36,6 +54,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+2 Force (permanent)',
     icon: '🥊',
     effect: { stat: { strength: 2 } },
+    price: 50,
   },
   {
     id: 'relic-scarf',
@@ -43,6 +62,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+3 Vitesse (permanent, +CA)',
     icon: '💨',
     effect: { stat: { speed: 3 } },
+    price: 55,
   },
   {
     id: 'relic-heart',
@@ -50,6 +70,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+3 Constitution (PV max suivent)',
     icon: '❤️',
     effect: { stat: { constitution: 3 } },
+    price: 60,
   },
   {
     id: 'relic-crown',
@@ -57,6 +78,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+3 Intelligence (magie)',
     icon: '🧠',
     effect: { stat: { intelligence: 3 } },
+    price: 60,
   },
   {
     id: 'relic-plate',
@@ -64,6 +86,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+2 à la CA (armure)',
     icon: '🛡️',
     effect: { acBonus: 2 },
+    price: 65,
   },
   {
     id: 'relic-bandage',
@@ -71,6 +94,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Soigne 15 % des PV max au début de chaque combat',
     icon: '🩹',
     effect: { healStartPercent: 15 },
+    price: 70,
   },
   {
     id: 'relic-crystal',
@@ -78,6 +102,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Vol de vie : 20 % des dégâts infligés',
     icon: '🔮',
     effect: { lifestealPercent: 20 },
+    price: 80,
   },
   {
     id: 'relic-rune',
@@ -85,6 +110,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: '+10 % de dégâts infligés',
     icon: '⚔️',
     effect: { damagePercent: 10 },
+    price: 75,
   },
   {
     id: 'relic-claws',
@@ -92,6 +118,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Vol de vie 12 % · Dégâts +5 %',
     icon: '🩸',
     effect: { lifestealPercent: 12, damagePercent: 5 },
+    price: 85,
   },
   {
     id: 'relic-cloak',
@@ -99,6 +126,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Vitesse +2 · CA +1',
     icon: '🧥',
     effect: { stat: { speed: 2 }, acBonus: 1 },
+    price: 55,
   },
   {
     id: 'relic-vitality',
@@ -106,6 +134,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Constitution +2 · Soin de départ +10 %',
     icon: '📿',
     effect: { stat: { constitution: 2 }, healStartPercent: 10 },
+    price: 70,
   },
   {
     id: 'relic-crit',
@@ -113,6 +142,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Critiques sur 19-20',
     icon: '🎯',
     effect: { critRange: 2 },
+    price: 85,
   },
   {
     id: 'relic-apprentice',
@@ -120,6 +150,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: "+25 % d'EXP gagnée",
     icon: '🏅',
     effect: { experiencePercent: 25 },
+    price: 60,
   },
   {
     id: 'relic-beast-gauntlet',
@@ -127,6 +158,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Force +4',
     icon: '💪',
     effect: { stat: { strength: 4 } },
+    price: 70,
   },
   {
     id: 'relic-codex',
@@ -134,6 +166,7 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Savoir +4',
     icon: '📖',
     effect: { stat: { intelligence: 4 } },
+    price: 70,
   },
   {
     id: 'relic-sea-tears',
@@ -141,6 +174,71 @@ export const RELIC_CATALOG: Relic[] = [
     description: 'Soigne 25 % des PV max au début de combat',
     icon: '🌊',
     effect: { healStartPercent: 25 },
+    price: 85,
+  },
+  {
+    id: 'relic-boots',
+    name: "Bottes d'Élan",
+    description: '+4 Vitesse (permanent, +CA)',
+    icon: '👟',
+    effect: { stat: { speed: 4 } },
+    price: 80,
+  },
+  {
+    id: 'relic-bastion',
+    name: 'Bastion de la Garde',
+    description: '+1 CA · +1 Constitution',
+    icon: '🧱',
+    effect: { acBonus: 1, stat: { constitution: 1 } },
+    price: 75,
+  },
+  {
+    id: 'relic-holy-water',
+    name: 'Eau Bénite',
+    description: 'Soigne 15 % des PV max au début · Dégâts +5 %',
+    icon: '💧',
+    effect: { healStartPercent: 15, damagePercent: 5 },
+    price: 80,
+  },
+  {
+    id: 'relic-bloodrunes',
+    name: 'Runogrammes Sanguins',
+    description: 'Vol de vie 8 % · +8 % d’EXP',
+    icon: '📜',
+    effect: { lifestealPercent: 8, experiencePercent: 8 },
+    price: 80,
+  },
+  {
+    id: 'relic-predator',
+    name: 'Dents du Prédateur',
+    description: '+2 Force · Vol de vie 6 %',
+    icon: '🦴',
+    effect: { stat: { strength: 2 }, lifestealPercent: 6 },
+    price: 75,
+  },
+  {
+    id: 'relic-deadeye',
+    name: "Œil du Faucon",
+    description: 'Critiques sur 18-20',
+    icon: '👁️',
+    effect: { critRange: 3 },
+    price: 100,
+  },
+  {
+    id: 'relic-professor',
+    name: 'Jonc du Professeur',
+    description: '+2 Intelligence · +15 % d’EXP',
+    icon: '🎓',
+    effect: { stat: { intelligence: 2 }, experiencePercent: 15 },
+    price: 80,
+  },
+  {
+    id: 'relic-second-wind',
+    name: 'Seconde Souffle',
+    description: 'Soigne 20 % des PV max au début · +1 Vitesse',
+    icon: '🌬️',
+    effect: { healStartPercent: 20, stat: { speed: 1 } },
+    price: 85,
   },
 ];
 
@@ -181,4 +279,35 @@ export function rollRelicOffers(count = 3, random: () => number = Math.random): 
     offers.push(pool.splice(index, 1)[0]);
   }
   return offers;
+}
+
+/** Prix de la potion de boutique (soin total des PV). */
+export const POTION_PRICE = 30;
+
+/**
+ * Génère le stock d'une boutique : `count` reliques distinctes + 1 potion
+ * (le store appelle `rollShopStock(3)`). `random` est injectable pour des
+ * tests déterministes (défaut : Math.random).
+ */
+export function rollShopStock(count = 2, random: () => number = Math.random): ShopItem[] {
+  const stock: ShopItem[] = rollRelicOffers(count, random).map((relic) => ({
+    id: `shop-${relic.id}`,
+    kind: 'relic',
+    price: relic.price,
+    label: relic.name,
+    icon: relic.icon,
+    desc: relic.description,
+    relic,
+    bought: false,
+  }));
+  stock.push({
+    id: 'shop-potion',
+    kind: 'heal',
+    price: POTION_PRICE,
+    label: 'Potion de Soin',
+    icon: '🧪',
+    desc: 'Restaure tous les PV',
+    bought: false,
+  });
+  return stock;
 }

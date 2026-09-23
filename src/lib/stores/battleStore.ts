@@ -3,9 +3,10 @@ import type { BattleState, RunState } from '../../core/entities/BattleState';
 import { Monster } from '../../core/entities/Monster';
 import { MonsterIO } from '../../core/entities/Monster';
 import type { Move } from '../../core/entities/Move';
-import type { Relic } from '../../core/entities/Relic';
-import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent } from '../../core/entities/Relic';
+import type { Relic, ShopItem } from '../../core/entities/Relic';
+import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent, rollShopStock, RELIC_CATALOG } from '../../core/entities/Relic';
 import { REGIONS } from '../../core/entities/Region';
+import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
 import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
 import { SAVE_VERSION, type RunSave, type SaveRepository } from '../../core/services/ports';
 
@@ -61,14 +62,43 @@ export class BattleStore {
       playerFeedback: null,
       enemyFeedback: null,
       isBossFight: false,
-      run: {
-        phase: 'starter',
-        regionIndex: 0,
-        encounterIndex: 0,
-        relics: [],
-        score: 0,
-        relicOffers: null,
-      },
+      run: this._newRunState(),
+    };
+  }
+
+  /** État de run vierge (menu titre / début de partie). */
+  private _newRunState(): RunState {
+    return {
+      phase: 'starter',
+      regionIndex: 0,
+      map: null,
+      mapLayer: 0,
+      path: [],
+      gold: 0,
+      shopStock: null,
+      bossBattle: false,
+      relics: [],
+      score: 0,
+      relicOffers: null,
+    };
+  }
+
+  /**
+   * Démarre la carte d'une région : nouvelle carte aléatoire (une couche par
+   * combat de la région), le run repasse en phase `map`.
+   */
+  private _startNewRegion(regionIndex: number, base: RunState): RunState {
+    const region = REGIONS[regionIndex];
+    return {
+      ...base,
+      phase: 'map',
+      regionIndex,
+      map: generateRegionMap(region.mapLayers, undefined, region.types),
+      mapLayer: 0,
+      path: [],
+      shopStock: null,
+      bossBattle: false,
+      relicOffers: null,
     };
   }
 
@@ -76,24 +106,19 @@ export class BattleStore {
 
   public startRun = (monster: Monster) => {
     this._clearTimers();
-    const run: RunState = {
-      phase: 'encounter',
-      regionIndex: 0,
-      encounterIndex: 0,
-      relics: [],
-      score: 0,
-      relicOffers: null,
-    };
-    const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(monster, run);
-    const region = REGIONS[run.regionIndex];
+    const run = this._startNewRegion(0, this._newRunState());
+    const region = REGIONS[0];
 
     const state: BattleState = {
       ...this._getInitialState(),
       playerMonster: monster,
-      enemyMonster,
-      logs: [`— ${region.name} — ${region.description}`, ...logs],
+      enemyMonster: null,
+      isBossFight: false,
       run,
-      isBossFight: isBoss,
+      logs: [
+        `— ${region.name} — ${region.description}`,
+        '🗺️ Choisissez votre destination à travers la carte.',
+      ],
     };
     this.store.set(state);
     this._persistState(state);
@@ -118,15 +143,19 @@ export class BattleStore {
 
     this._clearTimers();
     const player = MonsterIO.fromSnapshot(save.playerMonster);
-    const run: RunState = { ...save.run };
+    const run: RunState = { ...save.run, path: save.run.path ?? [] };
 
     let enemyMonster: Monster | null = null;
-    let isBoss = false;
+    let isBoss = run.bossBattle;
     let spawnLogs: string[] = [];
     if (run.phase === 'encounter') {
-      const spawned = this.controller.spawnNextEnemy(player, run);
+      // Re-spawn fidèle au nœud choisi : type du monstre gardien du nœud
+      // (recherché par son id de colonne — les couches sont mélangées).
+      const chosen = run.map ? nodeAtCol(run.map, run.mapLayer, run.path[run.path.length - 1] ?? 0) : undefined;
+      const spawned = isBoss
+        ? this.controller.enterBossCombat(player, run)
+        : this.controller.enterWildCombat(player, run, { type: chosen?.enemyType });
       enemyMonster = spawned.enemyMonster;
-      isBoss = spawned.isBoss;
       spawnLogs = spawned.logs;
     }
 
@@ -227,6 +256,107 @@ export class BattleStore {
     });
   };
 
+  // --- Carte & boutique (roguelike) ---
+
+  /** Choisit un nœud de la carte (combat / soin / boutique). */
+  public chooseNode = (col: number) => {
+    this.store.update(state => {
+      const run = state.run;
+      if (run.phase !== 'map' || run.map == null || !state.playerMonster) return state;
+      // Les couches sont mélangées : on retombe sur le nœud par son id de
+      // colonne (et non par sa position dans le tableau), sinon un clic sur un
+      // combat pourrait ouvrir une boutique d'un nœud voisin et vice-versa.
+      const node = nodeAtCol(run.map, run.mapLayer, col);
+      if (!node) return state;
+
+      // Accessibilité : depuis le dernier nœud choisi, seules les colonnes
+      // voisines (±1) sont reliées à la couche courante.
+      const prevCol = run.path.length > 0 ? run.path[run.path.length - 1]! : null;
+      if (prevCol != null && !areLinked(prevCol, col)) return state;
+
+      const path = [...run.path, col];
+
+      if (node.site === 'combat') {
+        const { enemyMonster, logs } = this.controller.enterWildCombat(state.playerMonster, run, { type: node.enemyType });
+        const next: BattleState = {
+          ...state,
+          enemyMonster,
+          isBossFight: false,
+          winner: null,
+          isPlayerTurn: true,
+          run: { ...run, phase: 'encounter', path },
+          logs: [...state.logs, ...logs],
+          playerLastMove: null,
+          enemyLastMove: null,
+          playerFeedback: null,
+          enemyFeedback: null,
+        };
+        this._persistState(next);
+        return next;
+      }
+
+      if (node.site === 'heal') {
+        const player = state.playerMonster;
+        const heal = Math.floor(player.maxHp * 0.5);
+        player.heal(heal);
+        return this._advanceMap({
+          ...state,
+          run: { ...run, path },
+          logs: [...state.logs, `🩹 Vous vous reposez : +${heal} PV.`],
+        });
+      }
+
+      // Boutique : TOUT le catalogue est accessible (toutes les reliques + potion).
+      const shopStock = rollShopStock(RELIC_CATALOG.length);
+      const next: BattleState = {
+        ...state,
+        run: { ...run, phase: 'shop', shopStock, path },
+        logs: [...state.logs, '🛒 La boutique s’ouvre : dépensez votre or.'],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /** Achète un article de la boutique (si assez d'or et pas déjà acheté). */
+  public buyShopItem = (item: ShopItem) => {
+    this.store.update(state => {
+      const run = state.run;
+      if (run.phase !== 'shop' || !state.playerMonster || !run.shopStock) return state;
+      if (item.bought || run.gold < item.price) return state;
+
+      const player = state.playerMonster;
+      let logs = state.logs;
+      let nextRun = run;
+
+      if (item.kind === 'heal') {
+        const healed = player.maxHp - player.currentHp;
+        if (healed <= 0) return state; // PV pleins : pas d'achat ni d'or perdu.
+        player.heal(healed);
+        logs = [...logs, `🧪 ${item.label} : +${healed} PV.`];
+      } else if (item.relic) {
+        this.controller.applyRelic(player, item.relic);
+        nextRun = this.controller.grantRelic({ ...run, phase: 'shop' }, item.relic);
+        logs = [...logs, `✨ ${item.icon} ${item.label} achetée.`];
+      }
+
+      nextRun = { ...nextRun, gold: nextRun.gold - item.price };
+      item.bought = true;
+      const next: BattleState = { ...state, run: nextRun, logs };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /** Quitte la boutique : progression sur la carte (couche suivante ou boss). */
+  public leaveShop = () => {
+    this.store.update(state => {
+      if (state.run.phase !== 'shop') return state;
+      const run: RunState = { ...state.run, phase: 'map', shopStock: null };
+      return this._advanceMap({ ...state, run });
+    });
+  };
+
   // --- Roguelike transition actions ---
 
   public pickRelic = (relic: Relic) => {
@@ -236,27 +366,43 @@ export class BattleStore {
 
       this.controller.applyRelic(player, relic);
       const run = this.controller.grantRelic(
-        { ...state.run, phase: 'encounter', relicOffers: null },
+        { ...state.run, phase: 'relic', relicOffers: null },
         relic
       );
 
-      const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(player, run);
-      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
-        `✨ ${relic.icon} ${relic.name} : ${relic.description}`,
-      ]);
-      this._persistState(next);
-      return next;
+      const s0: BattleState = {
+        ...state,
+        run,
+        enemyMonster: null,
+        winner: null,
+        isPlayerTurn: true,
+        logs: [...state.logs, `✨ ${relic.icon} ${relic.name} : ${relic.description}`],
+        playerLastMove: null,
+        enemyLastMove: null,
+        playerFeedback: null,
+        enemyFeedback: null,
+      };
+      return this._advanceMap(s0);
     });
   };
 
   public skipRelic = () => {
     this.store.update(state => {
       if (state.run.phase !== 'relic' || !state.playerMonster) return state;
-      const run: RunState = { ...state.run, phase: 'encounter', relicOffers: null };
-      const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(state.playerMonster, run);
-      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, ['Vous passez votre chemin.']);
-      this._persistState(next);
-      return next;
+      const run: RunState = { ...state.run, phase: 'relic', relicOffers: null };
+      const s0: BattleState = {
+        ...state,
+        run,
+        enemyMonster: null,
+        winner: null,
+        isPlayerTurn: true,
+        logs: [...state.logs, 'Vous passez votre chemin.'],
+        playerLastMove: null,
+        enemyLastMove: null,
+        playerFeedback: null,
+        enemyFeedback: null,
+      };
+      return this._advanceMap(s0);
     });
   };
 
@@ -264,24 +410,29 @@ export class BattleStore {
     this.store.update(state => {
       if (state.run.phase !== 'regionClear' || !state.playerMonster) return state;
 
-      const nextIndex = state.run.regionIndex + 1;
-      const run: RunState = {
-        ...state.run,
-        regionIndex: nextIndex,
-        encounterIndex: 0,
-        phase: 'encounter',
-        relicOffers: null,
-      };
-      const region = REGIONS[nextIndex];
       const player = state.playerMonster;
+      player.currentHp = player.maxHp; // Full heal before the new region
 
-      // Full heal before the new region
-      player.currentHp = player.maxHp;
-
-      const { enemyMonster, isBoss, logs } = this.controller.spawnNextEnemy(player, run);
-      const next = this._nextBattleState(state, run, enemyMonster, isBoss, logs, [
-        `— ${region.name} — ${region.description}`,
-      ]);
+      const nextIndex = state.run.regionIndex + 1;
+      const run = this._startNewRegion(nextIndex, state.run);
+      const region = REGIONS[nextIndex];
+      const next: BattleState = {
+        ...state,
+        run,
+        enemyMonster: null,
+        isBossFight: false,
+        winner: null,
+        isPlayerTurn: true,
+        logs: [
+          ...state.logs,
+          `— ${region.name} — ${region.description}`,
+          '🗺️ Choisissez votre destination à travers la carte.',
+        ],
+        playerLastMove: null,
+        enemyLastMove: null,
+        playerFeedback: null,
+        enemyFeedback: null,
+      };
       this._persistState(next);
       return next;
     });
@@ -289,28 +440,48 @@ export class BattleStore {
 
   // --- Internals ---
 
-  /** État « nouveau combat » partagé par pickRelic / skipRelic / advanceRegion. */
-  private _nextBattleState(
-    state: BattleState,
-    run: RunState,
-    enemyMonster: Monster,
-    isBoss: boolean,
-    logs: string[],
-    prefixLogs: string[]
-  ): BattleState {
-    return {
+  /**
+   * Avance d'une couche sur la carte : couche suivante (phase `map`) ou, si la
+   * dernière couche est traversée, lancement du boss de région.
+   */
+  private _advanceMap(state: BattleState): BattleState {
+    const run = state.run;
+    if (run.map == null || !state.playerMonster) return state;
+
+    const nextLayer = run.mapLayer + 1;
+    if (run.map.layers[nextLayer]) {
+      const next: BattleState = {
+        ...state,
+        run: { ...run, mapLayer: nextLayer, phase: 'map' },
+        enemyMonster: null,
+        isBossFight: false,
+        winner: null,
+        isPlayerTurn: true,
+        playerLastMove: null,
+        enemyLastMove: null,
+        playerFeedback: null,
+        enemyFeedback: null,
+      };
+      this._persistState(next);
+      return next;
+    }
+
+    const { enemyMonster, logs } = this.controller.enterBossCombat(state.playerMonster, run);
+    const next: BattleState = {
       ...state,
       enemyMonster,
-      isBossFight: isBoss,
+      isBossFight: true,
       winner: null,
       isPlayerTurn: true,
-      run,
-      logs: [...state.logs, ...prefixLogs, ...logs],
+      run: { ...run, mapLayer: nextLayer, phase: 'encounter', bossBattle: true },
+      logs: [...state.logs, ...logs],
       playerLastMove: null,
       enemyLastMove: null,
       playerFeedback: null,
       enemyFeedback: null,
     };
+    this._persistState(next);
+    return next;
   }
 
   /** Victoire du joueur : délègue les récompenses (score, soins, reliques) au controller. */

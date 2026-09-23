@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Move, MonsterType } from "../../../core/entities/Move";
-  import { TYPE_LABELS } from "../../../core/entities/Move";
+  import { TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
 
@@ -101,6 +101,15 @@
       >
         {natureLabel}
       </span>
+
+      {#if move.power > 0}
+        <span
+          class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold border-sky-500/40 bg-sky-950/40 text-sky-200"
+          title="Bonus de toucher (inversé à la puissance : les attaques faibles touchent plus souvent)"
+        >
+          🎯 +{moveAccuracyBonus(move)}
+        </span>
+      {/if}
 
       {#if targetType && move.power > 0}
         <span

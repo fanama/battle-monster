@@ -64,6 +64,30 @@ export const TYPE_COLORS: Record<MonsterType, TypeColors> = {
     ambient: 'radial-gradient(circle at 50% 30%, rgba(34,197,94,0.22) 0%, rgba(163,230,53,0.08) 45%, rgba(0,0,0,0) 72%)',
     glow: 'shadow-green-500/40',
   },
+  electric: {
+    dot: 'bg-yellow-400',
+    border: 'border-yellow-400/60',
+    borderStrong: 'border-yellow-300',
+    text: 'text-yellow-200',
+    badge: 'bg-yellow-950/60 text-yellow-100 border-yellow-400/50',
+    cardBg: 'bg-yellow-950/25',
+    gradient: 'bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-200',
+    ring: 'ring-yellow-300',
+    ambient: 'radial-gradient(circle at 50% 30%, rgba(250,204,21,0.24) 0%, rgba(253,224,71,0.08) 45%, rgba(0,0,0,0) 72%)',
+    glow: 'shadow-yellow-400/40',
+  },
+  rock: {
+    dot: 'bg-stone-500',
+    border: 'border-stone-500/60',
+    borderStrong: 'border-stone-300',
+    text: 'text-stone-300',
+    badge: 'bg-amber-950/40 text-amber-100 border-stone-500/40',
+    cardBg: 'bg-stone-900/40',
+    gradient: 'bg-gradient-to-r from-stone-600 via-stone-500 to-amber-300',
+    ring: 'ring-stone-300',
+    ambient: 'radial-gradient(circle at 50% 30%, rgba(168,162,158,0.22) 0%, rgba(245,158,11,0.07) 45%, rgba(0,0,0,0) 72%)',
+    glow: 'shadow-stone-400/40',
+  },
   normal: {
     dot: 'bg-stone-400',
     border: 'border-stone-400/60',
@@ -84,6 +108,8 @@ export const TYPE_ICONS: Record<MonsterType, string> = {
   water: '💧',
   grass: '🌿',
   normal: '✊',
+  electric: '⚡',
+  rock: '🪨',
 };
 
 /** Couleurs secondaires pour éléments divers de l'UI (HUD, reliques…). */

@@ -16,6 +16,8 @@ const HIT_DICE: Record<MonsterType, number> = {
   water: 10,
   grass: 10,
   normal: 8,
+  electric: 8,
+  rock: 10,
 };
 
 /**
@@ -151,8 +153,14 @@ export class Monster {
 
   // --- Experience & Leveling Logic ---
 
+  /**
+   * XP requise pour passer au niveau suivant : `80 × niveau - 40` (courbe
+   * **linéaire douce**, ~40 au niv. 1, 360 au niv. 5, 760 au niv. 10).
+   * L'ancienne courbe `100 × niveau^1.5` (1 118 XP au niv. 5) exigeait des
+   * dizaines de combats en début de run — trop raide (cf. rebalance §16 P1).
+   */
   private calculateExperienceToNextLevel(level: number): number {
-    return Math.floor(100 * Math.pow(level, 1.5));
+    return Math.floor(80 * level - 40);
   }
 
   /**
@@ -193,32 +201,33 @@ export class Monster {
   }
 
   /**
-   * Defines how stats grow based on the Monster's element.
+   * Croissance de stats par type (« archetype ») — rééquilibrée : seule les
+   * stats **à effet de combat** progressent (Force, Vitesse, Constitution,
+   * Intelligence). Sagesse & Charisme n'ont pas de rôle mécanique → plus de
+   * points gâchés à chaque niveau (cf. rebalance §5/§12).
+   *
+   * Budget : 8-9 points/niveau répartis en profil distinct par type.
+   *  - fire   : frappeur rapide (physique + un peu de magie)
+   *  - water  : tanks protégé (PV/constitution, allonge physique)
+   *  - grass  : mage-tank (intelligence, PV, vitesse)
+   *  - normal : polyvalent.
    */
   private getStatGrowth(type: MonsterType) {
-    const base = {
-      strength: 1,
-      speed: 1,
-      constitution: 1,
-      intelligence: 1,
-      wisdom: 1,
-      charisma: 1
-    };
-
     switch (type) {
       case 'fire':
-        return { ...base, strength: 3, speed: 2, intelligence: 2 };
+        return { strength: 3, speed: 3, constitution: 1, intelligence: 2, wisdom: 0, charisma: 0 };
       case 'water':
-        return { ...base, constitution: 3, wisdom: 2, strength: 2 };
+        return { strength: 2, speed: 1, constitution: 3, intelligence: 2, wisdom: 0, charisma: 0 };
       case 'grass':
-        return { ...base, intelligence: 3, wisdom: 3, constitution: 2 };
+        return { strength: 1, speed: 2, constitution: 2, intelligence: 3, wisdom: 0, charisma: 0 };
       case 'normal':
-        return {
-          strength: 2, speed: 2, constitution: 2,
-          intelligence: 2, wisdom: 2, charisma: 2
-        };
+        return { strength: 2, speed: 2, constitution: 2, intelligence: 2, wisdom: 0, charisma: 0 };
+      case 'electric':
+        return { strength: 1, speed: 3, constitution: 1, intelligence: 3, wisdom: 0, charisma: 0 };
+      case 'rock':
+        return { strength: 3, speed: 1, constitution: 3, intelligence: 1, wisdom: 0, charisma: 0 };
       default:
-        return base;
+        return { strength: 1, speed: 1, constitution: 1, intelligence: 1, wisdom: 0, charisma: 0 };
     }
   }
 }

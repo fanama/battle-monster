@@ -1,7 +1,7 @@
 import type { Monster, MonsterRank } from '../entities/Monster';
 import { abilityModifier } from '../entities/Monster';
 import type { Move, MonsterStat, MonsterType } from '../entities/Move';
-import { STAT_LABELS } from '../entities/Move';
+import { STAT_LABELS, moveAccuracyBonus } from '../entities/Move';
 import { typeEffectiveness } from './effectiveness';
 
 export interface BattleLog {
@@ -78,10 +78,11 @@ function powerToDie(power: number): number {
 }
 
 /**
- * Bonus d'attaque d'un move, analogue au BonusDégâts d'une arme (ajouté au jet
- * ET aux dégâts) ou au BonusSort d'un sort.
+ * Bonus de dégâts d'un move physique, analogue au BonusDégâts d'une arme :
+ * ajouté aux dégâts uniquement (le bonus de *toucher* est `moveAccuracyBonus`,
+ * inversé à la puissance — voir `core/entities/Move.ts`).
  */
-function moveHitBonus(move: Move): number {
+function moveDamageBonus(move: Move): number {
   return Math.floor(move.power / 20);
 }
 
@@ -98,6 +99,7 @@ export interface AttackOutcome {
   total: number;
   ac: number;
   attackMod: number;
+  /** Bonus de précision du move (inversé à la puissance). */
   bonus: number;
 }
 
@@ -129,16 +131,18 @@ export class BattleEngine {
 
   /**
    * D&D attack resolution:
-   *  - arme physique : 1d20 + mod(Force) + Bonus
-   *  - sort :          1d20 + mod(Savoir/i) + BonusSort
+   *  - arme physique : 1d20 + mod(Force) + BonusPrécision
+   *  - sort :          1d20 + mod(Savoir/i) + BonusPrécision
    *  - CA : 10 + mod(Vitesse)
    *  - 20 naturel → touche + critique ; 1 naturel → fumble (raté).
    *  - `critRange` élargit les jets de critique (ex. 2 → 19-20), reliques joueur.
+   *  - Le bonus de précision (`moveAccuracyBonus`) est INVERSÉ à la puissance :
+   *    les attaques faibles touchent plus facilement que les puissantes.
    */
   resolveAttack(attacker: Monster, defender: Monster, move: Move, critRange = 1): AttackOutcome {
     const attackStat = move.isPhysical ? attacker.strength : attacker.intelligence;
     const attackMod = abilityModifier(attackStat);
-    const bonus = moveHitBonus(move);
+    const bonus = moveAccuracyBonus(move);
     const ac = defender.getAC();
     const roll = this.dice.roll(1, 20);
     const total = roll + attackMod + bonus;
@@ -150,8 +154,10 @@ export class BattleEngine {
 
   /**
    * D&D damage roll:
-   *  - physique : 1dX + mod(Force) + Bonus (crit : 2dX)
-   *  - magique :  Savoir(i) × 1.5 (crit : Savoir(i) × 3)
+   *  - physique : 1dX + mod(Force) + BonusDégâts (crit : 2dX) — les dégâts
+   *    suivent la puissance (dé + terme linéaire), pas la précision.
+   *  - magique :  Savoir(i) × (1 + power/120) (crit : ×2) — la magie monte en
+   *    puissance avec la move pour contrebalancer sa précision réduite.
    */
   rollDamage(attacker: Monster, move: Move, crit: boolean): DamageRoll {
     if (move.isPhysical) {
@@ -160,11 +166,12 @@ export class BattleEngine {
       const total = this.dice.roll(count, sides)
         + movePowerFlat(move)
         + abilityModifier(attacker.strength)
-        + moveHitBonus(move);
+        + moveDamageBonus(move);
       return { desc: `${count}d${sides}+${movePowerFlat(move)}`, total: Math.max(1, total) };
     }
-    const total = attacker.intelligence * 1.5 * (crit ? 2 : 1);
-    return { desc: crit ? 'Savoir ×3' : 'Savoir ×1.5', total: Math.max(1, total) };
+    const factor = 1 + move.power / 120;
+    const total = attacker.intelligence * factor * (crit ? 2 : 1);
+    return { desc: crit ? `Savoir ×${(factor * 2).toFixed(2)}` : `Savoir ×${factor.toFixed(2)}`, total: Math.max(1, total) };
   }
 
   /**
@@ -192,23 +199,24 @@ export class BattleEngine {
   }
 
   /**
-   * XP gagnée : base 100 × évolution de niveau × rang du vaincu (boss ×1.5,
-   * cf. dnd 10/20/50) × reliques d'EXP. Minimum 50.
+   * XP gagnée : `40 + 16 × niveau de l'attaquant` (la base croît avec votre
+   * niveau), modulée par l'écart de niveau (`1.5^écart`, **bornée ×0.4…×2.5**
+   * pour qu'un ennemi quelques niveaux en dessous reste rentable) et par le
+   * rang du vaincu (boss ×1.5). Les reliques d'XP s'ajoutent en %.
+   *
+   * Rebalance 2026-09 (§16) : aplatit la courbe de début de run — l'ancienne
+   * formule (`100 × 1.9^écart`) s'effondrait dès que le joueur dépassait ses
+   * ennemis et le garde-fou « min 50 XP » était du code mort (jamais atteint
+   * dans le scénario normal de jeu).
    */
   calculateExperienceGained(attacker: Monster, defender: Monster, experiencePercent = 0): number {
+    const baseExperience = 40 + 16 * attacker.level;
     const levelDifference = defender.level - attacker.level;
-    const levelMultiplier = Math.pow(1.9, levelDifference);
-    const baseExperience = 100; // Base exp for any defeat
+    const levelMultiplier = Math.min(2.5, Math.max(0.4, Math.pow(1.5, levelDifference)));
     const rankMultiplier = RANK_XP_MULTIPLIER[defender.rank] ?? 1;
     const relicMultiplier = 1 + experiencePercent / 100;
 
-    let experience = Math.floor(baseExperience * levelMultiplier * rankMultiplier * relicMultiplier);
-
-    if (experience <= 0) {
-      experience = 50;
-    }
-
-    return experience;
+    return Math.floor(baseExperience * levelMultiplier * rankMultiplier * relicMultiplier);
   }
 
   // --- 2. Application des effets (mutation des monstres) ---
@@ -293,7 +301,7 @@ export class BattleEngine {
         feedback = { kind: 'damage', damage: final, isCrit: outcome.crit };
 
         const critMark = outcome.crit ? ' 💥 CRITIQUE !' : '';
-        const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)} = ${outcome.total}]`;
+        const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? ' précision' : ''} = ${outcome.total}]`;
         const effective = multiplier !== 1 ? ` (×${multiplier})` : '';
 
         logs.push({
@@ -304,7 +312,7 @@ export class BattleEngine {
         feedback = { kind: 'miss', damage: 0, isCrit: false };
         logs.push({
           message: `❌ ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
-            `Jet [1d20${sign(outcome.attackMod)}${sign(outcome.bonus)} = ${outcome.total}] < CA ${outcome.ac} → Raté !`,
+            `Jet [1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? ' précision' : ''} = ${outcome.total}] < CA ${outcome.ac} → Raté !`,
         });
       }
     }

@@ -28,6 +28,8 @@ export class LocalStorageRunRepository implements SaveRepository {
       ) {
         return parsed;
       }
+      // Sauvegarde d'un ancien format : incompatible, on la purge.
+      this.clear();
       return null;
     } catch {
       return null;

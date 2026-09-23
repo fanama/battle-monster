@@ -17,12 +17,14 @@ export const styles = {
       min-h-dvh 
       flex flex-col
     `,
+    // Chrome de l'arène : fond + couleur de bordure viennent de REGION_COLORS
+    // (composé dans App.svelte selon la région courante).
     arena: `
-      border-2 md:border-4 border-stone-600 rounded-lg 
-      bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900 relative 
+      border-2 md:border-4 rounded-lg
+      relative
       flex-grow min-h-[320px] md:min-h-[400px]
-      mb-3 md:mb-4 
-      flex justify-between items-end 
+      mb-3 md:mb-4
+      flex justify-between items-end
       px-2 py-4 md:px-8 md:pb-8
       shadow-xl overflow-x-clip
     `,

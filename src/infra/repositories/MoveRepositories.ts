@@ -49,6 +49,18 @@ export class MoveRepository {
     'grass-drain': { id: 'grass-drain', name: 'Giga-sangsue', power: 75, type: 'grass', isPhysical: false, level: 5 },
     // Rayon Solaire has a 3-turn cooldown (maxCoolDown: 3)
     'grass-solar': { id: 'grass-solar', name: 'Rayon Solaire', power: 120, type: 'grass', isPhysical: false, maxCoolDown: 3, level: 10 },
+
+    // --- ELECTRIC Moves ---
+    'elec-shock': { id: 'elec-shock', name: 'Éclair', power: 60, type: 'electric', isPhysical: false, level: 1 },
+    'elec-bolt': { id: 'elec-bolt', name: 'Tonnerre', power: 80, type: 'electric', isPhysical: false, level: 5 },
+    // Orage has a 2-turn cooldown (maxCoolDown: 2)
+    'elec-storm': { id: 'elec-storm', name: 'Orage', power: 120, type: 'electric', isPhysical: false, maxCoolDown: 2, level: 10 },
+
+    // --- ROCK Moves ---
+    'rock-crush': { id: 'rock-crush', name: 'Écrasement', power: 45, type: 'rock', isPhysical: true, level: 1 },
+    'rock-boulder': { id: 'rock-boulder', name: 'Bloc Roc', power: 75, type: 'rock', isPhysical: true, level: 5 },
+    // Tremblement has a 2-turn cooldown (maxCoolDown: 2)
+    'rock-quake': { id: 'rock-quake', name: 'Tremblement', power: 120, type: 'rock', isPhysical: true, maxCoolDown: 2, level: 10 },
   };
 
   /**
@@ -82,7 +94,7 @@ export class MoveRepository {
 
   /**
    * Retrieves all moves of a specific MonsterType.
-   * @param type The type to filter by ('fire', 'water', 'grass', or 'normal').
+   * @param type The type to filter by ('fire', 'water', 'grass', 'normal', 'electric', 'rock').
    * @returns An array of Move objects matching the type.
    */
   public getMovesByType(type: MonsterType): Move[] {

@@ -21,7 +21,7 @@ export interface EnemyFactory {
 }
 
 /** Version du format de sauvegarde — un décalage = sauvegarde invalide. */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 3;
 
 /** Sauvegarde JSON-safe d'une partie (menu titre → « Continuer »). */
 export interface RunSave {

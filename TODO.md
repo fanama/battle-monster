@@ -5,6 +5,77 @@ Légende : 🐛 bug / 🧹 technique / 🎮 gameplay / ✨ feature / 🧪 tests 
 
 ---
 
+## 16. Revue complète de l'app (2ᵉ passe) — améliorations proposées (2026-09)
+
+Analyse entière du projet (entités, services, infra, store, composants, configs). Importances : **P0 fiabilité**, **P1 équilibrage & gameplay**, **P2 UX/accessibilité**, **P2 hygiène & infra**. Propositions à trier — aucune implémentée.
+
+### Fiabilité & corrections (P0)
+- [ ] **Potion achetée à PV pleins = or perdu** : `buyShopItem` débite l'or même si `healed <= 0` (pas de log, `item.bought = true`) — `battleStore.ts:331-344`. → désactiver/empêcher l'achat si PV max.
+- [ ] **Moves partagés → mutation globale au level-up** : `BattleController.ts:253` réaffecte `attacker.moves = getMovesForMonster(...)` avec les **références** des objets statiques du catalogue (`MoveRepositories.ts:110-114`) ; les cooldowns mutés polluent **toutes** les instances (le commentaire « clone par instance » de `monsterFactory.ts:22-24` est faux). → cloner chaque move (`{ ...move }`) à l'instanciation.
+- [ ] **Plus de cap à 4 moves après un level-up** : le set est remplacé par **tous** les moves éligibles (4+ en cumulant type+niveaux), sans UI de choix, et la barre d'action explose en rangées — `BattleController.ts:250-256`, `App.svelte:189-197`. → conserver 4 max + apprentissage choisi (§5/§10).
+- [ ] **Re-spawn non déterministe au chargement** : `loadSaved` relance **niveau & stats** de l'ennemi sauvage (le type est préservé, pas le reste) → save-scum, partie non reproductible — `battleStore.ts:151-160`. → sauvegarder l'ennemi (snapshot) ou un seed de génération.
+- [ ] **Critique ≠ auto-touché quand `critRange > 1`** : `crit = roll ≥ 21−critRange` est calculé indépendamment du jet de touche ; un « critique » peut donc **rater silencieusement** — `BattleEngine.ts:142-153`. → auto-touché sur une tranche étendue ET ≥ AC.
+- [ ] **L'IA peut « jouer » un move en recharge** : dans le fallback (tout en cooldown), `pool = moves` non filtré → tour gaspillé sur l'erreur « en recharge » — `BattleController.ts:133-148`, `BattleEngine.ts:274-279`.
+- [ ] **Boutons de moves cliquables pendant le tour ennemi** : `disabled` seulement si cooldown, alors que `attack()` est no-op quand `!isPlayerTurn` → double-clic sans retour — `MoveDisplayer.svelte:53`, `battleStore.ts:201`.
+- [ ] **`crypto.randomUUID()` non garanti** (contexte non sécurisé hors localhost) → crash au spawn — `RandomEnemyFactory.ts:78`. → fallback compteur.
+- [ ] **Validation de sauvegarde superficielle** : un save v3 corrompu (ex. `moves` absent) passe le filtre et plante `MonsterIO.fromSnapshot` (`initialMoves.map`) — `LocalStorageRunRepository.ts:24-28`, `Monster.ts:281-302`.
+- [ ] **Heal nœud à PV pleins** : log mensonger « +42 PV » alors que `heal()` rend 0 — `battleStore.ts:298-307`.
+- [ ] **Shuffle biaisé** dans `monsterFactory.ts:33` (`sort(() => 0.5 − random())`) → Fisher–Yates (uniforme, comme `RegionMap.ts`).
+- [ ] **`progressPercent` → NaN** si un move a `coolDown > 0` sans `maxCoolDown` (impossible aujourd'hui, aucune défense) — `MoveDisplayer.svelte:14-16`.
+- [ ] **`trailTimer` jamais nettoyé** à l'unmount de `HealthBar.svelte` (mémoire, mineur).
+
+### Équilibrage & gameplay (P1)
+- [ ] **CA = `10 + mod(Vitesse)` uniquement** : les tanks lents (LeafGuardian/Cairnox, speed 7-8 → AC 9) sont touchés quasi systématiquement alors que Voltis (speed 16 → AC 13) esquive — `Monster.ts:121-123`. → tester une pondération (Con ou niveau).
+- [x] ✅ **Courbe d'XP très raide en début de run** : requise passe à `80 × niveau − 40` (360 XP au niv. 5, 760 au niv. 10) et gain à `40 + 16 × niveau`, écart borné ×0.4…×2.5 (`1.5^écart`) — niv. 5 → 7 en < 25 combats région 0, vérifié par smoke test — `Monster.ts:156-162`, `BattleEngine.ts:201-218`.
+- [x] ✅ **Garde-fou « minimum 50 XP » mort** : supprimé — le nouveau gain reste ≥ ×0.4 par construction (`BattleEngine.ts`) ; le garde-fou tombait jamais dans le scénario normal de jeu.
+- [ ] **Boss = `maxLevel + 2` (lvl 15 en Céleste)** vs joueur ~8-9 → multiplieur XP 47-89× et mur de stats — `BattleController.ts:303`. → plafonner ou introduire des `elite` intermédiaires.
+- [ ] **Inflation linéaire des stats ennemies** `1 + (level−1)×0.15` → AC 17-26, boss 300-500 PV ×1.4 — `RandomEnemyFactory.ts:84-108`. → scaling sous-linéaire / mods plafonnés.
+- [ ] **Boss Céleste `normal`** : aucune faiblesse de type exploitable sur le mur final — `Region.ts:61-62`.
+- [ ] **Économie d'or déséquilibrée** : `rollShopStock(3)` + prix 50-85 (potion 30) vs revenus `8 + niveau`/`60` boss → ≤ 1 article par région, boutique quasi décorative face aux reliques gratuites post-combat — `battleStore.ts:309`, `Relic.ts:50-179`. → aligner stock (2 ?) ou enrichir l'or, diversifier les articles.
+- [ ] **Aucune relique après boss** (seul plein soin) — `BattleController.ts:341-354` (cf. §9/§10).
+- [ ] **Dominance `relic-heart` (+3 Con → PV max + soins)** et empilement des soins de début de combat — `Relic.ts:68-97,172-178`.
+- [ ] **Sagesse & Charisme toujours sans rôle mécanique** (cf. §10) — croissance focalisée (fait §12), stats encore affichées sans effet.
+
+### UX & accessibilité (P2)
+- [ ] **Logs sans `aria-live`** : rien n'annonce les tours aux lecteurs d'écran — `Logs.svelte`.
+- [ ] **Overlays sans modal** : `RelicChooser` et « région conquise » sans `role="dialog"`/`aria-modal`, pas de focus trap ni fermeture Échap — `RelicChooser.svelte:35-45`, `App.svelte:157-173`.
+- [ ] **`prefers-reduced-motion` ignoré** : shake/lunge/float/pulse/wing-flap/crown inconditionnels — `SpriteDisplayer.svelte`, `MonsterDisplayer.svelte`, `HealthBar.svelte`.
+- [ ] **Langue mixte FR/EN** : « Game Over », « Waiting for combatant... », « HP », « READY » contre des logs FR — `App.svelte:47`, `MonsterDisplayer.svelte:204`, `MoveDisplayer.svelte` (cf. §7).
+- [ ] **Textes 9-10 px** (badges, cartes, canvas) & contrastes limites sur mobile — `MonsterSelector.svelte`, `MoveDisplayer.svelte`.
+- [ ] **`MonsterSelector` compare les monstres par référence** → désélection à chaque remount de `Home` → sélectionner par `id` (cf. §7).
+- [ ] **`Home.svelte` textes obsolètes** : « Trois créatures de départ » (5 starters) et « Feu, Eau, Plante » (6 types) — `Home.svelte:23,30`.
+- [ ] **`aria-disabled` absent** sur nœuds futurs/verrouillés de la carte — `MapView.svelte`.
+- [ ] **`bind:logs={$battleStore.logs}`** : two-way binding vers un store sans écriture, fragile — `App.svelte:179`.
+- [ ] **Inventaire de reliques trop sommaire** (icônes + `title`) : pas d'effets cumulés visibles — `RunHud.svelte`.
+
+### Hygiène, dette & infra (P2)
+- [ ] **Méthodes mortes `MoveRepository`** : `getMoveById` / `getMoveByName` / `getAllMoves` / `getMovesByType` — `MoveRepositories.ts:71-103` (cf. §10).
+- [ ] **`lastLayerIndex` / `reachableCols` jamais appelés** (utiles aux tests) — `RegionMap.ts:92,114`.
+- [ ] **PNG morts bundlés (~320-470 Ko)** : `monster_1.png`/`monster_2.png` + champ `image` jamais lu (rendu 100 % SVG procédural) — `StarterCatalog.ts:6-7`, `RandomEnemyFactory.ts:42-49`, `monsterFactory.ts:10` (cf. §10).
+- [ ] **`styles.winner` / `UI_COLORS` inutilisés** — `style.ts:44-56`, `typeColors.ts:116-122`.
+- [ ] **Restes de template** : `src/lib/Counter.svelte`, `src/assets/svelte.svg`, `public/vite.svg` (cf. §2/§8).
+- [ ] **`bun.lockb` obsolète** à côté de `bun.lock` (cf. §8).
+- [ ] **`tsconfig.app.json` sans `noUnusedLocals`/`noUncheckedIndexedAccess`** → le code mort compile et les accès `!` foisonnent — activer pour attraper ce qui précède.
+- [ ] **Migration Svelte 5 non faite** (syntaxe `on:click`/`$:`/`writable`) → runes (`onclick`/`$derived`) pour ne pas accumuler la dette.
+- [ ] **`MonsterSelector` importe le container directement** au lieu de recevoir les starters en props — contourne la règle « composition root seul endroit qui câble » (README).
+- [ ] **Tests Vitest** (cf. §4) : prioriser `resolveRound`/initiative, `selectEnemyMove` (IA), `MonsterIO` roundtrip, mutations des moves.
+
+---
+
+## 15. Nouveaux types : Électricité & Roche — ✅ FAIT (2026-09)
+
+- [x] ✅ **6 types** (`Move.ts`) : `MonsterType = 'fire' | 'water' | 'grass' | 'normal' | 'electric' | 'rock'`, `TYPE_LABELS` (Électricité, Roche) — tous les `Record<MonsterType, …>` exhaustifs mis à jour.
+- [x] ✅ **Table de types étendue** (`effectiveness.ts`) : triangle `Feu > Plante > Eau` inchangé, **Électricité** bat Eau & Roche (faiblit vs Plante), **Roche** bat Feu (faiblit vs Eau & Plante ; Plante résiste à l'Électricité) ; `normal` neutre. Physique ×2/×0.5, magie ×1.5/×0.67.
+- [x] ✅ **Stats & croissance** (`Monster.ts`) : `HIT_DICE` electric 8 / rock 10 ; archetypes electric `+3 Vit +3 Int +1 For +1 Con`, rock `+3 Con +3 For +1 Vit +1 Int`.
+- [x] ✅ **Moves** (`MoveRepositories.ts`) : élec — Éclair p60 magie / Tonnerre p80 magie / Orage p120 magie cd2 ; roche — Écrasement p45 phys / Bloc Roc p75 phys / Tremblement p120 phys cd2.
+- [x] ✅ **Régions & ennemis** (`Region.ts`, `RandomEnemyFactory.ts`) : Abysse + electric, Braise + rock, Céleste = 6 types ; pools de noms (Volt/Sparc…, Gran/Crag…), sprites placeholders.
+- [x] ✅ **Starters** (`StarterCatalog.ts`) : **Voltis** (electric : 10/16/8/15/10/9) et **Cairnox** (rock : 16/7/15/8/10/9) → 5 cartes dans `MonsterSelector`.
+- [x] ✅ **Sprites SVG** (`SpriteDisplayer.svelte`) : palettes, silhouettes et détails distincts (crête d'ions + queue-éclair ; cristaux + poings rocheux).
+- [x] ✅ **UI** (`typeColors.ts`) : couleurs/ombres/ambiances + icônes ⚡🪨 (badges de la carte et des moves).
+- Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test (chart physique/magie, symétrie des paires, moves, 5 starters, spawn élec/roche, 4 moves/starters) → 39 assertions OK.
+
+---
+
 ## 0. Moteur de combat migré vers les règles D&D — ✅ FAIT (2026-09)
 
 Le moteur de combat a été réécrit pour suivre les règles de l'app `dnd` (`backend/` Go) :
@@ -69,11 +140,11 @@ Refactor Clean Architecture avec injection de dépendance (composition root + po
   2. **application d'effets** (mutation des monstres) — `applyHeal`, `applyBuff`, `manageCooldowns`, `applyDefeatRewards` ; `Monster` gagne `heal()` / `resetCooldowns()` ;
   3. **orchestration** — `executeTurn` → `{ logs, feedback }`.
   Le générateur de dés (`Dice`) est **injectable** pour des tests déterministes.
-- [x] ✅ **`BattleController` extrait** (`core/services/BattleController.ts`) : IA ennemie (`selectEnemyMove`), tour (`playTurn`), spawn des ennemis (`spawnNextEnemy`), progression de run (`handlePlayerVictory`, `applyRelic`, `grantRelic`). **Testable sans Svelte** — ses dépendances (engine, ports, `random`) sont injectées.
+- [x] ✅ **`BattleController` extrait** (`core/services/BattleController.ts`) : IA ennemie (`selectEnemyMove`), tour (`playTurn`), spawn des ennemis (`enterWildCombat` / `enterBossCombat`), progression de run (`handlePlayerVictory`, `applyRelic`, `grantRelic`). **Testable sans Svelte** — ses dépendances (engine, ports, `random`) sont injectées.
 - [x] ✅ **Store allégé** (`battleStore.ts`) : ne garde que l'état (`Writable`), les timers d'animation et la liaison UI ; il délègue toute la logique au contrôleur.
 - [x] ✅ **`BattleState` / `RunState` unifiés** dans `core/entities/BattleState.ts` (doublon store/entities éliminé, cf. §2).
 - [x] ✅ **Séparation `MonsterRepositories` → `StarterCatalog` + `RandomEnemyFactory`** : starters fixes vs génération procédurale (+ boss) ; instanciation commune dans `monsterFactory.ts` ; cast `as any` supprimé (signature `Pick<Monster, 'type' | 'level'>`).
-- [x] ✅ **Code mort supprimé** : `getStarter()` / `getMonsterById()`. `getAllMonsters()` (3 monstres aléatoires, sémantique trompeuse) remplacé par `StarterCatalog.getAll()` qui renvoie bien **les 3 starters définis**.
+- [x] ✅ **Code mort supprimé** : `getStarter()` / `getMonsterById()`. `getAllMonsters()` (3 monstres aléatoires, sémantique trompeuse) remplacé par `StarterCatalog.getAll()` qui renvoie bien **les 5 starters définis**.
 - [x] ✅ **Injection de dépendance** : composition root `src/lib/container.ts` (seul endroit qui instancie/câble les concrètes), ports `core/services/ports.ts` (`MoveProvider`, `EnemyFactory`) ; store et contrôleur reçoivent leurs dépendances par constructeur.
 - [x] ✅ Helpers de reliques extraits (`relicDamagePercent` / `relicLifestealPercent` / `relicHealStartPercent`, `rollRelicOffers(count, random)`).
 - ✅ Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK.
@@ -96,7 +167,7 @@ Périmètre validé : **rebalance moteur + IA + initiative + XP par rang + indic
 Les items « grosse feature » (armure/loot, apprentissage de moves, potions/banque, revanche, variété visuelle) restent **hors périmètre actuel** (voir cases non cochées).
 
 - [x] ✅ **Rebalance du moteur d20** (cf. §0) :
-  - **PV** : facteur `1.8 + level × 0.85` (`Monster.calculateMaxHp`). Les 3 starters ~48–72 PV au niveau 5.
+  - **PV** : facteur `1.8 + level × 0.85` (`Monster.calculateMaxHp`). Les starters ~48–72 PV au niveau 5.
   - **Physique** : `powerToDie` recalibré vers le haut (`<40→6, <60→8, <80→10, <110→12, sinon 20`) + **bonus plat `floor(power/10)`** ajouté aux dégâts ; desc des logs `NdS+flat` (`BattleEngine.powerToDie` / `movePowerFlat` / `rollDamage`).
   - **Magie** : multiplicateur de type **dampé** — physique ×2/×0.5, magie ×1.5/×0.67 (`effectiveiveness.ts`, `typeEffectiveness(moveType, defenderType, isPhysical)`). `BattleEngine.typeMultiplier(moveType, defenderType, isPhysical = true)` délègue à cette table, **partagée avec l'IA et l'UI** (source unique).
 - [x] ✅ **Initiative** : règle D&D `1d20 + mod(Vitesse)` par camp (égalité → le joueur). `BattleController.resolveRound({ player, enemy, move, … })` résout le round COMPLET dans l'ordre (`{ playerFirst, playerInitiative, enemyInitiative, playerTurn, enemyTurn, winner, logs }`) ; le tour du perdant est annulé s'il est déjà K.O. Un même `Dice` est partagé entre engine et controller (`container.ts`).
@@ -136,9 +207,8 @@ Les items « grosse feature » (armure/loot, apprentissage de moves, potions/ban
 - Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK.
 
 ### À faire
-- [ ] Langue mixte FR/EN (logs en français, boutons « Summon Champion », « Engage », « Select Entity »…) → définir une locale unique.
-- [ ] `MonsterSelector` : `<option value={monster}>` avec objets (les starters sont désormais stables via `StarterCatalog`, mais instables en identité à chaque instanciation). Sélectionner par `id` (string) et garder les monstres en mémoire.
-- [ ] `option value={undefined} selected` peut se comporter bizarrement (placeholder jamais désélectionné) → gérer un état null explicite.
+- [ ] Langue mixte FR/EN (logs FR, « Game Over », « Waiting for combatant... », « HP », « READY ») → définir une locale unique.
+- [ ] `MonsterSelector` (désormais en cartes `<button>`) : la sélection compare les monstres **par référence** → instable à chaque remount de `Home`. Sélectionner par `id` (string) et conserver les monstres en mémoire.
 - [ ] Accessibilité : `aria-disabled`/`aria-live` pour le journal de combat, focus sur le premier move actif, contrastes.
 - [x] ✅ **Layout mobile** : le sélecteur de monstre (`MonsterSelector`) est désormais intégré dans le flux centré de l'écran starter (plus d'overlay `absolute -bottom-24` fragile).
 - [x] ✅ **Index.html** : `lang="fr"`, titre « Battle Monster », favicon inline (l'ancien `/vite.svg` → erreur 404), `viewport-fit=cover` + `theme-color`.
@@ -185,7 +255,7 @@ Synthèse issue de la revue de l'app entière (Svelte 5 / TS / Tailwind 4, clean
 ### Fiabilité & corrections (P0)
 - [x] ✅ **Annuler les timers de round du store** : `battleStore._enemyLater` / `_playerLater` / `_endAnimLater` passent par `_later()` (file annulable `pendingTimers`), plus un `_clearTimers()` (replays + feedback) appelé à `startRun`/`newRun`/`loadSaved`/`deleteSave` — plus de pollution d'un nouveau run par un timer en vol. *(Réglé avec la persistance §6.)*
 - [ ] **Supprimer le code mort** : `MoveRepository.getMoveById/getMoveByName/getAllMoves/getMovesByType` (`MoveRepositories.ts:59-90`) jamais appelés ; `styles.winner` (`style.ts:44-56`) inutilisé (la victoire passe par les phases `relic`/`regionClear`/`victory`).
-- [ ] **Textures distantes** : `style.ts:41` et `MonsterSelector.svelte:52` chargent `https://www.transparenttextures.com/...` → dépendance réseau externe (rendu dépendant du réseau, offline cassé). Remplacer par un motif inline (data-URI/CSS).
+- [x] ✅ **Textures distantes supprimées** : les URLs `transparenttextures.com` ne sont plus chargées (motif inline `sel-pattern` dans `MonsterSelector`, pointillé SVG dans `MapView`) — plus de dépendance réseau pour le rendu.
 - [ ] **Disposer `trailTimer`** dans `HealthBar.svelte` (jamais nettoyé, mineur).
 - [ ] **Shuffle uniforme** : `monsterFactory.ts` `sort(() => 0.5 - random())` est biaisé → Fisher–Yates.
 
@@ -210,3 +280,44 @@ Synthèse issue de la revue de l'app entière (Svelte 5 / TS / Tailwind 4, clean
 - [ ] **Restes template** : `src/lib/Counter.svelte`, `src/assets/svelte.svg` (déjà §2).
 - [ ] **Tests Vitest** (déjà §4) — prioriser `resolveRound`/initiative, `selectEnemyMove` (IA), `battleStore` avec timers mockés.
 - [ ] **ESLint + Prettier** (déjà §8).
+
+---
+
+## 14. Types de monstres sur la carte — ✅ FAIT (2026-09)
+
+- [x] ✅ **`MapNode.enemyType`** (`RegionMap.ts`) : chaque nœud **combat** porte le type de son monstre gardien, tiré parmi `RegionDef.types` de la région (`rollEnemyType` dans `generateRegionMap`) — les nœuds soin/boutique n'en ont pas.
+- [x] ✅ **Spawn cohérent** : `BattleController.enterWildCombat(player, run, { type })` accepte un type forcé ; `battleStore.chooseNode` le transmet depuis le nœud, et `loadSaved` **re-spawn le même type** que le nœud choisi.
+- [x] ✅ **UI** (`MapView.svelte`) : les nœuds combat affichent l'**icône du type** (🔥💧🌿✊) + libellé « ⚔️ Feu » ; les couches passées restent en ✓ vert.
+- Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test (tous les combats typés parmi les types région, soins/boutiques sans type, 1er nœud combat typé, spawn + re-spawn fidèles au type du nœud) OK.
+
+---
+
+## 13. Précision inversée à la puissance — ✅ FAIT (2026-09)
+
+- [x] ✅ **Les attaques faibles touchent plus que les fortes** : `moveAccuracyBonus(move) = max(0, floor((120 − power)/15))` (`core/entities/Move.ts`, partagé moteur/UI) → p. 30 = **+6**, p. 120+ = **+0**. La précision s'ajoute au jet `1d20` (`resolveAttack`) ; les **dégâts** restent tirés de la puissance (`moveDamageBonus = floor(power/20)`, réservé au physique).
+- [x] ✅ **Magie compensée** : les sorts montent en dégâts avec la puissance — `Savoir × (1 + power/120)` (p. 60 → ×1.5, p. 120 → ×2) au lieu du `×1.5` plat — sinon un sort fort serait **strictement pire** (même dégâts, précision moindre).
+- [x] ✅ **UI** : badge **🎯 +N** sur les cartes de moves (`MoveDisplayer`), logs de jet annotés `précision`.
+- Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test (précision par power, toucher faible > fort sur 20 jets, magie ×1.5/×2, physique puissance) OK.
+
+---
+
+## 12. Rebalance des gains de stats — ✅ FAIT (2026-09)
+
+- [x] ✅ **Croissance par archétype** (`Monster.getStatGrowth`) : seul les 4 stats **à effet de combat** progressent — **Force / Vitesse / Constitution / Intelligence**. **Sagesse & Charisme (sans rôle mécanique) ne montent plus** (−5 à −7 points gaspillés par niveau).
+- [x] ✅ **Profils distincts** : **fire** frappeur rapide `+3 Force, +3 Vit, +2 Int, +1 Con` ; **water** tank `+3 Con, +2 Force, +2 Int, +1 Vit` ; **grass** mage-tank `+3 Int, +2 Con, +2 Vit, +1 Force` ; **normal** polyvalent `+2 ×4`. Budget 8-9 pts/niveau (au lieu de 12-14 dont ~40 % perdu en stats mortes).
+- Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test (croissance par type sur 3 niveaux, sagesse/charisme figés, plein soin au level-up, lecture `getStatGrowth` par les ennemis inchangée) OK.
+
+---
+
+## 11. Carte de région & économie d'or — ✅ FAIT (2026-09)
+
+Progression roguelike revue façon **Slay the Spire** : la carte remplace l'enchaînement fixe des combats sauvages.
+
+- [x] ✅ **Carte de région** (`core/entities/RegionMap.ts`) : `generateRegionMap(layers, random)` déterministe (injectable) — **`RegionDef.mapLayers`** (4 → 5 → 6 → 7 couches, cartes plus grandes en avançant), colonnes `1 → 2 → 3 → 4`, nœuds **combat (60 %) / soin (20 %) / boutique (20 %)** — **la première couche est toujours un combat** — ; **connectivité « ±1 colonne »** (`areLinked`/`reachableCols`) : chaque nœud ne relie que les colonnes voisines de la couche suivante ; la dernière couche traversée déclenche le **boss**.
+- [x] ✅ **`RunState` restructuré** (`core/entities/BattleState.ts`) : `encounterIndex` remplacé par `map` / `mapLayer` / `gold` / `shopStock` / `bossBattle` ; phases **`map`** et **`shop`** ajoutées.
+- [x] ✅ **Économie** : combat sauvage → `8 + niveau` 💰, boss → `60` 💰 (`BattleController.handlePlayerVictory` + logs « 💰 ») ; or cumulé entre les régions.
+- [x] ✅ **Boutique** (`Relic.rollShopStock` : **3** reliques prixées 50-85 💰 + potion soin 30 💰) — chaque relique du catalogue a son `price` (50 à 85) ; achat déduit l'or, `grantRelic` conserve la phase `shop` ; « Poursuivre → » avance sur la carte. *(Le stock à 3 vs « 2 » annoncé plus tôt et la tension avec l'économie d'or sont à re-trancher — cf. §16 P1.)*
+- [x] ✅ **Store** (`battleStore.ts`) : `chooseNode` (combat/soin/+50 % PV/boutique), `buyShopItem`, `leaveShop`, `_advanceMap` (couche suivante ou boss), `pickRelic`/`skipRelic`/`advanceRegion` avancent désormais via la carte ; `loadSaved` re-spawn sauvage/boss selon `run.bossBattle`.
+- [x] ✅ **UI** : **`MapView.svelte` refait en SVG** (fond dégradé + points, dégradés radiaux par type, **liens du graphe réel** : vert **gras = passage pris**, ambre = **options atteignables** depuis votre position, gris fin = liens futurs), nœuds **verrouillés si trop loin** (grisés, non cliquables) et **halo pulsant** sur les seuls nœuds accessibles, couches passées en ✓ vert (le **nœud pris** marqué plus fort), 👑 **BOSS DE RÉGION** en bout avec pulsation quand il devient accessible), `ShopView.svelte` (cartouches Acheter/Acheté, prix, Poursuivre →), `RunHud` (jalons couche + 💰 or malgré le ⭐ score), `App.svelte` (phases `map`/`shop` à la place de l'arène) + `RunState.path` (colonnes réellement choisies, **SAVE_VERSION 3**).
+- [x] ✅ **Persistance v2** : `SAVE_VERSION` 1 → 2 ; `LocalStorageRunRepository.load()` **purge** une sauvegarde d'ancien format.
+- ✅ Vérifié : `bun run check` → 0 erreur / 0 warning, `bun run build` OK, smoke test headless (42 assertions : carte déterministe, stock boutique, startRun→map, spawn wild/boss, soin +50 %, achat potion/relique, re-achat bloqué, fin de carte→boss, re-spawn `loadSaved`, invalidation v1) OK.

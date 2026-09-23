@@ -36,6 +36,16 @@
       highlight: "#BBE8A6", stroke: "#1C4A1B",
       accent: "#FFD977", accentDeep: "#E6A422", glow: "rgba(130,205,115,0.45)",
     },
+    electric: {
+      base: "#F4D03F", mid: "#E0A90E", shadow: "#8E6B00",
+      highlight: "#FFF3A6", stroke: "#5F4700",
+      accent: "#7FD8FF", accentDeep: "#2FA8E0", glow: "rgba(250,204,21,0.5)",
+    },
+    rock: {
+      base: "#A89F91", mid: "#7E7466", shadow: "#4F473C",
+      highlight: "#D8CFC2", stroke: "#2F2A22",
+      accent: "#E8C073", accentDeep: "#A97A26", glow: "rgba(168,159,145,0.45)",
+    },
     normal: {
       base: "#DCCBB9", mid: "#B79C86", shadow: "#7E6650",
       highlight: "#F3E9DD", stroke: "#47342A",
@@ -72,6 +82,8 @@
       case 'fire':  return { cy: 150, rx: 42, ry: 46, eyeY: 134 }; // dragon dressé
       case 'water': return { cy: 160, rx: 46, ry: 36, eyeY: 148 }; // nageur bas
       case 'grass': return { cy: 148, rx: 40, ry: 46, eyeY: 130 }; // poire feuillue
+      case 'electric': return { cy: 148, rx: 40, ry: 46, eyeY: 132 }; // créature étincelante
+      case 'rock': return { cy: 160, rx: 52, ry: 42, eyeY: 148 }; // colosse de pierre
       default:      return { cy: 150, rx: 38, ry: 44, eyeY: 134 }; // boule de poils
     }
   })();
@@ -174,6 +186,31 @@
           <path d="M 100 106 C 90 92 88 76 96 70 C 98 82 100 94 104 106 Z" fill="url(#{gid}-accent)" stroke={palette.stroke} stroke-width="2" />
           <path d="M 98 106 C 86 98 78 84 82 76 C 90 84 96 94 102 106 Z" fill={palette.mid} stroke={palette.stroke} stroke-width="2" />
 
+        {:else if t === 'electric'}
+          <!-- Crête d'ions (éclairs arrière) -->
+          <g class={isFast ? 'wing-flap' : ''} fill={palette.accent} stroke={palette.stroke} stroke-width="2">
+            <path d="M 84 122 L 78 102 L 92 112 L 86 90 L 100 106 L 96 84 L 108 102 Z" />
+            <path d="M 116 122 L 122 102 L 108 112 L 114 90 L 100 106 L 104 84 L 92 102 Z" />
+          </g>
+          <!-- Queue-éclair -->
+          <g class="tail-sway">
+            <path d="M 120 156 C 142 158 152 150 158 138 C 148 146 142 152 128 156 C 140 154 136 166 122 168 Z"
+                  fill={palette.accent} stroke={palette.stroke} stroke-width="2" />
+          </g>
+
+        {:else if t === 'rock'}
+          <!-- Cristaux dorsaux -->
+          <g fill={palette.accent} stroke={palette.stroke} stroke-width="2">
+            <path d="M 84 118 L 78 94 L 93 108 Z" />
+            <path d="M 100 112 L 99 86 L 109 104 Z" />
+            <path d="M 116 118 L 124 96 L 118 112 Z" />
+          </g>
+          <!-- Queue-bloc -->
+          <g class="tail-sway">
+            <path d="M 116 162 C 140 160 154 168 152 180 C 138 172 128 164 114 166 Z"
+                  fill={palette.mid} stroke={palette.stroke} stroke-width="2.5" />
+          </g>
+
         {:else}
           <!-- Oreilles duveteuses (normal) -->
           <path d="M 78 122 C 64 102 66 84 78 76 C 82 92 86 106 90 122 Z"
@@ -211,6 +248,20 @@
                      C {cx} {cy + ryM * 1.15} {cx + rxM * 0.7} {cy + ryM * 0.5}
                      C {cx + rxM * 0.45} {cy + ryM * 0.2} {cx - rxM * 0.45} {cy + ryM * 0.2} Z"
                      fill={palette.accent} opacity="0.5" />
+          {:else if t === 'electric'}
+            <ellipse cx={cx} cy={cy} rx={rxM} ry={ryM}
+                     fill="url(#{gid}-body)" stroke={palette.stroke} stroke-width="3" filter="url(#{gid}-shadow)" />
+            <!-- Ventre zébré (électrique) -->
+            <path d="M {cx - rxM * 0.7} {cy + ryM * 0.5}
+                     C {cx} {cy + ryM * 1.15} {cx + rxM * 0.7} {cy + ryM * 0.5}
+                     C {cx + rxM * 0.45} {cy + ryM * 0.2} {cx - rxM * 0.45} {cy + ryM * 0.2} Z"
+                     fill={palette.highlight} opacity="0.55" />
+          {:else if t === 'rock'}
+            <ellipse cx={cx} cy={cy} rx={rxM} ry={ryM}
+                     fill="url(#{gid}-body)" stroke={palette.stroke} stroke-width="3" filter="url(#{gid}-shadow)" />
+            <!-- Ventre fissuré -->
+            <path d="M {cx - rxM * 0.62} {cy + ryM * 0.35} l 12 6 l -2 12 l 14 7 l -6 2 l -16 -9 Z"
+                  fill={palette.shadow} opacity="0.5" />
           {:else}
             <ellipse cx={cx} cy={cy} rx={rxM} ry={ryM}
                      fill="url(#{gid}-body)" stroke={palette.stroke} stroke-width="3" filter="url(#{gid}-shadow)" />
@@ -245,6 +296,22 @@
           <!-- Nageoires avant (données par le corps, petits reflets) -->
           <circle cx="70" cy="150" r="3.5" fill={palette.highlight} opacity="0.8" />
           <circle cx="132" cy="152" r="3" fill={palette.highlight} opacity="0.8" />
+        {:else if t === 'electric'}
+          <!-- Petites pattes + étincelles -->
+          <g fill={palette.shadow} stroke={palette.stroke} stroke-width="2.5">
+            <ellipse cx="86" cy="188" rx="9" ry="6" />
+            <ellipse cx="114" cy="188" rx="9" ry="6" />
+          </g>
+          <g fill={palette.accent} opacity="0.9">
+            <path d="M 88 168 l -6 8 l 5 1 l -4 8 l 9 -8 l -5 -1 l 6 -8 Z" />
+            <path d="M 112 168 l 6 8 l -5 1 l 4 8 l -9 -8 l 5 -1 l -6 -8 Z" />
+          </g>
+        {:else if t === 'rock'}
+          <!-- Poings rocheux -->
+          <g fill={palette.base} stroke={palette.stroke} stroke-width="2.5">
+            <path d="M 72 158 C 60 160 56 172 62 182 C 72 180 80 170 82 160 Z" />
+            <path d="M 128 158 C 140 160 144 172 138 182 C 128 180 120 170 118 160 Z" />
+          </g>
         {:else}
           <!-- Pattes de boule de poils -->
           <g fill={palette.shadow} stroke={palette.stroke} stroke-width="2.5">
@@ -351,6 +418,25 @@
           <!-- Baies / narines -->
           <circle cx={cx - 6} cy={mouthY - 6} r="3.2" fill={palette.accentDeep} />
           <circle cx={cx + 6} cy={mouthY - 6} r="3.2" fill={palette.accentDeep} />
+        {:else if t === 'electric'}
+          <!-- Narines -->
+          <ellipse cx={cx - 5} cy={mouthY - 6} rx="2" ry="2.6" fill={palette.stroke} opacity="0.65" />
+          <ellipse cx={cx + 5} cy={mouthY - 6} rx="2" ry="2.6" fill={palette.stroke} opacity="0.65" />
+          <!-- Étincelles -->
+          <g fill={palette.accent} opacity="0.9">
+            <circle cx="70" cy="120" r="2.5" />
+            <circle cx="132" cy="124" r="2" />
+            <path d="M 100 96 l -3 -6 l 6 -2 l -7 -3 l 8 -4 Z" fill={palette.highlight} opacity="0.8" />
+          </g>
+        {:else if t === 'rock'}
+          <!-- Narines -->
+          <ellipse cx={cx - 5} cy={mouthY - 6} rx="2" ry="2.6" fill={palette.stroke} opacity="0.65" />
+          <ellipse cx={cx + 5} cy={mouthY - 6} rx="2" ry="2.6" fill={palette.stroke} opacity="0.65" />
+          <!-- Veines de la roche -->
+          <g stroke={palette.accentDeep} stroke-width="1.5" opacity="0.7">
+            <path d="M {cx + 18} {cy - ryM * 0.4} l 8 4 l -4 7" fill="none" />
+            <path d="M {cx - 22} {cy + ryM * 0.2} l -7 3" fill="none" />
+          </g>
         {:else}
           <!-- Narines -->
           <ellipse cx={cx - 5} cy={mouthY - 6} rx="2" ry="2.6" fill={palette.stroke} opacity="0.65" />

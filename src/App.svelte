@@ -5,7 +5,10 @@
   import MoveDisplayer from "./lib/components/atoms/MoveDisplayer.svelte";
   import RunHud from "./lib/components/atoms/RunHud.svelte";
   import RelicChooser from "./lib/components/atoms/RelicChooser.svelte";
+  import MapView from "./lib/components/atoms/MapView.svelte";
+  import ShopView from "./lib/components/atoms/ShopView.svelte";
   import { styles } from "./lib/styles/style";
+  import { REGION_COLORS } from "./lib/styles/regionColors";
 
   import type { Monster } from "./core/entities/Monster";
   import { REGIONS } from "./core/entities/Region";
@@ -18,6 +21,8 @@
   $: phase = run.phase;
   $: player = $battleStore.playerMonster;
   $: region = REGIONS[run.regionIndex];
+  // Palette de l'arène = couleurs de la région courante (partagées avec le HUD).
+  $: regionColors = REGION_COLORS[region.id] ?? REGION_COLORS["region-verdure"];
 
   // Menu titre : si une partie est sauvegardée → bouton « Continuer ».
   $: saveInfo = $savedRun ? battleStore.getSaveInfo() : null;
@@ -82,13 +87,33 @@
     <!-- En cours de run -->
     <RunHud
       regionIndex={run.regionIndex}
-      encounterIndex={run.encounterIndex}
+      mapLayer={run.mapLayer}
+      mapLayers={run.map?.layers.length ?? 0}
       relics={run.relics}
       score={run.score}
+      gold={run.gold}
       isBossFight={$battleStore.isBossFight}
     />
 
-    <div class={styles.layout.arena}>
+    {#if phase === "map"}
+      <MapView
+        map={run.map!}
+        currentLayer={run.mapLayer}
+        path={run.path}
+        onNodeSelect={(col) => battleStore.chooseNode(col)}
+      />
+    {:else if phase === "shop"}
+      <ShopView
+        stock={run.shopStock}
+        gold={run.gold}
+        onBuy={(item) => battleStore.buyShopItem(item)}
+        onLeave={() => battleStore.leaveShop()}
+      />
+    {:else}
+    <div
+      class="{styles.layout.arena} {regionColors.border}"
+      style={regionColors.arenaBg}
+    >
       <span
         class="absolute top-2 left-2 z-10 font-mono font-bold uppercase tracking-widest
           text-[10px] text-sky-300 border border-sky-400/40 bg-sky-950/60 rounded px-1.5 py-0.5"
@@ -179,6 +204,7 @@
         </div>
       </div>
     </div>
+    {/if}
   {/if}
 </main>
 

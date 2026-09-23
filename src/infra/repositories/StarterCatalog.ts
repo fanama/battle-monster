@@ -6,7 +6,7 @@ import { createMonsterFromDefinition, type MonsterDefinition } from './monsterFa
 import FireImage from '../../assets/monster_1.png';
 import WaterImage from '../../assets/monster_2.png';
 
-/** Les 3 starters définis (sélection roguelike) — fixes, pas de hasard. */
+/** Les 5 starters définis (sélection roguelike) — fixes, pas de hasard. */
 const STARTER_DEFINITIONS: MonsterDefinition[] = [
   {
     id: '1',
@@ -31,12 +31,28 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     level: 5,
     image: WaterImage, // Placeholder
     stats: { strength: 12, speed: 8, constitution: 14, intelligence: 10, charisma: 12, wisdom: 16 }
+  },
+  {
+    id: '4',
+    name: 'Voltis',
+    type: 'electric',
+    level: 5,
+    image: FireImage, // Placeholder
+    stats: { strength: 10, speed: 16, constitution: 8, intelligence: 15, charisma: 10, wisdom: 9 }
+  },
+  {
+    id: '5',
+    name: 'Cairnox',
+    type: 'rock',
+    level: 5,
+    image: WaterImage, // Placeholder
+    stats: { strength: 16, speed: 7, constitution: 15, intelligence: 8, charisma: 10, wisdom: 9 }
   }
 ];
 
 /**
  * Catalogue des monstres de départ (choix du run). Ne génère rien au hasard :
- * retourne toujours le trio de starters défini. Dépendances injectées :
+ * retourne toujours le quintet de starters défini. Dépendances injectées :
  * `MoveProvider` (moves éligibles) et `random` (tirage des moves).
  */
 export class StarterCatalog {
@@ -48,7 +64,7 @@ export class StarterCatalog {
     this.random = random;
   }
 
-  /** Les 3 starters, chacun avec 4 moves tirés parmi ses moves éligibles. */
+  /** Les 5 starters, chacun avec 4 moves tirés parmi ses moves éligibles. */
   getAll(): Monster[] {
     return STARTER_DEFINITIONS.map(def => createMonsterFromDefinition(def, this.moveProvider, this.random));
   }
