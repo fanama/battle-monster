@@ -92,8 +92,8 @@
   $: ryM = layout.ry * sizeMod;
   $: headTopY = cy - ryM;
 
-  // --- Expression (intelligence = yeux, force = sourcils, charisme = joues) ---
-  $: eyeR = 8.5 * (0.85 + monster.intelligence * 0.04);
+  // --- Expression (instinct = yeux, force = sourcils, charisme = joues) ---
+  $: eyeR = 8.5 * (0.85 + monster.wisdom * 0.04);
   $: isAngry = monster.strength > 14;
   $: isGrumpy = monster.strength > 11 && monster.charisma <= 10;
   $: isHappy = monster.charisma > 12;

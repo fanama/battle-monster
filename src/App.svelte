@@ -7,6 +7,7 @@
   import RelicChooser from "./lib/components/atoms/RelicChooser.svelte";
   import MapView from "./lib/components/atoms/MapView.svelte";
   import ShopView from "./lib/components/atoms/ShopView.svelte";
+  import ChampionCard from "./lib/components/molecules/ChampionCard.svelte";
   import { styles } from "./lib/styles/style";
   import { REGION_COLORS } from "./lib/styles/regionColors";
 
@@ -96,12 +97,19 @@
     />
 
     {#if phase === "map"}
-      <MapView
-        map={run.map!}
-        currentLayer={run.mapLayer}
-        path={run.path}
-        onNodeSelect={(col) => battleStore.chooseNode(col)}
-      />
+      <div class="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
+        <div class="w-full md:w-auto min-w-[320px] max-w-[640px]">
+          <MapView
+            map={run.map!}
+            currentLayer={run.mapLayer}
+            path={run.path}
+            onNodeSelect={(col) => battleStore.chooseNode(col)}
+          />
+        </div>
+        <div class="w-full md:w-auto md:min-w-[320px] md:max-w-[440px]">
+          <ChampionCard monster={player} />
+        </div>
+      </div>
     {:else if phase === "shop"}
       <ShopView
         stock={run.shopStock}

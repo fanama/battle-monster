@@ -14,8 +14,10 @@
       return { label: 'Vitesse', chip: 'text-sky-200 border-sky-500/50 bg-sky-950/60', card: 'border-sky-500/60 hover:border-sky-400 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)]' };
     if (e.stat?.constitution)
       return { label: 'Constitution', chip: 'text-emerald-200 border-emerald-500/50 bg-emerald-950/60', card: 'border-emerald-500/60 hover:border-emerald-400 hover:shadow-[0_0_16px_rgba(52,211,153,0.35)]' };
-    if (e.stat?.intelligence)
+    if (e.stat?.wisdom)
       return { label: 'Savoir', chip: 'text-violet-200 border-violet-500/50 bg-violet-950/60', card: 'border-violet-500/60 hover:border-violet-400 hover:shadow-[0_0_16px_rgba(167,139,250,0.35)]' };
+    if (e.stat?.instinct)
+      return { label: 'Instinct', chip: 'text-amber-200 border-amber-500/50 bg-amber-950/60', card: 'border-amber-500/60 hover:border-amber-400 hover:shadow-[0_0_16px_rgba(251,191,36,0.35)]' };
     if (e.acBonus)
       return { label: 'Armure', chip: 'text-indigo-200 border-indigo-500/50 bg-indigo-950/60', card: 'border-indigo-500/60 hover:border-indigo-400 hover:shadow-[0_0_16px_rgba(129,140,248,0.35)]' };
     if (e.healStartPercent)

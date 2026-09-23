@@ -3,8 +3,8 @@
   import type { MonsterStat } from "../../../core/entities/Move";
   import { STAT_LABELS, TYPE_LABELS } from "../../../core/entities/Move";
   import { abilityModifier } from "../../../core/entities/Monster";
-  import HealthBar from "./HealthBar.svelte";
-  import SpriteDisplayer from "./SpriteDisplayer.svelte";
+  import HealthBar from "../atoms/HealthBar.svelte";
+  import SpriteDisplayer from "../atoms/SpriteDisplayer.svelte";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import { monsterStyles } from "../../styles/monsterStyles";
 

@@ -18,9 +18,9 @@
     strength: { color: 'text-red-300', bar: 'from-red-500 to-rose-400' },
     speed: { color: 'text-sky-300', bar: 'from-sky-500 to-cyan-400' },
     constitution: { color: 'text-emerald-300', bar: 'from-emerald-500 to-green-400' },
-    intelligence: { color: 'text-violet-300', bar: 'from-violet-500 to-purple-400' },
     charisma: { color: 'text-amber-300', bar: 'from-amber-500 to-yellow-400' },
-    wisdom: { color: 'text-teal-300', bar: 'from-teal-500 to-cyan-400' },
+    wisdom: { color: 'text-violet-300', bar: 'from-violet-500 to-purple-400' },
+    instinct: { color: 'text-cyan-300', bar: 'from-cyan-500 to-sky-400' },
   };
 
   const ui = {

@@ -1,8 +1,8 @@
-import type { Monster, MonsterRank } from '../entities/Monster';
-import { abilityModifier } from '../entities/Monster';
-import type { Move, MonsterStat, MonsterType } from '../entities/Move';
-import { STAT_LABELS, moveAccuracyBonus } from '../entities/Move';
-import { typeEffectiveness } from './effectiveness';
+import type { Monster, MonsterRank } from "../entities/Monster";
+import { abilityModifier } from "../entities/Monster";
+import type { Move, MonsterStat, MonsterType } from "../entities/Move";
+import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
+import { typeEffectiveness } from "./effectiveness";
 
 export interface BattleLog {
   message: string;
@@ -16,7 +16,7 @@ export interface BattleLog {
  * Structured visual feedback for the UI (floating numbers, flashes, shakes).
  */
 export interface CombatFeedback {
-  kind: 'damage' | 'heal' | 'buff' | 'fumble' | 'miss' | 'none';
+  kind: "damage" | "heal" | "buff" | "fumble" | "miss" | "none";
   damage: number;
   isCrit: boolean;
 }
@@ -139,8 +139,13 @@ export class BattleEngine {
    *  - Le bonus de précision (`moveAccuracyBonus`) est INVERSÉ à la puissance :
    *    les attaques faibles touchent plus facilement que les puissantes.
    */
-  resolveAttack(attacker: Monster, defender: Monster, move: Move, critRange = 1): AttackOutcome {
-    const attackStat = move.isPhysical ? attacker.strength : attacker.intelligence;
+  resolveAttack(
+    attacker: Monster,
+    defender: Monster,
+    move: Move,
+    critRange = 1,
+  ): AttackOutcome {
+    const attackStat = move.isPhysical ? attacker.strength : attacker.charisma;
     const attackMod = abilityModifier(attackStat);
     const bonus = moveAccuracyBonus(move);
     const ac = defender.getAC();
@@ -156,35 +161,54 @@ export class BattleEngine {
    * D&D damage roll:
    *  - physique : 1dX + mod(Force) + BonusDégâts (crit : 2dX) — les dégâts
    *    suivent la puissance (dé + terme linéaire), pas la précision.
-   *  - magique :  Savoir(i) × (1 + power/120) (crit : ×2) — la magie monte en
+   *  - magique :  Charisme(i) × (1 + power/120) (crit : ×2) — la magie monte en
    *    puissance avec la move pour contrebalancer sa précision réduite.
    */
   rollDamage(attacker: Monster, move: Move, crit: boolean): DamageRoll {
     if (move.isPhysical) {
       const sides = powerToDie(move.power);
       const count = crit ? 2 : 1;
-      const total = this.dice.roll(count, sides)
-        + movePowerFlat(move)
-        + abilityModifier(attacker.strength)
-        + moveDamageBonus(move);
-      return { desc: `${count}d${sides}+${movePowerFlat(move)}`, total: Math.max(1, total) };
+      const total =
+        this.dice.roll(count, sides) +
+        movePowerFlat(move) +
+        abilityModifier(attacker.strength) +
+        moveDamageBonus(move);
+      return {
+        desc: `${count}d${sides}+${movePowerFlat(move)}`,
+        total: Math.max(1, total),
+      };
     }
     const factor = 1 + move.power / 120;
-    const total = attacker.intelligence * factor * (crit ? 2 : 1);
-    return { desc: crit ? `Savoir ×${(factor * 2).toFixed(2)}` : `Savoir ×${factor.toFixed(2)}`, total: Math.max(1, total) };
+    const total = attacker.wisdom * factor * (crit ? 2 : 1);
+    return {
+      desc: crit
+        ? `Savoir ×${(factor * 2).toFixed(2)}`
+        : `Savoir ×${factor.toFixed(2)}`,
+      total: Math.max(1, total),
+    };
   }
 
   /**
    * Multiplicateur de type : ×2/×0.5 en physique, ×1.5/×0.67 en magie
    * (dampé pour éviter les one-shots, cf. rebalance §5).
    */
-  typeMultiplier(moveType: MonsterType, defenderType: MonsterType, isPhysical = true): number {
+  typeMultiplier(
+    moveType: MonsterType,
+    defenderType: MonsterType,
+    isPhysical = true,
+  ): number {
     return typeEffectiveness(moveType, defenderType, isPhysical);
   }
 
   /** Dégâts finaux arrondis (multiplicateur de type × modificateurs de run). */
-  computeFinalDamage(rawDamage: number, multiplier: number, modifiers?: BattleModifiers): number {
-    const damageBonusFactor = modifiers?.damagePercent ? 1 + modifiers.damagePercent / 100 : 1;
+  computeFinalDamage(
+    rawDamage: number,
+    multiplier: number,
+    modifiers?: BattleModifiers,
+  ): number {
+    const damageBonusFactor = modifiers?.damagePercent
+      ? 1 + modifiers.damagePercent / 100
+      : 1;
     return Math.max(1, Math.floor(rawDamage * multiplier * damageBonusFactor));
   }
 
@@ -194,7 +218,7 @@ export class BattleEngine {
     const roll = this.rollDamage(attacker, move, outcome.crit);
     return this.computeFinalDamage(
       roll.total,
-      this.typeMultiplier(move.type, defender.type, move.isPhysical)
+      this.typeMultiplier(move.type, defender.type, move.isPhysical),
     );
   }
 
@@ -209,21 +233,34 @@ export class BattleEngine {
    * ennemis et le garde-fou « min 50 XP » était du code mort (jamais atteint
    * dans le scénario normal de jeu).
    */
-  calculateExperienceGained(attacker: Monster, defender: Monster, experiencePercent = 0): number {
+  calculateExperienceGained(
+    attacker: Monster,
+    defender: Monster,
+    experiencePercent = 0,
+  ): number {
     const baseExperience = 40 + 16 * attacker.level;
     const levelDifference = defender.level - attacker.level;
-    const levelMultiplier = Math.min(2.5, Math.max(0.4, Math.pow(1.5, levelDifference)));
+    const levelMultiplier = Math.min(
+      2.5,
+      Math.max(0.4, Math.pow(1.5, levelDifference)),
+    );
     const rankMultiplier = RANK_XP_MULTIPLIER[defender.rank] ?? 1;
     const relicMultiplier = 1 + experiencePercent / 100;
 
-    return Math.floor(baseExperience * levelMultiplier * rankMultiplier * relicMultiplier);
+    return Math.floor(
+      baseExperience * levelMultiplier * rankMultiplier * relicMultiplier,
+    );
   }
 
   // --- 2. Application des effets (mutation des monstres) ---
 
   /** Soin (règle potion D&D) : 2d4 + mod(Constitution), plafonné aux PV max. */
   applyHeal(attacker: Monster, move: Move): number {
-    const healAmount = Math.max(1, this.dice.roll(2, 4) + abilityModifier(attacker.constitution));
+    const healAmount = Math.max(
+      1,
+      this.dice.roll(attacker.level + 1, 4) +
+        abilityModifier(attacker.constitution),
+    );
     attacker.heal(healAmount);
     return healAmount;
   }
@@ -238,7 +275,7 @@ export class BattleEngine {
 
   /** Cooldowns : la move utilisée entre en recharge, les autres décrémentent. */
   manageCooldowns(attacker: Monster, usedMove: Move): void {
-    attacker.moves.forEach(move => {
+    attacker.moves.forEach((move) => {
       if (move.id === usedMove.id && move.maxCoolDown) {
         move.coolDown = move.maxCoolDown;
       } else if (move.coolDown && move.coolDown > 0) {
@@ -251,23 +288,37 @@ export class BattleEngine {
   applyDefeatRewards(
     attacker: Monster,
     defender: Monster,
-    experiencePercent?: number
+    experiencePercent?: number,
   ): { leveledUp: boolean; logs: BattleLog[] } {
-    const experience = this.calculateExperienceGained(attacker, defender, experiencePercent);
-    const { leveledUp, logs: expMessages } = attacker.gainExperience(experience);
-    return { leveledUp, logs: expMessages.map(message => ({ message })) };
+    const experience = this.calculateExperienceGained(
+      attacker,
+      defender,
+      experiencePercent,
+    );
+    const { leveledUp, logs: expMessages } =
+      attacker.gainExperience(experience);
+    return { leveledUp, logs: expMessages.map((message) => ({ message })) };
   }
 
   // --- 3. Orchestration du tour ---
 
-  executeTurn(attacker: Monster, defender: Monster, chosenMove: Move, modifiers?: BattleModifiers): TurnResult {
+  executeTurn(
+    attacker: Monster,
+    defender: Monster,
+    chosenMove: Move,
+    modifiers?: BattleModifiers,
+  ): TurnResult {
     const logs: BattleLog[] = [];
-    let feedback: CombatFeedback = { kind: 'none', damage: 0, isCrit: false };
+    let feedback: CombatFeedback = { kind: "none", damage: 0, isCrit: false };
 
     // 1. Validation: Does the monster know the move?
-    const actualMoveInstance = attacker.moves.find(m => m.id === chosenMove.id);
+    const actualMoveInstance = attacker.moves.find(
+      (m) => m.id === chosenMove.id,
+    );
     if (!actualMoveInstance) {
-      logs.push({ message: `Erreur : Le monstre ne connaît pas ce mouvement.` });
+      logs.push({
+        message: `Erreur : Le monstre ne connaît pas ce mouvement.`,
+      });
       return { logs, feedback };
     }
 
@@ -280,39 +331,60 @@ export class BattleEngine {
     }
 
     // 3. Execution Start
-    logs.push({ message: `${attacker.name} utilise ${actualMoveInstance.name}!` });
+    logs.push({
+      message: `${attacker.name} utilise ${actualMoveInstance.name}!`,
+    });
 
     // 4. Damaging move: D&D d20 attack resolution
     let isFumble = false;
     if (actualMoveInstance.power > 0) {
-      const outcome = this.resolveAttack(attacker, defender, actualMoveInstance, modifiers?.critRange ?? 1);
+      const outcome = this.resolveAttack(
+        attacker,
+        defender,
+        actualMoveInstance,
+        modifiers?.critRange ?? 1,
+      );
 
       if (outcome.fumble) {
         isFumble = true;
-        feedback = { kind: 'fumble', damage: 0, isCrit: false };
+        feedback = { kind: "fumble", damage: 0, isCrit: false };
         logs.push({
           message: `❌ ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! [1d20 = 1] ❌ Raté (fumble) !`,
         });
       } else if (outcome.hit) {
-        const roll = this.rollDamage(attacker, actualMoveInstance, outcome.crit);
-        const multiplier = this.typeMultiplier(actualMoveInstance.type, defender.type, actualMoveInstance.isPhysical);
-        const final = this.computeFinalDamage(roll.total, multiplier, modifiers);
+        const roll = this.rollDamage(
+          attacker,
+          actualMoveInstance,
+          outcome.crit,
+        );
+        const multiplier = this.typeMultiplier(
+          actualMoveInstance.type,
+          defender.type,
+          actualMoveInstance.isPhysical,
+        );
+        const final = this.computeFinalDamage(
+          roll.total,
+          multiplier,
+          modifiers,
+        );
         defender.takeDamage(final);
-        feedback = { kind: 'damage', damage: final, isCrit: outcome.crit };
+        feedback = { kind: "damage", damage: final, isCrit: outcome.crit };
 
-        const critMark = outcome.crit ? ' 💥 CRITIQUE !' : '';
-        const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? ' précision' : ''} = ${outcome.total}]`;
-        const effective = multiplier !== 1 ? ` (×${multiplier})` : '';
+        const critMark = outcome.crit ? " 💥 CRITIQUE !" : "";
+        const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}]`;
+        const effective = multiplier !== 1 ? ` (×${multiplier})` : "";
 
         logs.push({
-          message: `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
+          message:
+            `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
             `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${final}.`,
         });
       } else {
-        feedback = { kind: 'miss', damage: 0, isCrit: false };
+        feedback = { kind: "miss", damage: 0, isCrit: false };
         logs.push({
-          message: `❌ ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
-            `Jet [1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? ' précision' : ''} = ${outcome.total}] < CA ${outcome.ac} → Raté !`,
+          message:
+            `❌ ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
+            `Jet [1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}] < CA ${outcome.ac} → Raté !`,
         });
       }
     }
@@ -320,7 +392,7 @@ export class BattleEngine {
     // 5. Healing (self, D&D potion rule): 2d4 + mod(Constitution)
     if (actualMoveInstance.isHeal && !isFumble) {
       const healAmount = this.applyHeal(attacker, actualMoveInstance);
-      feedback = { kind: 'heal', damage: healAmount, isCrit: false };
+      feedback = { kind: "heal", damage: healAmount, isCrit: false };
       logs.push({ message: `🧪 ${attacker.name} récupère ${healAmount} PV !` });
     }
 
@@ -328,7 +400,11 @@ export class BattleEngine {
     if (actualMoveInstance.statBoosts && !isFumble) {
       const stat = this.applyBuff(attacker, actualMoveInstance);
       if (stat) {
-        feedback = { kind: 'buff', damage: actualMoveInstance.statBoosts.value, isCrit: false };
+        feedback = {
+          kind: "buff",
+          damage: actualMoveInstance.statBoosts.value,
+          isCrit: false,
+        };
         logs.push({
           message: `✨ Les statistiques de ${attacker.name} augmentent : +${actualMoveInstance.statBoosts.value} ${STAT_LABELS[stat]} (permanent).`,
         });
@@ -341,8 +417,12 @@ export class BattleEngine {
     // 8. Post-Turn Check
     if (defender.isFainted()) {
       logs.push({ message: `☠️ ${defender.name} est K.O. !` });
-      const { leveledUp, logs: expLogs } = this.applyDefeatRewards(attacker, defender, modifiers?.experiencePercent);
-      expLogs.forEach(log => logs.push(log));
+      const { leveledUp, logs: expLogs } = this.applyDefeatRewards(
+        attacker,
+        defender,
+        modifiers?.experiencePercent,
+      );
+      expLogs.forEach((log) => logs.push(log));
 
       if (leveledUp) {
         logs.push({

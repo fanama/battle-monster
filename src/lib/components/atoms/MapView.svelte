@@ -9,10 +9,10 @@
   export let path: number[] = [];
   export let onNodeSelect: (col: number) => void;
 
-  const W = 440;
+  const W = 600;
   const TOP = 44;
-  const ROW_GAP = 84;
-  const R = 24;
+  const ROW_GAP = 100;
+  const R = 30;
 
   const nodeMeta = {
     combat: { icon: "⚔️", label: "Combat", grad: "url(#grad-combat)", stroke: "#f87171", text: "#fecaca" },

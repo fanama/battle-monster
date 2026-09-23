@@ -84,9 +84,9 @@ export class RandomEnemyFactory implements EnemyFactory {
         strength: Math.floor(8 + this.random() * 7),
         speed: Math.floor(8 + this.random() * 7),
         constitution: Math.floor(8 + this.random() * 7),
-        intelligence: Math.floor(8 + this.random() * 7),
         charisma: Math.floor(8 + this.random() * 7),
-        wisdom: Math.floor(8 + this.random() * 7)
+        wisdom: Math.floor(8 + this.random() * 7),
+        instinct: Math.floor(8 + this.random() * 7)
       }
     };
 

@@ -13,18 +13,18 @@ export type MonsterStat =
   | 'strength'
   | 'speed'
   | 'constitution'
-  | 'intelligence'
   | 'charisma'
-  | 'wisdom';
+  | 'wisdom'
+  | 'instinct';
 
 /** Libellés FR des stats (mécanique + affichage). */
 export const STAT_LABELS: Record<MonsterStat, string> = {
   strength: 'Force',
   speed: 'Vitesse',
   constitution: 'Constitution',
-  intelligence: 'Savoir',
   charisma: 'Charisme',
-  wisdom: 'Instinct',
+  wisdom: 'Savoir',
+  instinct: 'Instinct',
 };
 
 /**

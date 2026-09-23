@@ -12,9 +12,9 @@ export interface MonsterDefinition {
     strength: number;
     speed: number;
     constitution: number;
-    intelligence: number;
     charisma: number;
     wisdom: number;
+    instinct: number;
   };
 }
 
@@ -41,9 +41,9 @@ export function createMonsterFromDefinition(
     def.stats.strength,
     def.stats.speed,
     def.stats.constitution,
-    def.stats.intelligence,
     def.stats.charisma,
     def.stats.wisdom,
+    def.stats.instinct,
     selectedMoves,
     def.image
   );

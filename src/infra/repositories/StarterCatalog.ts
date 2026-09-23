@@ -14,7 +14,7 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     type: 'fire',
     level: 5,
     image: FireImage,
-    stats: { strength: 15, speed: 12, constitution: 10, intelligence: 14, charisma: 8, wisdom: 11 }
+    stats: { strength: 15, speed: 12, constitution: 10, charisma: 8, wisdom: 11, instinct: 0 }
   },
   {
     id: '2',
@@ -22,7 +22,7 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     type: 'water',
     level: 5,
     image: WaterImage,
-    stats: { strength: 10, speed: 9, constitution: 15, intelligence: 11, charisma: 13, wisdom: 14 }
+    stats: { strength: 10, speed: 9, constitution: 15, charisma: 13, wisdom: 14, instinct: 0 }
   },
   {
     id: '3',
@@ -30,7 +30,7 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     type: 'grass',
     level: 5,
     image: WaterImage, // Placeholder
-    stats: { strength: 12, speed: 8, constitution: 14, intelligence: 10, charisma: 12, wisdom: 16 }
+    stats: { strength: 12, speed: 8, constitution: 14, charisma: 12, wisdom: 16, instinct: 0 }
   },
   {
     id: '4',
@@ -38,7 +38,7 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     type: 'electric',
     level: 5,
     image: FireImage, // Placeholder
-    stats: { strength: 10, speed: 16, constitution: 8, intelligence: 15, charisma: 10, wisdom: 9 }
+    stats: { strength: 10, speed: 16, constitution: 8, charisma: 10, wisdom: 9, instinct: 0 }
   },
   {
     id: '5',
@@ -46,7 +46,7 @@ const STARTER_DEFINITIONS: MonsterDefinition[] = [
     type: 'rock',
     level: 5,
     image: WaterImage, // Placeholder
-    stats: { strength: 16, speed: 7, constitution: 15, intelligence: 8, charisma: 10, wisdom: 9 }
+    stats: { strength: 16, speed: 7, constitution: 15, charisma: 10, wisdom: 9, instinct: 0 }
   }
 ];
 

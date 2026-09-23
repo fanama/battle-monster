@@ -297,7 +297,7 @@ export class BattleStore {
 
       if (node.site === 'heal') {
         const player = state.playerMonster;
-        const heal = Math.floor(player.maxHp * 0.5);
+        const heal = Math.floor(player.maxHp * 0.35);
         player.heal(heal);
         return this._advanceMap({
           ...state,

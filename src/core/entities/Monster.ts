@@ -52,9 +52,9 @@ export class Monster {
     public strength: number,
     public speed: number,
     public constitution: number,
-    public intelligence: number,
     public charisma: number,
     public wisdom: number,
+    public instinct: number,
     // Moves and Visuals
     initialMoves: Move[],
     public spriteUrl: string
@@ -139,14 +139,11 @@ export class Monster {
         this.maxHp = this.calculateMaxHp();
         this.currentHp = Math.min(this.currentHp, this.maxHp);
         break;
-      case 'intelligence':
-        this.intelligence += value;
-        break;
       case 'charisma':
         this.charisma += value;
         break;
-      case 'wisdom':
-        this.wisdom += value;
+      case 'instinct':
+        this.instinct += value;
         break;
     }
   }
@@ -192,9 +189,8 @@ export class Monster {
     this.strength += growth.strength;
     this.speed += growth.speed;
     this.constitution += growth.constitution;
-    this.intelligence += growth.intelligence;
-    this.wisdom += growth.wisdom;
     this.charisma += growth.charisma;
+    this.instinct += growth.instinct;
 
     this.maxHp = this.calculateMaxHp();
     this.currentHp = this.maxHp; // Heal to full on level up
@@ -202,32 +198,32 @@ export class Monster {
 
   /**
    * Croissance de stats par type (« archetype ») — rééquilibrée : seule les
-   * stats **à effet de combat** progressent (Force, Vitesse, Constitution,
-   * Intelligence). Sagesse & Charisme n'ont pas de rôle mécanique → plus de
+   * stats **à effet de combat** progressent (Force, Vitesse, Constitution, Charisme).
+   * Instinct n'a pas de rôle mécanique → plus de
    * points gâchés à chaque niveau (cf. rebalance §5/§12).
    *
    * Budget : 8-9 points/niveau répartis en profil distinct par type.
    *  - fire   : frappeur rapide (physique + un peu de magie)
    *  - water  : tanks protégé (PV/constitution, allonge physique)
-   *  - grass  : mage-tank (intelligence, PV, vitesse)
+   *  - grass  : mage-tank (PV, vitesse, magie)
    *  - normal : polyvalent.
    */
   private getStatGrowth(type: MonsterType) {
     switch (type) {
       case 'fire':
-        return { strength: 3, speed: 3, constitution: 1, intelligence: 2, wisdom: 0, charisma: 0 };
+        return { strength: 3, speed: 3, constitution: 1, charisma: 1, instinct: 0 };
       case 'water':
-        return { strength: 2, speed: 1, constitution: 3, intelligence: 2, wisdom: 0, charisma: 0 };
+        return { strength: 2, speed: 1, constitution: 3, charisma: 0, instinct: 0 };
       case 'grass':
-        return { strength: 1, speed: 2, constitution: 2, intelligence: 3, wisdom: 0, charisma: 0 };
+        return { strength: 1, speed: 2, constitution: 2, charisma: 2, instinct: 0 };
       case 'normal':
-        return { strength: 2, speed: 2, constitution: 2, intelligence: 2, wisdom: 0, charisma: 0 };
+        return { strength: 2, speed: 2, constitution: 2, charisma: 1, instinct: 0 };
       case 'electric':
-        return { strength: 1, speed: 3, constitution: 1, intelligence: 3, wisdom: 0, charisma: 0 };
+        return { strength: 1, speed: 3, constitution: 1, charisma: 1, instinct: 0 };
       case 'rock':
-        return { strength: 3, speed: 1, constitution: 3, intelligence: 1, wisdom: 0, charisma: 0 };
+        return { strength: 3, speed: 1, constitution: 3, charisma: 0, instinct: 0 };
       default:
-        return { strength: 1, speed: 1, constitution: 1, intelligence: 1, wisdom: 0, charisma: 0 };
+        return { strength: 1, speed: 1, constitution: 1, charisma: 1, instinct: 0 };
     }
   }
 }
@@ -241,9 +237,9 @@ export interface MonsterSnapshot {
   strength: number;
   speed: number;
   constitution: number;
-  intelligence: number;
   charisma: number;
   wisdom: number;
+  instinct: number;
   moves: Move[];
   spriteUrl: string;
   experience: number;
@@ -267,9 +263,9 @@ export namespace MonsterIO {
       strength: monster.strength,
       speed: monster.speed,
       constitution: monster.constitution,
-      intelligence: monster.intelligence,
       charisma: monster.charisma,
       wisdom: monster.wisdom,
+      instinct: monster.instinct,
       moves: monster.moves.map(move => ({ ...move })),
       spriteUrl: monster.spriteUrl,
       experience: monster.experience,
@@ -293,9 +289,9 @@ export namespace MonsterIO {
       snapshot.strength,
       snapshot.speed,
       snapshot.constitution,
-      snapshot.intelligence,
       snapshot.charisma,
       snapshot.wisdom,
+      snapshot.instinct,
       snapshot.moves,
       snapshot.spriteUrl
     );

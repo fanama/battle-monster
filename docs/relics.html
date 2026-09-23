@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relics - Monster Battle Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .stat-boost { background-color: #e8f4fd; }
+        .healing { background-color: #e8f8f5; }
+        .defensive { background-color: #fce8e6; }
+        .damage { background-color: #fceeeb; }
+        .crit { background-color: #f9e79f; }
+        .exp { background-color: #d5f4e6; }
+        .price {
+            font-weight: bold;
+            color: #e67e22;
+        }
+        .nav {
+            background-color: #2c3e50;
+            padding: 15px;
+            margin: -30px -30px 30px -30px;
+            border-radius: 8px 8px 0 0;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .nav a:hover {
+            background-color: #34495e;
+        }
+        .summary-box {
+            background-color: #ecf0f1;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">Accueil</a>
+            <a href="/docs/relics.html">Relics Complètes</a>
+            <a href="/docs/stats.html">Stats</a>
+            <a href="/docs/combat.html">Combat</a>
+        </div>
+        
+        <h1>Relics - Monster Battle</h1>
+        <p><strong>Description:</strong> Guide complet de toutes les reliques disponibles dans la boutique.</p>
+        
+        <div class="summary-box">
+            <h3>Résumé Rapide</h3>
+            <ul>
+                <li><strong>Total des reliques:</strong> 44 items</li>
+                <li><strong>Catégories:</strong> Stat Boosts (16), Healing (7), Defensive (6), Damage/Lifesteal (6), Critical Hits (2), Experience (7)</li>
+                <li><strong>Prix le plus bas:</strong> Gants de Fer (50 🪙)</li>
+                <li><strong>Prix le plus élevé:</strong> Œil du Faucon (100 🪙), Bouclier Ancien (105 🪙)</li>
+            </ul>
+        </div>
+        
+        <div class="alert">
+            <strong>Note:</strong> Toutes les reliques sont des achats uniques qui restent équipés pour toute la durée de la partie.
+        </div>
+        
+        <h2>Stat Boost Relics (16 total)</h2>
+        <p>Increases permanent aux stats des monstres.</p>
+        
+        <table class="stat-boost">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>Boost</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Gants de Fer</td>
+                    <td>+2 Force</td>
+                    <td class="price">50 🪙</td>
+                </tr>
+                <tr>
+                    <td>Écharpe du Vent</td>
+                    <td>+3 Vitesse (+CA)</td>
+                    <td class="price">55 🪙</td>
+                </tr>
+                <tr>
+                    <td>Cœur de Titan</td>
+                    <td>+3 Constitution (PV max suivent)</td>
+                    <td class="price">60 🪙</td>
+                </tr>
+                <tr>
+                    <td>Couronne de Savoir</td>
+                    <td>+3 Savoir (bonus général)</td>
+                    <td class="price">60 🪙</td>
+                </tr>
+                <tr>
+                    <td>Gantelet du Chaos</td>
+                    <td>+3 Force +5 % de dégâts</td>
+                    <td class="price">90 🪙</td>
+                </tr>
+                <tr>
+                    <td>Épée Ancienne</td>
+                    <td>+4 Force +2 CA</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+                <tr>
+                    <td>Armure Ancienne</td>
+                    <td>+3 Constitution +3 CA</td>
+                    <td class="price">100 🪙</td>
+                </tr>
+                <tr>
+                    <td>Baguette Ancienne</td>
+                    <td>+5 Savoir +10 % d’EXP</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+                <tr>
+                    <td>Anneau Ancien</td>
+                    <td>+2 Charisme +3 % de vol de vie</td>
+                    <td class="price">90 🪙</td>
+                </tr>
+                <tr>
+                    <td>Pièce Ancienne</td>
+                    <td>+2 Charisme +2 Constitution</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+                <tr>
+                    <td>Couronne Ancienne</td>
+                    <td>+4 Charisme +2 CA</td>
+                    <td class="price">100 🪙</td>
+                </tr>
+                <tr>
+                    <td>Lame Ancienne</td>
+                    <td>+3 Force +3 Vitesse</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+                <tr>
+                    <td>Gantelet Ancien</td>
+                    <td>+5 Force</td>
+                    <td class="price">100 🪙</td>
+                </tr>
+                <tr>
+                    <td>Slippers d'Élan</td>
+                    <td>+5 Vitesse +2 CA</td>
+                    <td class="price">105 🪙</td>
+                </tr>
+                <tr>
+                    <td>Bracers Anciens</td>
+                    <td>+3 Constitution +2 Savoir</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Healing Relics (7 total)</h2>
+        <p>Pourcentage des PV max soignés au début de chaque combat.</p>
+        
+        <table class="healing">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>Healing</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Bandages Sacrés</td>
+                    <td>15 %</td>
+                    <td class="price">70 🪙</td>
+                </tr>
+                <tr>
+                    <td>Potion Ancienne</td>
+                    <td>20 %</td>
+                    <td class="price">90 🪙</td>
+                </tr>
+                <tr>
+                    <td>Lampe de Vitalité</td>
+                    <td>+2 Constitution +10 % de soin de départ</td>
+                    <td class="price">70 🪙</td>
+                </tr>
+                <tr>
+                    <td>Seconde Souffle</td>
+                    <td>20 % +1 Vitesse</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+                <tr>
+                    <td>Larmes de la Mer</td>
+                    <td>25 %</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+                <tr>
+                    <td>Eau Bénite</td>
+                    <td>15 % +5 % de dégâts</td>
+                    <td class="price">80 🪙</td>
+                </tr>
+                <tr>
+                    <td>Second Souffle</td>
+                    <td>20 % +1 Vitesse</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Defensive Relics (6 total)</h2>
+        <p>Increases to Armor Class (CA)</p>
+        
+        <table class="defensive">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>CA Bonus</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Plaque d'Acier</td>
+                    <td>+2</td>
+                    <td class="price">65 🪙</td>
+                </tr>
+                <tr>
+                    <td>Cape de l'Ombre</td>
+                    <td>+1 CA +3 Vitesse</td>
+                    <td class="price">55 🪙</td>
+                </tr>
+                <tr>
+                    <td>Bastion de la Garde</td>
+                    <td>+1 CA +1 Constitution</td>
+                    <td class="price">75 🪙</td>
+                </tr>
+                <tr>
+                    <td>Armure Ancienne</td>
+                    <td>+3 CA +3 Constitution</td>
+                    <td class="price">100 🪙</td>
+                </tr>
+                <tr>
+                    <td>Bouclier Ancien</td>
+                    <td>+4 CA +2 Constitution</td>
+                    <td class="price">105 🪙</td>
+                </tr>
+                <tr>
+                    <td>Casque Ancien</td>
+                    <td>+2 CA +3 Vitesse</td>
+                    <td class="price">90 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Damage & Lifesteal Relics (6 total)</h2>
+        <p>Percent increases to damage and lifesteal.</p>
+        
+        <table class="damage">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>Effect</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Cristal Vampire</td>
+                    <td>Vol de vie : 20 % des dégâts infligés</td>
+                    <td class="price">80 🪙</td>
+                </tr>
+                <tr>
+                    <td>Rune de Rage</td>
+                    <td>+10 % de dégâts infligés</td>
+                    <td class="price">75 🪙</td>
+                </tr>
+                <tr>
+                    <td>Griffes de Sang</td>
+                    <td>Vol de vie 12 % + Dégâts +5 %</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+                <tr>
+                    <td>Dents du Prédateur</td>
+                    <td>+2 Force +6 % de vol de vie</td>
+                    <td class="price">75 🪙</td>
+                </tr>
+                <tr>
+                    <td>Gantelet du Chaos</td>
+                    <td>+3 Force +5 % de dégâts</td>
+                    <td class="price">90 🪙</td>
+                </tr>
+                <tr>
+                    <td>Lame Ancienne</td>
+                    <td>+3 Force +3 Vitesse</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Critical Hit Relics (2 total)</h2>
+        <p>Expands critical hit range.</p>
+        
+        <table class="crit">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>Crit Range</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Talisman Critique</td>
+                    <td>19-20</td>
+                    <td class="price">85 🪙</td>
+                </tr>
+                <tr>
+                    <td>Œil du Faucon</td>
+                    <td>18-20</td>
+                    <td class="price">100 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Experience Relics (7 total)</h2>
+        <p>Percent increase to XP gained.</p>
+        
+        <table class="exp">
+            <thead>
+                <tr>
+                    <th>Relic</th>
+                    <th>Effect</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Médaillon de l'Apprenti</td>
+                    <td>+25 % d'EXP</td>
+                    <td class="price">60 🪙</td>
+                </tr>
+                <tr>
+                    <td>Codex du Sage</td>
+                    <td>+4 Savoir</td>
+                    <td class="price">70 🪙</td>
+                </tr>
+                <tr>
+                    <td>Professeur</td>
+                    <td>+2 Instinct +15 % d’EXP</td>
+                    <td class="price">80 🪙</td>
+                </tr>
+                <tr>
+                    <td>Runogrammes Sanguins</td>
+                    <td>Vol de vie 8 % +8 % d’EXP</td>
+                    <td class="price">80 🪙</td>
+                </tr>
+                <tr>
+                    <td>Jonc du Professeur</td>
+                    <td>+2 Instinct +15 % d’EXP</td>
+                    <td class="price">80 🪙</td>
+                </tr>
+                <tr>
+                    <td>Baguette Ancienne</td>
+                    <td>+5 Savoir +10 % d’EXP</td>
+                    <td class="price">95 🪙</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>Shopping Tips</h2>
+        
+        <h3>For New Players</h3>
+        <ul>
+            <li>Start with affordable relics: Gants de Fer (50 🪙), Écharpe du Vent (55 🪙)</li>
+            <li>Focus on constitution for tanking: Cœur de Titan (60 🪙)</li>
+            <li>Get basic healing: Bandages Sacrés (70 🪙)</li>
+        </ul>
+        
+        <h3>For Experienced Players</h3>
+        <ul>
+            <li>Mix and match for synergy: Combine different stat types</li>
+            <li>Invest in damage: Rune de Rage (75 🪙), Épée Ancienne (95 🪙)</li>
+            <li>Maximize defense: Armure Ancienne (100 🪙), Bouclier Ancien (105 🪙)</li>
+            <li>Critical hits: Talisman Critique (85 🪙), Œil du Faucon (100 🪙)</li>
+        </ul>
+        
+        <h2>Notes</h2>
+        <ul>
+            <li>All relics are one-time purchases</li>
+            <li>Relics remain equipped for the entire run</li>
+            <li>Multiple relics can be equipped simultaneously</li>
+            <li>Some relics have synergistic combinations</li>
+            <li>Prices are in gold coins (🪙)</li>
+        </ul>
+    </div>
+</body>
+</html>

@@ -75,9 +75,9 @@ export const RELIC_CATALOG: Relic[] = [
   {
     id: 'relic-crown',
     name: 'Couronne de Savoir',
-    description: '+3 Intelligence (magie)',
+    description: '+3 Savoir (bonus général)',
     icon: '🧠',
-    effect: { stat: { intelligence: 3 } },
+    effect: { stat: { wisdom: 3 } },
     price: 60,
   },
   {
@@ -163,9 +163,9 @@ export const RELIC_CATALOG: Relic[] = [
   {
     id: 'relic-codex',
     name: 'Codex du Sage',
-    description: 'Savoir +4',
+    description: 'Instinct +4',
     icon: '📖',
-    effect: { stat: { intelligence: 4 } },
+    effect: { stat: { wisdom: 4 } },
     price: 70,
   },
   {
@@ -227,9 +227,9 @@ export const RELIC_CATALOG: Relic[] = [
   {
     id: 'relic-professor',
     name: 'Jonc du Professeur',
-    description: '+2 Intelligence · +15 % d’EXP',
+    description: '+2 Instinct · +15 % d’EXP',
     icon: '🎓',
-    effect: { stat: { intelligence: 2 }, experiencePercent: 15 },
+    effect: { stat: { wisdom: 2 }, experiencePercent: 15 },
     price: 80,
   },
   {
@@ -240,6 +240,118 @@ export const RELIC_CATALOG: Relic[] = [
     effect: { healStartPercent: 20, stat: { speed: 1 } },
     price: 85,
   },
+  {
+    id: 'relic-chaos',
+    name: 'Gantelet du Chaos',
+    description: '+3 Force · +5 % de dégâts',
+    icon: '⚔️',
+    effect: { stat: { strength: 3 }, damagePercent: 5 },
+    price: 90,
+  },
+  {
+    id: 'relic-ancient-sword',
+    name: 'Épée Ancienne',
+    description: '+4 Force · +2 CA',
+    icon: '⚔️',
+    effect: { stat: { strength: 4 }, acBonus: 2 },
+    price: 95,
+  },
+  {
+    id: 'relic-ancient-armor',
+    name: 'Armure Ancienne',
+    description: '+3 Constitution · +3 CA',
+    icon: '🛡️',
+    effect: { stat: { constitution: 3 }, acBonus: 3 },
+    price: 100,
+  },
+  {
+    id: 'relic-ancient-staff',
+    name: 'Baguette Ancienne',
+    description: '+5 Savoir · +10 % d’EXP',
+    icon: '🔮',
+    effect: { stat: { wisdom: 5 }, experiencePercent: 10 },
+    price: 95,
+  },
+  {
+    id: 'relic-ancient-ring',
+    name: 'Anneau Ancien',
+    description: '+2 Charisme · +3 % de vol de vie',
+    icon: '💍',
+    effect: { stat: { charisma: 2 }, lifestealPercent: 3 },
+    price: 90,
+  },
+  {
+    id: 'relic-ancient-coin',
+    name: 'Pièce Ancienne',
+    description: '+2 Charisme · +2 Constitution',
+    icon: '🪙',
+    effect: { stat: { charisma: 2, constitution: 2 } },
+    price: 85,
+  },
+  {
+    id: 'relic-ancient-potion',
+    name: 'Potion Ancienne',
+    description: 'Soigne 20 % des PV max au début de combat',
+    icon: '🧪',
+    effect: { healStartPercent: 20 },
+    price: 90,
+  },
+  {
+    id: 'relic-ancient-crown',
+    name: 'Couronne Ancienne',
+    description: '+4 Charisme · +2 CA',
+    icon: '👑',
+    effect: { stat: { charisma: 4 }, acBonus: 2 },
+    price: 100,
+  },
+  {
+    id: 'relic-ancient-blade',
+    name: 'Lame Ancienne',
+    description: '+3 Force · +3 Vitesse',
+    icon: '🗡️',
+    effect: { stat: { strength: 3, speed: 3 } },
+    price: 95,
+  },
+  {
+    id: 'relic-ancient-shield',
+    name: 'Bouclier Ancien',
+    description: '+4 CA · +2 Constitution',
+    icon: '🛡️',
+    effect: { acBonus: 4, stat: { constitution: 2 } },
+    price: 105,
+  },
+  {
+    id: 'relic-ancient-helm',
+    name: 'Casque Ancien',
+    description: '+2 CA · +3 Vitesse',
+    icon: '⛑️',
+    effect: { acBonus: 2, stat: { speed: 3 } },
+    price: 90,
+  },
+  {
+    id: 'relic-ancient-gauntlet',
+    name: 'Gantelet Ancien',
+    description: '+5 Force',
+    icon: '💪',
+    effect: { stat: { strength: 5 } },
+    price: 100,
+  },
+  {
+    id: 'relic-ancient-slippers',
+    name: 'Bottes Anciennes',
+    description: '+5 Vitesse · +2 CA',
+    icon: '👞',
+    effect: { stat: { speed: 5 }, acBonus: 2 },
+    price: 105,
+  },
+  {
+    id: 'relic-ancient-bracers',
+    name: 'Bracers Anciens',
+    description: '+3 Constitution · +2 Savoir',
+    icon: '⚡',
+    effect: { stat: { constitution: 3, wisdom: 2 } },
+    price: 95,
+  }, 
 ];
 
 /** % de dégâts supplémentaires cumulés (reliques joueur). */
@@ -271,7 +383,7 @@ export function relicExperiencePercent(relics: Relic[]): number {
  * Retourne `count` reliques distinctes au hasard.
  * `random` est injectable pour des tests déterministes (défaut : Math.random).
  */
-export function rollRelicOffers(count = 3, random: () => number = Math.random): Relic[] {
+export function rollRelicOffers(count = 5, random: () => number = Math.random): Relic[] {
   const pool = [...RELIC_CATALOG];
   const offers: Relic[] = [];
   for (let i = 0; i < Math.min(count, pool.length); i++) {
