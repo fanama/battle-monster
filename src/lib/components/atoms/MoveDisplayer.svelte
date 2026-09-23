@@ -6,14 +6,18 @@
 
   export let move: Move;
   export let targetType: MonsterType | null = null;
+  export let disabled: boolean = false;
   export let onClick: () => void = () => {};
 
   $: currentCooldown = move.coolDown ?? 0;
   $: isReady = currentCooldown === 0;
+  $: canClick = isReady && !disabled;
 
   $: progressPercent = isReady
     ? 100
-    : ((move.maxCoolDown! - currentCooldown) / move.maxCoolDown!) * 100;
+    : move.maxCoolDown && move.maxCoolDown > 0
+      ? ((move.maxCoolDown - currentCooldown) / move.maxCoolDown) * 100
+      : 0;
 
   $: tc = TYPE_COLORS[move.type];
 
@@ -50,7 +54,7 @@
 </script>
 
 <button
-  disabled={!isReady}
+  disabled={!canClick}
   on:click={onClick}
   class={`
     relative flex flex-col gap-1.5
@@ -58,7 +62,7 @@
     p-2 rounded-xl border-2 shadow-lg text-center overflow-hidden
     transition-all duration-300
     ${
-      isReady
+      canClick
         ? `${tc.cardBg} ${tc.borderStrong} text-white cursor-pointer hover:-translate-y-0.5 active:scale-95 ${tc.glow}`
         : "border-gray-700 bg-gray-800/70 text-gray-400 cursor-default opacity-50"
     }

@@ -201,7 +201,7 @@
     <div
       class="flex h-full items-center justify-center text-stone-500 opacity-50"
     >
-      <span class="text-sm">Waiting for combatant...</span>
+      <span class="text-sm">En attente d'un combattant...</span>
     </div>
   {/if}
 </div>

@@ -108,8 +108,10 @@ export class MoveRepository {
    * @returns An array of Move objects the monster can use.
    */
   public getMovesForMonster(monster: Pick<Monster, 'type' | 'level'>): Move[] {
-    return Object.values(MoveRepository.moves).filter(
-      move => (move.type === monster.type || move.type === 'normal') && move.level <= monster.level
-    );
+    return Object.values(MoveRepository.moves)
+      .filter(
+        move => (move.type === monster.type || move.type === 'normal') && move.level <= monster.level
+      )
+      .map(move => ({ ...move, coolDown: 0 }));
   }
 }

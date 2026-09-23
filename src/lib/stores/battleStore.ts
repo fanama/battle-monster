@@ -194,6 +194,12 @@ export class BattleStore {
     this._clearSaved();
   };
 
+  /** Quitte vers l'écran d'accueil en conservant la sauvegarde. */
+  public quitToMenu = (): void => {
+    this._clearTimers();
+    this.store.set(this._getInitialState());
+  };
+
   // --- Battle actions ---
 
   public attack = (moveIndex: number) => {
@@ -298,11 +304,14 @@ export class BattleStore {
       if (node.site === 'heal') {
         const player = state.playerMonster;
         const heal = Math.floor(player.maxHp * 0.35);
-        player.heal(heal);
+        const restored = player.heal(heal);
+        const logMsg = restored > 0
+          ? `🩹 Vous vous reposez : +${restored} PV.`
+          : `🩹 Vous vous reposez (PV déjà au maximum).`;
         return this._advanceMap({
           ...state,
           run: { ...run, path },
-          logs: [...state.logs, `🩹 Vous vous reposez : +${heal} PV.`],
+          logs: [...state.logs, logMsg],
         });
       }
 

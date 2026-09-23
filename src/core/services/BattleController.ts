@@ -132,7 +132,11 @@ export class BattleController {
    */
   selectEnemyMove(moves: Move[], actor: Monster, target: Monster): Move {
     let pool = moves.filter(m => (m.coolDown ?? 0) === 0);
-    if (pool.length === 0) pool = moves;
+    if (pool.length === 0) {
+      // Si tout est en recharge, on prend celui avec le cooldown minimal
+      const sorted = [...moves].sort((a, b) => (a.coolDown ?? 0) - (b.coolDown ?? 0));
+      return sorted[0] ?? moves[0];
+    }
 
     // Évite de soigner à PV pleins
     const atFullHp = actor.currentHp >= actor.maxHp;
@@ -246,13 +250,24 @@ export class BattleController {
       logs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
     }
 
-    // Level-up → le joueur (seul) réapprend ses moves selon son type/niveau.
+    // Level-up → le joueur (seul) apprend de nouveaux moves (capé à 4 moves max).
     const leveledUp = turn.logs.some(log => log.payload?.leveledUp);
     let learnedNewMoves = false;
     if (leveledUp && attackerSide === 'player') {
-      attacker.moves = this.moveProvider.getMovesForMonster(attacker);
-      logs.push(`${attacker.name} a appris de nouvelles attaques !`);
-      learnedNewMoves = true;
+      const eligible = this.moveProvider.getMovesForMonster(attacker);
+      const existingIds = new Set(attacker.moves.map(m => m.id));
+      const hasNewMoves = eligible.some(m => !existingIds.has(m.id));
+      if (hasNewMoves) {
+        // Sélectionne jusqu'à 4 moves parmi les plus puissants/pertinents débloqués
+        const sortedEligible = [...eligible].sort((a, b) => b.level - a.level || b.power - a.power);
+        const nextMoves = sortedEligible.slice(0, 4).map(m => {
+          const current = attacker.moves.find(cm => cm.id === m.id);
+          return current ? { ...m, coolDown: current.coolDown ?? 0 } : { ...m, coolDown: 0 };
+        });
+        attacker.moves = nextMoves;
+        logs.push(`${attacker.name} a appris de nouvelles attaques !`);
+        learnedNewMoves = true;
+      }
     }
 
     // Vol de vie (relique) : restitue un % des dégâts infligés par le joueur.

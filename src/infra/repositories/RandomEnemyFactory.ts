@@ -4,10 +4,6 @@ import type { EnemyFactory, MoveProvider } from '../../core/services/ports';
 import { MoveRepository } from './MoveRepositories';
 import { createMonsterFromDefinition, type MonsterDefinition } from './monsterFactory';
 
-// Images
-import FireImage from '../../assets/monster_1.png';
-import WaterImage from '../../assets/monster_2.png';
-
 const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal', 'electric', 'rock'];
 
 // Type-specific name pools
@@ -38,16 +34,6 @@ const NAME_POOLS: Record<MonsterType, { prefixes: string[]; suffixes: string[] }
   }
 };
 
-// Sprites par type (placeholder : les sprites sont rendus en SVG procédural)
-const IMAGE_MAP: Record<MonsterType, string> = {
-  fire: FireImage,
-  water: WaterImage,
-  grass: FireImage,
-  normal: FireImage,
-  electric: FireImage,
-  rock: WaterImage,
-};
-
 /**
  * Fabrique d'ennemis **procéduraux** (combats sauvages et bosses de région) :
  * nom, type, stats et niveau générés. N'a rien à voir avec les starters fixes
@@ -75,11 +61,12 @@ export class RandomEnemyFactory implements EnemyFactory {
         pool.suffixes[Math.floor(this.random() * pool.suffixes.length)]);
 
     const newDef: MonsterDefinition = {
-      id: crypto.randomUUID(), // Unique id per spawn
+      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `enemy-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name: randomName,
       type: randomType,
       level: targetLevel,
-      image: IMAGE_MAP[randomType],
       stats: {
         strength: Math.floor(8 + this.random() * 7),
         speed: Math.floor(8 + this.random() * 7),

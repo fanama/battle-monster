@@ -7,7 +7,7 @@ export interface MonsterDefinition {
   name: string;
   type: MonsterType;
   level: number;
-  image: string;
+  image?: string;
   stats: {
     strength: number;
     speed: number;
@@ -16,6 +16,16 @@ export interface MonsterDefinition {
     wisdom: number;
     instinct: number;
   };
+}
+
+/** Mélange uniforme (Fisher-Yates) */
+function shuffleArray<T>(items: T[], random: () => number): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+  }
+  return copy;
 }
 
 /**
@@ -29,9 +39,7 @@ export function createMonsterFromDefinition(
   random: () => number
 ): Monster {
   const eligibleMoves = moveProvider.getMovesForMonster({ type: def.type, level: def.level });
-  const selectedMoves = [...eligibleMoves]
-    .sort(() => 0.5 - random())
-    .slice(0, 4);
+  const selectedMoves = shuffleArray(eligibleMoves, random).slice(0, 4);
 
   return new Monster(
     def.id,
@@ -45,6 +53,6 @@ export function createMonsterFromDefinition(
     def.stats.wisdom,
     def.stats.instinct,
     selectedMoves,
-    def.image
+    def.image ?? ''
   );
 }

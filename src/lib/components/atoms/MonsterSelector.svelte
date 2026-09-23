@@ -8,7 +8,8 @@
   // Les 5 starters définis (aucun hasard) — via le composition root.
   const monsters = container.starters.getAll();
 
-  let selectedMonster: Monster | undefined;
+  let selectedId: string | undefined;
+  $: selectedMonster = monsters.find(m => m.id === selectedId);
   export let onclick: (monster: Monster) => void;
 
   $: statKeys = (Object.keys(STAT_LABELS) as MonsterStat[]);
@@ -57,7 +58,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {#each monsters as monster}
         {@const tc = TYPE_COLORS[monster.type]}
-        {@const selected = selectedMonster === monster}
+        {@const selected = selectedId === monster.id}
 
         <button
           type="button"
@@ -66,7 +67,7 @@
             {selected
               ? tc.border + ' bg-black/50 ring-2 ring-offset-0 scale-[1.03]'
               : 'border-stone-700 bg-black/30 hover:border-stone-500 hover:bg-black/45'}"
-          on:click={() => (selectedMonster = monster)}
+          on:click={() => (selectedId = monster.id)}
         >
           <div class="flex items-center gap-2 mb-2">
             <span class="text-2xl">{TYPE_ICONS[monster.type]}</span>

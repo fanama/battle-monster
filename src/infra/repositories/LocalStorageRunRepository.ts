@@ -24,11 +24,14 @@ export class LocalStorageRunRepository implements SaveRepository {
       if (
         parsed?.version === SAVE_VERSION
         && parsed?.playerMonster
+        && typeof parsed.playerMonster.id === 'string'
+        && Array.isArray(parsed.playerMonster.moves)
         && parsed?.run
+        && typeof parsed.run.phase === 'string'
       ) {
         return parsed;
       }
-      // Sauvegarde d'un ancien format : incompatible, on la purge.
+      // Sauvegarde corrompue ou d'un ancien format : incompatible, on la purge.
       this.clear();
       return null;
     } catch {

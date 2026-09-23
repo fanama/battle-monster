@@ -57,7 +57,7 @@ export class Monster {
     public instinct: number,
     // Moves and Visuals
     initialMoves: Move[],
-    public spriteUrl: string
+    public spriteUrl: string = ''
   ) {
     // CLONE THE MOVES: Ensures each monster instance has its own cooldown state.
     this.moves = initialMoves.map(move => ({
@@ -139,6 +139,9 @@ export class Monster {
         this.maxHp = this.calculateMaxHp();
         this.currentHp = Math.min(this.currentHp, this.maxHp);
         break;
+      case 'wisdom':
+        this.wisdom += value;
+        break;
       case 'charisma':
         this.charisma += value;
         break;
@@ -189,6 +192,7 @@ export class Monster {
     this.strength += growth.strength;
     this.speed += growth.speed;
     this.constitution += growth.constitution;
+    this.wisdom += growth.wisdom;
     this.charisma += growth.charisma;
     this.instinct += growth.instinct;
 
@@ -198,32 +202,33 @@ export class Monster {
 
   /**
    * Croissance de stats par type (« archetype ») — rééquilibrée : seule les
-   * stats **à effet de combat** progressent (Force, Vitesse, Constitution, Charisme).
-   * Instinct n'a pas de rôle mécanique → plus de
-   * points gâchés à chaque niveau (cf. rebalance §5/§12).
+   * stats **à effet de combat** progressent (Force, Vitesse, Constitution, Savoir).
+   * Charisme et Instinct sont des stats de fluff (cf. rebalance §5/§12).
    *
    * Budget : 8-9 points/niveau répartis en profil distinct par type.
-   *  - fire   : frappeur rapide (physique + un peu de magie)
-   *  - water  : tanks protégé (PV/constitution, allonge physique)
-   *  - grass  : mage-tank (PV, vitesse, magie)
-   *  - normal : polyvalent.
+   *  - fire     : frappeur rapide (Force, Vitesse, Savoir)
+   *  - water    : tank protégé (Constitution, Force, Savoir)
+   *  - grass    : mage-tank (Savoir, Constitution, Vitesse)
+   *  - electric : foudre rapide (Vitesse, Savoir, Force)
+   *  - rock     : colosse (Force, Constitution, Vitesse)
+   *  - normal   : polyvalent.
    */
   private getStatGrowth(type: MonsterType) {
     switch (type) {
       case 'fire':
-        return { strength: 3, speed: 3, constitution: 1, charisma: 1, instinct: 0 };
+        return { strength: 3, speed: 3, constitution: 1, wisdom: 1, charisma: 0, instinct: 0 };
       case 'water':
-        return { strength: 2, speed: 1, constitution: 3, charisma: 0, instinct: 0 };
+        return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 0 };
       case 'grass':
-        return { strength: 1, speed: 2, constitution: 2, charisma: 2, instinct: 0 };
+        return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 0 };
       case 'normal':
-        return { strength: 2, speed: 2, constitution: 2, charisma: 1, instinct: 0 };
+        return { strength: 2, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 0 };
       case 'electric':
-        return { strength: 1, speed: 3, constitution: 1, charisma: 1, instinct: 0 };
+        return { strength: 1, speed: 3, constitution: 1, wisdom: 3, charisma: 0, instinct: 0 };
       case 'rock':
-        return { strength: 3, speed: 1, constitution: 3, charisma: 0, instinct: 0 };
+        return { strength: 3, speed: 1, constitution: 3, wisdom: 0, charisma: 0, instinct: 0 };
       default:
-        return { strength: 1, speed: 1, constitution: 1, charisma: 1, instinct: 0 };
+        return { strength: 1, speed: 1, constitution: 1, wisdom: 1, charisma: 0, instinct: 0 };
     }
   }
 }

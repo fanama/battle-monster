@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+
   // Props : Les données reçues du parent
   export let current: number;
   export let max: number;
@@ -31,6 +33,10 @@
     }
     visiblePercent = percent;
   }
+
+  onDestroy(() => {
+    if (trailTimer) clearTimeout(trailTimer);
+  });
 </script>
 
 <div
@@ -63,7 +69,7 @@
       text-[9px] md:text-[10px] font-bold text-white drop-shadow-md
       pointer-events-none"
   >
-    {current}/{max} HP
+    {current}/{max} PV
   </span>
 </div>
 

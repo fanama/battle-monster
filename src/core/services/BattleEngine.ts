@@ -145,7 +145,7 @@ export class BattleEngine {
     move: Move,
     critRange = 1,
   ): AttackOutcome {
-    const attackStat = move.isPhysical ? attacker.strength : attacker.charisma;
+    const attackStat = move.isPhysical ? attacker.strength : attacker.wisdom;
     const attackMod = abilityModifier(attackStat);
     const bonus = moveAccuracyBonus(move);
     const ac = defender.getAC();
@@ -153,7 +153,7 @@ export class BattleEngine {
     const total = roll + attackMod + bonus;
     const fumble = roll === 1;
     const crit = !fumble && roll >= 21 - Math.max(1, critRange);
-    const hit = !fumble && (roll === 20 || total >= ac);
+    const hit = !fumble && (crit || roll === 20 || total >= ac);
     return { hit, crit, fumble, roll, total, ac, attackMod, bonus };
   }
 

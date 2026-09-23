@@ -34,8 +34,7 @@
     </div>
 
     <div class={monsterStyles.nameTag.wrapper_base}>
-      <div class="flex justify-between items-baseline pr-2.
-        {monsterStyles.nameTag.wrapper_player}">
+      <div class="flex justify-between items-baseline pr-2 {monsterStyles.nameTag.wrapper_player}">
         <h2 class={monsterStyles.nameTag.text}>{monster.name}</h2>
         <div class="{monsterStyles.nameTag.text} {monsterStyles.nameTag.level_player}">
           Lvl {monster.level}

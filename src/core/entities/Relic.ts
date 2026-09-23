@@ -163,7 +163,7 @@ export const RELIC_CATALOG: Relic[] = [
   {
     id: 'relic-codex',
     name: 'Codex du Sage',
-    description: 'Instinct +4',
+    description: '+4 Savoir',
     icon: '📖',
     effect: { stat: { wisdom: 4 } },
     price: 70,
@@ -227,7 +227,7 @@ export const RELIC_CATALOG: Relic[] = [
   {
     id: 'relic-professor',
     name: 'Jonc du Professeur',
-    description: '+2 Instinct · +15 % d’EXP',
+    description: '+2 Savoir · +15 % d’EXP',
     icon: '🎓',
     effect: { stat: { wisdom: 2 }, experiencePercent: 15 },
     price: 80,
