@@ -2,33 +2,32 @@ export const styles = {
   layout: {
     title: `
       text-center font-serif font-extrabold
-      text-2xl md:text-5xl 
-      uppercase tracking-widest md:tracking-[0.2em]
+      text-2xl sm:text-3xl md:text-5xl 
+      uppercase tracking-widest sm:tracking-[0.15em] md:tracking-[0.2em]
       text-transparent bg-clip-text bg-gradient-to-b from-amber-300 via-amber-500 to-amber-800
       drop-shadow-[0_2px_2px_rgba(0,0,0,1)]
       relative z-50
-      mt-4 mb-3 md:mt-6 md:mb-8
-      py-2
+      mt-3 mb-2 sm:mt-4 sm:mb-4 md:mt-6 md:mb-8
+      py-1 sm:py-2
     `,
     main: `
-      w-full max-w-4xl mx-auto 
-      p-2 md:p-4 
+      w-full max-w-5xl mx-auto 
+      p-2 sm:p-3 md:p-4 
       font-mono select-none 
-      min-h-dvh 
-      flex flex-col
+      flex flex-col flex-1
     `,
     // Chrome de l'arène : fond + couleur de bordure viennent de REGION_COLORS
     // (composé dans App.svelte selon la région courante).
     arena: `
-      border-2 md:border-4 rounded-lg
+      border-2 md:border-4 rounded-xl
       relative
-      flex-grow min-h-[320px] md:min-h-[400px]
+      flex-grow min-h-[300px] sm:min-h-[360px] md:min-h-[420px]
       mb-3 md:mb-4
       flex justify-between items-end
-      px-2 py-4 md:px-8 md:pb-8
-      shadow-xl overflow-x-clip
+      p-2 sm:p-4 md:px-8 md:pb-6
+      shadow-xl overflow-x-clip gap-2
     `,
-    bottomGrid: "flex flex-col md:grid md:grid-cols-2 gap-4 md:h-48",
+    bottomGrid: "flex flex-col md:grid md:grid-cols-2 gap-3 md:gap-4 md:min-h-52",
   },
   actionBar: {
     container: `

@@ -152,7 +152,10 @@ export class BattleEngine {
     const roll = this.dice.roll(1, 20);
     const total = roll + attackMod + bonus;
     const fumble = roll === 1;
-    const crit = !fumble && roll >= 21 - Math.max(1, critRange);
+    // L'Instinct aiguise les réflexes et la perception martiale (élargit la plage de critique)
+    const instinctCritBonus = Math.max(0, Math.floor(abilityModifier(attacker.instinct) / 2));
+    const effectiveCritRange = Math.max(1, critRange + instinctCritBonus);
+    const crit = !fumble && roll >= 21 - effectiveCritRange;
     const hit = !fumble && (crit || roll === 20 || total >= ac);
     return { hit, crit, fumble, roll, total, ac, attackMod, bonus };
   }
@@ -254,12 +257,13 @@ export class BattleEngine {
 
   // --- 2. Application des effets (mutation des monstres) ---
 
-  /** Soin (règle potion D&D) : 2d4 + mod(Constitution), plafonné aux PV max. */
+  /** Soin (règle sorts D&D) : 2d4 + mod(Constitution) + mod(Savoir), plafonné aux PV max. */
   applyHeal(attacker: Monster, move: Move): number {
     const healAmount = Math.max(
       1,
       this.dice.roll(attacker.level + 1, 4) +
-        abilityModifier(attacker.constitution),
+        abilityModifier(attacker.constitution) +
+        Math.max(0, abilityModifier(attacker.wisdom)),
     );
     attacker.heal(healAmount);
     return healAmount;
@@ -426,7 +430,7 @@ export class BattleEngine {
 
       if (leveledUp) {
         logs.push({
-          message: `(System) ${attacker.name} a gagné un niveau !`,
+          message: `(Système) ${attacker.name} a gagné un niveau !`,
           payload: { leveledUp: true },
         });
       }

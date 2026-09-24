@@ -1,10 +1,11 @@
 import type { Monster } from '../entities/Monster';
-import { abilityModifier } from '../entities/Monster';
+import { abilityModifier, MAX_MOVES } from '../entities/Monster';
 import type { RunState } from '../entities/BattleState';
 import type { Move, MonsterType } from '../entities/Move';
 import { REGIONS } from '../entities/Region';
 import {
   rollRelicOffers,
+  rollRareRelicOffers,
   relicHealStartPercent,
   type Relic,
 } from '../entities/Relic';
@@ -54,6 +55,8 @@ export interface PlayTurnResult {
   /** Monstre sur lequel afficher le feedback (self-effect → attaquant, sinon défenseur). */
   feedbackTarget: Monster;
   winner: 'player' | 'enemy' | null;
+  /** L'attaquant (joueur) a monté de niveau. */
+  leveledUp: boolean;
   /** L'attaquant (joueur) a monté de niveau et appris de nouveaux moves. */
   learnedNewMoves: boolean;
   /** PV volés (relique vol de vie), 0 si aucun. */
@@ -256,17 +259,35 @@ export class BattleController {
     if (leveledUp && attackerSide === 'player') {
       const eligible = this.moveProvider.getMovesForMonster(attacker);
       const existingIds = new Set(attacker.moves.map(m => m.id));
-      const hasNewMoves = eligible.some(m => !existingIds.has(m.id));
-      if (hasNewMoves) {
-        // Sélectionne jusqu'à 4 moves parmi les plus puissants/pertinents débloqués
-        const sortedEligible = [...eligible].sort((a, b) => b.level - a.level || b.power - a.power);
-        const nextMoves = sortedEligible.slice(0, 4).map(m => {
-          const current = attacker.moves.find(cm => cm.id === m.id);
-          return current ? { ...m, coolDown: current.coolDown ?? 0 } : { ...m, coolDown: 0 };
-        });
-        attacker.moves = nextMoves;
-        logs.push(`${attacker.name} a appris de nouvelles attaques !`);
-        learnedNewMoves = true;
+      const newlyUnlocked = eligible.filter(m => !existingIds.has(m.id));
+
+      if (newlyUnlocked.length > 0) {
+        for (const newMove of newlyUnlocked) {
+          if (attacker.moves.length < MAX_MOVES) {
+            attacker.learnMove(newMove);
+            logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » !`);
+            learnedNewMoves = true;
+          } else {
+            // Monstre a 4 attaques : remplacement automatique du move le plus faible si le nouveau est supérieur
+            let lowestIdx = 0;
+            let lowestScore = attacker.moves[0].level * 100 + attacker.moves[0].power;
+            for (let i = 1; i < attacker.moves.length; i++) {
+              const score = attacker.moves[i].level * 100 + attacker.moves[i].power;
+              if (score < lowestScore) {
+                lowestScore = score;
+                lowestIdx = i;
+              }
+            }
+            const newScore = newMove.level * 100 + newMove.power;
+            if (newScore > lowestScore) {
+              const { replacedMove, success } = attacker.learnMove(newMove, lowestIdx);
+              if (success && replacedMove) {
+                logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » en remplacement de « ${replacedMove.name} » !`);
+                learnedNewMoves = true;
+              }
+            }
+          }
+        }
       }
     }
 
@@ -283,7 +304,12 @@ export class BattleController {
     const isSelfEffect = move.power === 0;
     const feedbackTarget = isSelfEffect ? attacker : defender;
 
-    return { logs, feedback: turn.feedback, move, feedbackTarget, winner, learnedNewMoves, lifesteal };
+    return { logs, feedback: turn.feedback, move, feedbackTarget, winner, leveledUp, learnedNewMoves, lifesteal };
+  }
+
+  /** Retourne toutes les capacités actuellement débloquées pour ce monstre (selon type & niveau). */
+  public getAvailableMovesForMonster(monster: Monster): Move[] {
+    return this.moveProvider.getMovesForMonster(monster);
   }
 
   // --- Spawn & progression de run ---
@@ -315,7 +341,8 @@ export class BattleController {
   enterBossCombat(player: Monster, run: RunState): { enemyMonster: Monster; logs: string[] } {
     this.prepareCombat(player, run);
     const region = REGIONS[run.regionIndex];
-    const bossLevel = region.maxLevel + 2;
+    // Scaling adouci : maxLevel + 1 (au lieu de +2) pour éviter les pics de difficulté excessifs en Citadelle Céleste
+    const bossLevel = region.maxLevel + 1;
     const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
     return { enemyMonster: enemy, logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`] };
   }
@@ -364,7 +391,9 @@ export class BattleController {
         run.phase = 'victory';
         logs.push('★ Vous êtes le Champion ! ★');
       } else {
-        run.phase = 'regionClear';
+        run.phase = 'relic';
+        run.relicOffers = rollRareRelicOffers(3, this.random);
+        logs.push('🎁 Une relique rare vous est offerte !');
       }
       return { run, logs };
     }

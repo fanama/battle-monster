@@ -10,7 +10,7 @@
 </script>
 
 <footer class="w-full border-t border-stone-800 bg-[#0d0c0b] text-stone-400 text-xs mt-auto">
-  <div class="max-w-6xl mx-auto px-4 py-8 md:py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
+  <div class="max-w-6xl mx-auto px-4 py-8 md:py-10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
     <!-- Col 1 : Brand & Tech -->
     <div class="flex flex-col gap-3">
       <div class="flex items-center gap-2">

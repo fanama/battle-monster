@@ -100,7 +100,7 @@
             ? monsterStyles.nameTag.level_player
             : monsterStyles.nameTag.level_enemy}
         >
-          Lvl {monster.level}
+          Niv. {monster.level}
         </div>
       </div>
     </div>

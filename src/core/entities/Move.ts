@@ -45,7 +45,7 @@ export interface Move {
   level: number;
   coolDown?: number;
   maxCoolDown?: number;
-  // Healing moves follow the D&D potion rule: 2d4 + mod(Constitution)
+  // Les capacités de soin suivent la règle D&D : (niveau + 1)d4 + mod(Constitution) + mod(Savoir)
   isHeal?: boolean;
   statBoosts?: StatBoost;
 }

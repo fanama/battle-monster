@@ -9,6 +9,7 @@
   import { monsterStyles } from "../../styles/monsterStyles";
 
   export let monster: Monster | null = null;
+  export let onOpenMoves: (() => void) | undefined = undefined;
 
   $: tc = TYPE_COLORS[(monster?.type ?? 'normal')];
   $: stats = monster ? (Object.keys(STAT_LABELS) as MonsterStat[]) : [];
@@ -37,7 +38,7 @@
       <div class="flex justify-between items-baseline pr-2 {monsterStyles.nameTag.wrapper_player}">
         <h2 class={monsterStyles.nameTag.text}>{monster.name}</h2>
         <div class="{monsterStyles.nameTag.text} {monsterStyles.nameTag.level_player}">
-          Lvl {monster.level}
+          Niv. {monster.level}
         </div>
       </div>
     </div>
@@ -98,8 +99,19 @@
         </div>
       </div>
 
-      <div class="mt-1 flex items-center gap-1 uppercase tracking-widest text-[10px] md:text-[11px] font-bold text-stone-500">
-        <span class="w-1.5 h-1.5 rounded-full {tc.dot}"></span> Attaques
+      <div class="mt-1 flex items-center justify-between">
+        <div class="flex items-center gap-1 uppercase tracking-widest text-[10px] md:text-[11px] font-bold text-stone-500">
+          <span class="w-1.5 h-1.5 rounded-full {tc.dot}"></span> Attaques
+        </div>
+        {#if onOpenMoves}
+          <button
+            type="button"
+            on:click={onOpenMoves}
+            class="text-[10px] font-mono font-bold text-violet-400 hover:text-violet-200 border border-violet-500/40 bg-violet-950/40 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+          >
+            📜 Modifier
+          </button>
+        {/if}
       </div>
       <div class={monsterStyles.info.moveGrid}>
         {#each monster.moves as move}

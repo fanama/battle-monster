@@ -8,7 +8,7 @@ import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExpe
 import { REGIONS } from '../../core/entities/Region';
 import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
 import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
-import { SAVE_VERSION, type RunSave, type SaveRepository } from '../../core/services/ports';
+import { SAVE_VERSION, type RunSave, type SaveRepository, type ChampionRepository, type SavedChampion } from '../../core/services/ports';
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
 const ENEMY_TURN_DELAY = 1200;
@@ -30,6 +30,7 @@ export class BattleStore {
 
   private readonly controller: BattleController;
   private readonly saveRepository: SaveRepository;
+  private readonly championRepository: ChampionRepository;
 
   /** Timers de nettoyage des feedbacks flottants (un par camp). */
   private readonly feedbackTimers: Partial<Record<'playerFeedback' | 'enemyFeedback', ReturnType<typeof setTimeout>>> = {};
@@ -40,12 +41,29 @@ export class BattleStore {
   /** Une partie sauvegardée existe → le menu titre propose « Continuer ». */
   public readonly savedRun: Writable<boolean>;
 
-  constructor(controller: BattleController, saveRepository: SaveRepository) {
+  /** Champions victorieux sauvegardés (Panthéon) disponibles pour une nouvelle partie. */
+  public readonly savedChampions: Writable<SavedChampion[]>;
+
+  /** Modale de gestion/sélection des capacités ouverte. */
+  public readonly isMoveModalOpen: Writable<boolean>;
+
+  /** Indique si l'ouverture de la modale fait suite directe à une montée de niveau. */
+  public readonly isLevelUpMovePrompt: Writable<boolean>;
+
+  constructor(
+    controller: BattleController,
+    saveRepository: SaveRepository,
+    championRepository: ChampionRepository
+  ) {
     this.controller = controller;
     this.saveRepository = saveRepository;
+    this.championRepository = championRepository;
     this.store = writable(this._getInitialState());
     this.subscribe = this.store.subscribe;
     this.savedRun = writable(saveRepository.load() != null);
+    this.savedChampions = writable(championRepository.list());
+    this.isMoveModalOpen = writable(false);
+    this.isLevelUpMovePrompt = writable(false);
   }
 
   private _getInitialState(): BattleState {
@@ -149,14 +167,19 @@ export class BattleStore {
     let isBoss = run.bossBattle;
     let spawnLogs: string[] = [];
     if (run.phase === 'encounter') {
-      // Re-spawn fidèle au nœud choisi : type du monstre gardien du nœud
-      // (recherché par son id de colonne — les couches sont mélangées).
-      const chosen = run.map ? nodeAtCol(run.map, run.mapLayer, run.path[run.path.length - 1] ?? 0) : undefined;
-      const spawned = isBoss
-        ? this.controller.enterBossCombat(player, run)
-        : this.controller.enterWildCombat(player, run, { type: chosen?.enemyType });
-      enemyMonster = spawned.enemyMonster;
-      spawnLogs = spawned.logs;
+      if (save.enemyMonster) {
+        // Restauration exacte et déterministe de l'ennemi sauvegardé
+        enemyMonster = MonsterIO.fromSnapshot(save.enemyMonster);
+        spawnLogs = [`${enemyMonster.name} (${isBoss ? 'Boss' : 'Niv. ' + enemyMonster.level}) vous fait face.`];
+      } else {
+        // Fallback si ancien format de sauvegarde
+        const chosen = run.map ? nodeAtCol(run.map, run.mapLayer, run.path[run.path.length - 1] ?? 0) : undefined;
+        const spawned = isBoss
+          ? this.controller.enterBossCombat(player, run)
+          : this.controller.enterWildCombat(player, run, { type: chosen?.enemyType });
+        enemyMonster = spawned.enemyMonster;
+        spawnLogs = spawned.logs;
+      }
     }
 
     this.store.set({
@@ -204,7 +227,7 @@ export class BattleStore {
 
   public attack = (moveIndex: number) => {
     this.store.update(state => {
-      if (!state.isPlayerTurn || state.winner || !state.playerMonster || !state.enemyMonster) return state;
+      if (!state.isPlayerTurn || state.winner || state.isAttacking || state.isEnemyAttacking || !state.playerMonster || !state.enemyMonster) return state;
 
       const player = state.playerMonster;
       const enemy = state.enemyMonster;
@@ -241,6 +264,9 @@ export class BattleStore {
         if (!followUp) s = this._applyRoundWinner(s);
         this._endAnimLater('isAttacking');
         if (followUp) this._enemyLater(enemyAction!, round.winner);
+        if (playerAction?.leveledUp) {
+          this._later(() => this.openMoveModal(true), (followUp ? ENEMY_TURN_DELAY : 0) + ANIMATION_END_DELAY + 300);
+        }
         return s;
       }
 
@@ -258,6 +284,9 @@ export class BattleStore {
       if (!followUp) s = this._applyRoundWinner(s);
       this._endAnimLater('isEnemyAttacking');
       if (followUp) this._playerLater(playerAction!, round.winner);
+      if (playerAction?.leveledUp) {
+        this._later(() => this.openMoveModal(true), ENEMY_TURN_DELAY + ANIMATION_END_DELAY + 300);
+      }
       return s;
     });
   };
@@ -391,7 +420,7 @@ export class BattleStore {
         playerFeedback: null,
         enemyFeedback: null,
       };
-      return this._advanceMap(s0);
+      return this._afterRelicDecision(s0);
     });
   };
 
@@ -411,8 +440,35 @@ export class BattleStore {
         playerFeedback: null,
         enemyFeedback: null,
       };
-      return this._advanceMap(s0);
+      return this._afterRelicDecision(s0);
     });
+  };
+
+  /**
+   * Enchaînement après le choix/skip de relique :
+   * Si le combat terminé était un boss, on bascule vers la victoire ou l'écran
+   * de transition de région (`regionClear`). Sinon, on avance sur la carte.
+   */
+  private _afterRelicDecision(state: BattleState): BattleState {
+    if (state.isBossFight || state.run.bossBattle) {
+      if (state.run.regionIndex >= REGIONS.length - 1) {
+        const next: BattleState = {
+          ...state,
+          run: { ...state.run, phase: 'victory', bossBattle: false },
+          isBossFight: false,
+        };
+        this._persistState(next);
+        return next;
+      }
+      const next: BattleState = {
+        ...state,
+        run: { ...state.run, phase: 'regionClear', bossBattle: false },
+        isBossFight: false,
+      };
+      this._persistState(next);
+      return next;
+    }
+    return this._advanceMap(state);
   };
 
   public advanceRegion = () => {
@@ -495,12 +551,25 @@ export class BattleStore {
 
   /** Victoire du joueur : délègue les récompenses (score, soins, reliques) au controller. */
   private _onPlayerWin(state: BattleState): BattleState {
+    const isBoss = state.isBossFight || state.run.bossBattle;
     const result = this.controller.handlePlayerVictory({
       player: state.playerMonster!,
       enemy: state.enemyMonster!,
       run: state.run,
-      isBossFight: state.isBossFight,
+      isBossFight: isBoss,
     });
+
+    if (isBoss && state.playerMonster) {
+      const region = REGIONS[state.run.regionIndex];
+      this.championRepository.saveChampion(
+        state.playerMonster,
+        state.run.regionIndex,
+        region.name
+      );
+      this.savedChampions.set(this.championRepository.list());
+      result.logs.push(`🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`);
+    }
+
     return { ...state, run: result.run, logs: [...state.logs, ...result.logs] };
   }
 
@@ -590,6 +659,54 @@ export class BattleStore {
     this.pendingTimers.add(timer);
   }
 
+  // --- Panthéon des Champions (Monstres victorieux de boss & import/export) ---
+
+  public getSavedChampions(): SavedChampion[] {
+    return this.championRepository.list();
+  }
+
+  public deleteSavedChampion = (id: string): void => {
+    this.championRepository.remove(id);
+    this.savedChampions.set(this.championRepository.list());
+  };
+
+  public saveImportedChampion = (monster: Monster, regionIndex = 0, regionName = 'Importé'): void => {
+    this.championRepository.saveChampion(monster, regionIndex, regionName);
+    this.savedChampions.set(this.championRepository.list());
+  };
+
+  // --- Gestion & Grimoire des Capacités ---
+
+  public openMoveModal = (isLevelUp = false): void => {
+    this.isLevelUpMovePrompt.set(isLevelUp);
+    this.isMoveModalOpen.set(true);
+  };
+
+  public closeMoveModal = (): void => {
+    this.isMoveModalOpen.set(false);
+    this.isLevelUpMovePrompt.set(false);
+  };
+
+  public getAvailableMoves = (): Move[] => {
+    let currentMonster: Monster | null = null;
+    const unsub = this.store.subscribe(s => {
+      currentMonster = s.playerMonster;
+    });
+    unsub();
+    if (!currentMonster) return [];
+    return this.controller.getAvailableMovesForMonster(currentMonster);
+  };
+
+  public setPlayerMoves = (newMoves: Move[]): void => {
+    this.store.update(state => {
+      if (!state.playerMonster) return state;
+      state.playerMonster.setMoves(newMoves);
+      this._persistState(state);
+      return { ...state };
+    });
+    this.closeMoveModal();
+  };
+
   /** Annule tous les timers en vol (round, animations, feedback) — newRun/load/startRun. */
   private _clearTimers(): void {
     this.pendingTimers.forEach(timer => clearTimeout(timer));
@@ -617,6 +734,7 @@ export class BattleStore {
       version: SAVE_VERSION,
       savedAt: Date.now(),
       playerMonster: MonsterIO.toSnapshot(state.playerMonster),
+      enemyMonster: state.enemyMonster ? MonsterIO.toSnapshot(state.enemyMonster) : undefined,
       run: state.run,
     };
     this.saveRepository.save(save);
@@ -629,6 +747,10 @@ export class BattleStore {
   }
 }
 
-export function createBattleStore(controller: BattleController, saveRepository: SaveRepository): BattleStore {
-  return new BattleStore(controller, saveRepository);
+export function createBattleStore(
+  controller: BattleController,
+  saveRepository: SaveRepository,
+  championRepository: ChampionRepository
+): BattleStore {
+  return new BattleStore(controller, saveRepository, championRepository);
 }

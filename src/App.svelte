@@ -11,6 +11,7 @@
   import Header from "./lib/components/molecules/Header.svelte";
   import Footer from "./lib/components/molecules/Footer.svelte";
   import CodexModal from "./lib/components/molecules/CodexModal.svelte";
+  import MoveManagerModal from "./lib/components/molecules/MoveManagerModal.svelte";
   import Home from "./lib/components/molecules/Home.svelte";
   import { styles } from "./lib/styles/style";
   import { REGION_COLORS } from "./lib/styles/regionColors";
@@ -20,6 +21,9 @@
 
   const battleStore = container.store;
   const savedRun = battleStore.savedRun;
+  const savedChampions = battleStore.savedChampions;
+  const isMoveModalOpen = battleStore.isMoveModalOpen;
+  const isLevelUpMovePrompt = battleStore.isLevelUpMovePrompt;
 
   $: run = $battleStore.run;
   $: phase = run.phase;
@@ -30,6 +34,7 @@
 
   // Menu titre : si une partie est sauvegardée → bouton « Continuer ».
   $: saveInfo = $savedRun ? battleStore.getSaveInfo() : null;
+  $: availableMoves = player ? battleStore.getAvailableMoves() : [];
 
   let isCodexOpen = false;
   let codexTab: 'rules' | 'elements' | 'regions' = 'rules';
@@ -57,6 +62,7 @@
       }
     }}
     onOpenCodex={openCodex}
+    onOpenMoves={() => battleStore.openMoveModal(false)}
     onQuitToMenu={() => battleStore.quitToMenu()}
   />
 
@@ -64,8 +70,13 @@
     {#if phase === "starter"}
       <Home
         saveInfo={saveInfo}
+        savedChampions={$savedChampions}
         onContinue={() => battleStore.loadSaved()}
         onNewGame={() => battleStore.deleteSave()}
+        onDeleteChampion={(id) => battleStore.deleteSavedChampion(id)}
+        onSaveImportedChampion={(monster, regionIndex, regionName) => {
+          battleStore.saveImportedChampion(monster, regionIndex, regionName);
+        }}
         onStartRun={(monster: Monster) => {
           battleStore.startRun(monster);
         }}
@@ -77,7 +88,7 @@
             class="flex flex-col items-center justify-center gap-4 text-center py-10 flex-1"
           >
             <p class="text-4xl font-serif font-extrabold tracking-widest text-rose-500 uppercase drop-shadow">
-              Game Over
+              Partie Terminée
             </p>
             <div class="text-stone-300 space-y-1 font-mono text-sm">
               <p>⚔️ {player?.name} (niv. {player?.level})</p>
@@ -89,7 +100,7 @@
               class="{styles.buttons.base} {styles.buttons.danger}"
               on:click={() => battleStore.newRun()}
             >
-              Nouveau run
+              Nouvelle partie
             </button>
           </div>
 
@@ -108,7 +119,7 @@
               class="{styles.buttons.base} {styles.buttons.primary}"
               on:click={() => battleStore.newRun()}
             >
-              Nouveau run
+              Nouvelle partie
             </button>
           </div>
 
@@ -125,8 +136,8 @@
           />
 
           {#if phase === "map"}
-            <div class="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
-              <div class="w-full md:w-auto min-w-[320px] max-w-[640px]">
+            <div class="flex flex-col lg:flex-row gap-4 md:gap-6 items-start justify-center w-full">
+              <div class="w-full lg:flex-1 min-w-0 max-w-full lg:max-w-xl mx-auto lg:mx-0">
                 <MapView
                   map={run.map!}
                   currentLayer={run.mapLayer}
@@ -134,8 +145,19 @@
                   onNodeSelect={(col) => battleStore.chooseNode(col)}
                 />
               </div>
-              <div class="w-full md:w-auto md:min-w-[320px] md:max-w-[440px]">
-                <ChampionCard monster={player} />
+              <div class="w-full lg:w-80 xl:w-96 flex flex-col gap-3 mx-auto lg:mx-0 shrink-0">
+                <button
+                  type="button"
+                  on:click={() => battleStore.openMoveModal(false)}
+                  class="w-full py-2.5 px-4 rounded-xl font-serif font-bold text-xs sm:text-sm uppercase tracking-wider
+                    border border-violet-500/60 bg-gradient-to-r from-violet-950/80 to-purple-900/70 hover:from-violet-900 hover:to-purple-800
+                    text-violet-200 hover:text-white shadow-[0_0_15px_rgba(168,85,247,0.25)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  title="Ouvrir le grimoire pour configurer vos attaques"
+                >
+                  <span>📜</span>
+                  <span>Grimoire des Attaques (Modifier)</span>
+                </button>
+                <ChampionCard monster={player} onOpenMoves={() => battleStore.openMoveModal(false)} />
               </div>
             </div>
           {:else if phase === "shop"}
@@ -234,7 +256,7 @@
                     <MoveDisplayer
                       {move}
                       targetType={$battleStore.enemyMonster?.type ?? null}
-                      disabled={!$battleStore.isPlayerTurn || !!$battleStore.winner}
+                      disabled={!$battleStore.isPlayerTurn || !!$battleStore.winner || $battleStore.isAttacking || $battleStore.isEnemyAttacking}
                       onClick={() => battleStore.attack(i)}
                     />
                   {/each}
@@ -267,6 +289,16 @@
     isOpen={isCodexOpen}
     activeTab={codexTab}
     onClose={() => isCodexOpen = false}
+  />
+
+  <!-- MODAL DE GESTION DES CAPACITÉS & MONTÉE DE NIVEAU -->
+  <MoveManagerModal
+    isOpen={$isMoveModalOpen}
+    isLevelUp={$isLevelUpMovePrompt}
+    monster={player}
+    availableMoves={availableMoves}
+    onSave={(selectedMoves) => battleStore.setPlayerMoves(selectedMoves)}
+    onClose={() => battleStore.closeMoveModal()}
   />
 </div>
 

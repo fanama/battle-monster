@@ -18,6 +18,7 @@
   export let onContinue: (() => void) | undefined = undefined;
   export let onStartClick: (() => void) | undefined = undefined;
   export let onOpenCodex: (tab?: 'rules' | 'elements' | 'regions') => void;
+  export let onOpenMoves: (() => void) | undefined = undefined;
   export let onQuitToMenu: (() => void) | undefined = undefined;
 
   let showQuitConfirm = false;
@@ -131,12 +132,26 @@
 
     <!-- Right Quick Actions -->
     <div class="flex items-center gap-2">
+      <!-- Attaques / Grimoire Button (During active run) -->
+      {#if phase !== "starter" && player && onOpenMoves}
+        <button
+          type="button"
+          on:click={onOpenMoves}
+          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-serif font-bold uppercase
+            bg-stone-900 hover:bg-stone-800 border border-violet-500/60 text-violet-200 transition-colors shadow-sm cursor-pointer"
+          title="Gérer les attaques et capacités équipées"
+        >
+          <span>📜</span>
+          <span class="hidden sm:inline">Attaques</span>
+        </button>
+      {/if}
+
       <!-- Codex Button (Available everywhere!) -->
       <button
         type="button"
         on:click={() => onOpenCodex('rules')}
         class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-serif font-bold uppercase
-          bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 transition-colors"
+          bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 transition-colors cursor-pointer"
         title="Ouvrir le Codex D&D & Table des types"
       >
         <span>📖</span>
@@ -154,7 +169,7 @@
           >
             <span>▶ Reprendre</span>
             <span class="hidden sm:inline font-mono font-normal opacity-90 text-[10px] bg-black/20 px-1 py-0.5 rounded">
-              Lvl {saveInfo.playerLevel}
+              Niv. {saveInfo.playerLevel}
             </span>
           </button>
         {:else if onStartClick}

@@ -4,9 +4,9 @@ export const monsterStyles = {
       relative flex flex-col items-center
       bg-gradient-to-b from-stone-800 to-stone-900 border-2 md:border-4 rounded-xl
       shadow-2xl overflow-hidden
-      w-1/2 max-w-[160px] md:max-w-none md:w-56
+      w-[48%] xs:w-44 sm:w-52 md:w-56 lg:w-60
       transition-all duration-300
-      shrink-0 min-w-0
+      shrink-0 min-w-0 max-w-[180px] xs:max-w-none
     `,
     player: "border-sky-400 shadow-lg shadow-sky-400/20",
     enemy: "border-rose-500 shadow-lg shadow-rose-500/20",
@@ -14,38 +14,38 @@ export const monsterStyles = {
   spriteSection: {
     wrapper: `
       relative w-full 
-      h-28 md:h-40 
-      bg-stone-900 border-b-4 border-stone-950 
+      h-24 xs:h-28 sm:h-32 md:h-40 
+      bg-stone-900 border-b-2 sm:border-b-4 border-stone-950 
       flex items-center justify-center overflow-hidden
     `,
     overlay: "absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/10 to-transparent z-0",
   },
   nameTag: {
     wrapper_base: `
-      relative -mt-3 md:-mt-4 z-20 w-11/12 
-      border md:border-2 shadow-md 
+      relative -mt-2.5 xs:-mt-3 md:-mt-4 z-20 w-11/12 
+      border sm:border-2 shadow-md 
       py-0.5 md:py-1 
       transform skew-x-[-10deg]
     `,
     wrapper_player: "bg-gradient-to-r from-sky-800 via-sky-600 to-sky-800 border-sky-300",
     wrapper_enemy: "bg-gradient-to-r from-rose-800 via-rose-600 to-rose-800 border-rose-300",
     text: `
-      text-[10px] md:text-sm font-bold text-white text-center 
-      uppercase tracking-widest 
-      transform skew-x-[10deg] drop-shadow-md
+      text-[9px] xs:text-[10px] sm:text-xs md:text-sm font-bold text-white text-center 
+      uppercase tracking-wider md:tracking-widest 
+      transform skew-x-[10deg] drop-shadow-md truncate
     `,
     level_player: "font-mono text-sky-300",
     level_enemy: "font-mono text-rose-300",
   },
   info: {
-    container: "w-full p-2 pt-3 md:p-3 md:pt-4 flex flex-col gap-1 md:gap-2",
+    container: "w-full p-1.5 xs:p-2 pt-2.5 xs:pt-3 md:p-3 md:pt-4 flex flex-col gap-1 md:gap-2",
     healthWrapper: "relative bg-stone-950/50 p-1 rounded border border-stone-600",
     moveGrid: `
       grid grid-cols-1 
       gap-x-2
-      text-[10px] md:text-xs text-stone-300 
+      text-[9px] xs:text-[10px] md:text-xs text-stone-300 
       px-1 
-      h-14 md:h-20 
+      h-12 xs:h-14 md:h-20 
       overflow-y-auto
     `,
   },

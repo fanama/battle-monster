@@ -2,8 +2,9 @@ import { BattleController } from '../core/services/BattleController';
 import { BattleEngine, defaultDice } from '../core/services/BattleEngine';
 import { RandomEnemyFactory } from '../infra/repositories/RandomEnemyFactory';
 import { MoveRepository } from '../infra/repositories/MoveRepositories';
-import { StarterCatalog } from '../infra/repositories/StarterCatalog';
+import { MonsterForge } from '../infra/repositories/MonsterForge';
 import { LocalStorageRunRepository } from '../infra/repositories/LocalStorageRunRepository';
+import { LocalStorageChampionRepository } from '../infra/repositories/LocalStorageChampionRepository';
 import { createBattleStore, type BattleStore } from './stores/battleStore';
 
 /**
@@ -14,10 +15,12 @@ import { createBattleStore, type BattleStore } from './stores/battleStore';
 export interface Container {
   engine: BattleEngine;
   moves: MoveRepository;
-  starters: StarterCatalog;
+  /** Forge du champion personnalisé (type + points de destin + nom). */
+  forge: MonsterForge;
   enemies: RandomEnemyFactory;
   controller: BattleController;
   saveRepo: LocalStorageRunRepository;
+  championRepo: LocalStorageChampionRepository;
   store: BattleStore;
 }
 
@@ -25,9 +28,10 @@ export function createContainer(): Container {
   const moves = new MoveRepository();
 
   // Persistance / API (infra) implémentant les ports de core/.
-  const starters = new StarterCatalog(moves);
+  const forge = new MonsterForge(moves);
   const enemies = new RandomEnemyFactory(moves);
   const saveRepo = new LocalStorageRunRepository();
+  const championRepo = new LocalStorageChampionRepository();
 
   // Domaine, câblé via injection de dépendance. Une SEULE instance de `Dice`
   // est partagée entre l'engine et le controller (initiative, jets, dégâts).
@@ -36,9 +40,9 @@ export function createContainer(): Container {
   const controller = new BattleController({ engine, moveProvider: moves, enemyFactory: enemies, dice });
 
   // Store Svelte — wrapper mince autour du controller (+ persistance).
-  const store = createBattleStore(controller, saveRepo);
+  const store = createBattleStore(controller, saveRepo, championRepo);
 
-  return { engine, moves, starters, enemies, controller, saveRepo, store };
+  return { engine, moves, forge, enemies, controller, saveRepo, championRepo, store };
 }
 
 export const container = createContainer();

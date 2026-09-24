@@ -28,6 +28,9 @@ const HIT_DICE: Record<MonsterType, number> = {
 const HP_SCALE_BASE = 1.8;
 const HP_SCALE_PER_LEVEL = 0.85;
 
+/** Nombre maximum d'attaques qu'un monstre peut équiper simultanément. */
+export const MAX_MOVES = 4;
+
 /**
  * Represents a Monster entity in the game.
  * Handles stats, leveling logic, and stat buffs.
@@ -59,8 +62,8 @@ export class Monster {
     initialMoves: Move[],
     public spriteUrl: string = ''
   ) {
-    // CLONE THE MOVES: Ensures each monster instance has its own cooldown state.
-    this.moves = initialMoves.map(move => ({
+    // CLONE THE MOVES: Ensures each monster instance has its own cooldown state, capped at MAX_MOVES.
+    this.moves = initialMoves.slice(0, MAX_MOVES).map(move => ({
       ...move,
       coolDown: 0
     }));
@@ -69,6 +72,48 @@ export class Monster {
     this.currentHp = this.maxHp;
     this.experience = 0;
     this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
+  }
+
+  /**
+   * Apprend une nouvelle capacité en respectant la limite de 4 attaques max.
+   * Si le monstre a moins de 4 attaques, elle est ajoutée directement.
+   * Si le monstre a déjà 4 attaques et qu'un `replaceIndex` est fourni (0..3),
+   * l'ancienne attaque à cet index est remplacée.
+   */
+  public learnMove(newMove: Move, replaceIndex?: number): { replacedMove: Move | null; success: boolean } {
+    const existingIndex = this.moves.findIndex(m => m.id === newMove.id);
+    if (existingIndex !== -1) {
+      // Déjà connue, on conserve l'état existant
+      return { replacedMove: null, success: false };
+    }
+
+    const cloned = { ...newMove, coolDown: 0 };
+    if (this.moves.length < MAX_MOVES) {
+      this.moves = [...this.moves, cloned];
+      return { replacedMove: null, success: true };
+    }
+
+    const targetIdx = replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < this.moves.length
+      ? replaceIndex
+      : 0;
+    const replaced = this.moves[targetIdx] ?? null;
+    const nextMoves = [...this.moves];
+    nextMoves[targetIdx] = cloned;
+    this.moves = nextMoves;
+    return { replacedMove: replaced, success: true };
+  }
+
+  /**
+   * Définit l'ensemble des attaques équipées (entre 1 et MAX_MOVES).
+   * Conserve les cooldowns en cours pour les attaques qui étaient déjà équipées.
+   */
+  public setMoves(newMoves: Move[]): void {
+    const valid = newMoves.slice(0, MAX_MOVES);
+    if (valid.length === 0) return;
+    this.moves = valid.map(m => {
+      const existing = this.moves.find(em => em.id === m.id);
+      return existing ? { ...m, coolDown: existing.coolDown ?? 0 } : { ...m, coolDown: 0 };
+    });
   }
 
   /**
@@ -201,34 +246,29 @@ export class Monster {
   }
 
   /**
-   * Croissance de stats par type (« archetype ») — rééquilibrée : seule les
-   * stats **à effet de combat** progressent (Force, Vitesse, Constitution, Savoir).
-   * Charisme et Instinct sont des stats de fluff (cf. rebalance §5/§12).
-   *
-   * Budget : 8-9 points/niveau répartis en profil distinct par type.
-   *  - fire     : frappeur rapide (Force, Vitesse, Savoir)
-   *  - water    : tank protégé (Constitution, Force, Savoir)
-   *  - grass    : mage-tank (Savoir, Constitution, Vitesse)
-   *  - electric : foudre rapide (Vitesse, Savoir, Force)
-   *  - rock     : colosse (Force, Constitution, Vitesse)
-   *  - normal   : polyvalent.
+   * Croissance de stats par type (« archetype ») :
+   *  - Force : toucher et dégâts physiques
+   *  - Savoir : toucher, dégâts magiques et puissance des soins
+   *  - Vitesse : Classe d'Armure (CA)
+   *  - Constitution : PV max
+   *  - Instinct : perception martiale (chances de critique, regard du sprite)
    */
   private getStatGrowth(type: MonsterType) {
     switch (type) {
       case 'fire':
-        return { strength: 3, speed: 3, constitution: 1, wisdom: 1, charisma: 0, instinct: 0 };
+        return { strength: 3, speed: 3, constitution: 1, wisdom: 1, charisma: 0, instinct: 1 };
       case 'water':
-        return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 0 };
+        return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 1 };
       case 'grass':
-        return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 0 };
+        return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 1 };
       case 'normal':
-        return { strength: 2, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 0 };
+        return { strength: 2, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
       case 'electric':
-        return { strength: 1, speed: 3, constitution: 1, wisdom: 3, charisma: 0, instinct: 0 };
+        return { strength: 1, speed: 3, constitution: 1, wisdom: 3, charisma: 0, instinct: 2 };
       case 'rock':
-        return { strength: 3, speed: 1, constitution: 3, wisdom: 0, charisma: 0, instinct: 0 };
+        return { strength: 3, speed: 1, constitution: 3, wisdom: 0, charisma: 0, instinct: 1 };
       default:
-        return { strength: 1, speed: 1, constitution: 1, wisdom: 1, charisma: 0, instinct: 0 };
+        return { strength: 1, speed: 1, constitution: 1, wisdom: 1, charisma: 0, instinct: 1 };
     }
   }
 }

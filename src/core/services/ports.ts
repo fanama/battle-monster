@@ -28,6 +28,7 @@ export interface RunSave {
   version: number;
   savedAt: number;
   playerMonster: MonsterSnapshot;
+  enemyMonster?: MonsterSnapshot;
   run: RunState;
 }
 
@@ -35,5 +36,25 @@ export interface RunSave {
 export interface SaveRepository {
   save(save: RunSave): void;
   load(): RunSave | null;
+  clear(): void;
+}
+
+/** Champion ayant vaincu au moins un boss de région, sauvegardé pour de nouvelles parties. */
+export interface SavedChampion {
+  id: string;
+  name: string;
+  type: MonsterType;
+  level: number;
+  savedAt: number;
+  defeatedRegionIndex: number;
+  defeatedRegionName: string;
+  snapshot: MonsterSnapshot;
+}
+
+/** Persistance du Panthéon des champions. Impl. : LocalStorageChampionRepository. */
+export interface ChampionRepository {
+  list(): SavedChampion[];
+  saveChampion(monster: Monster, defeatedRegionIndex: number, defeatedRegionName: string): void;
+  remove(id: string): void;
   clear(): void;
 }

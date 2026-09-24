@@ -28,6 +28,7 @@ export class LocalStorageRunRepository implements SaveRepository {
         && Array.isArray(parsed.playerMonster.moves)
         && parsed?.run
         && typeof parsed.run.phase === 'string'
+        && (!parsed.enemyMonster || (typeof parsed.enemyMonster.id === 'string' && Array.isArray(parsed.enemyMonster.moves)))
       ) {
         return parsed;
       }

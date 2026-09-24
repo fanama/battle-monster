@@ -58,8 +58,8 @@
   on:click={onClick}
   class={`
     relative flex flex-col gap-1.5
-    min-w-[120px] md:min-w-[170px] w-fit
-    p-2 rounded-xl border-2 shadow-lg text-center overflow-hidden
+    w-full min-w-0
+    p-2 sm:p-2.5 rounded-xl border-2 shadow-lg text-center overflow-hidden
     transition-all duration-300
     ${
       canClick

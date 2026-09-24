@@ -1,9 +1,13 @@
 <script lang="ts">
-  import type { Monster } from "../../../core/entities/Monster";
+  import { MonsterIO, type Monster } from "../../../core/entities/Monster";
   import { REGIONS } from "../../../core/entities/Region";
-  import { TYPE_LABELS } from "../../../core/entities/Move";
+  import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
-  import MonsterSelector from "../atoms/MonsterSelector.svelte";
+  import { abilityModifier } from "../../../core/entities/Monster";
+  import type { SavedChampion } from "../../../core/services/ports";
+  import { downloadMonsterFile, importMonsterFromJson } from "../../../core/services/MonsterExporter";
+  import MonsterCreator from "../atoms/MonsterCreator.svelte";
+  import SpriteDisplayer from "../atoms/SpriteDisplayer.svelte";
 
   export let saveInfo: {
     regionIndex: number;
@@ -11,9 +15,57 @@
     playerLevel: number;
     score: number;
   } | null = null;
+  export let savedChampions: SavedChampion[] = [];
   export let onContinue: () => void;
   export let onNewGame: () => void;
+  export let onDeleteChampion: (id: string) => void = () => {};
+  export let onSaveImportedChampion: (monster: Monster, regionIndex?: number, regionName?: string) => void = () => {};
   export let onStartRun: (monster: Monster) => void;
+
+  let activeStarterTab: 'forge' | 'veterans' = 'forge';
+  let fileInputElement: HTMLInputElement;
+  let importNotification: string | null = null;
+  let importError: string | null = null;
+
+  function startWithChampion(champion: SavedChampion) {
+    const monster = MonsterIO.fromSnapshot(champion.snapshot);
+    monster.currentHp = monster.maxHp;
+    monster.armorBonus = 0;
+    monster.moves.forEach(m => (m.coolDown = 0));
+    onStartRun(monster);
+  }
+
+  function triggerFileInput() {
+    importNotification = null;
+    importError = null;
+    fileInputElement?.click();
+  }
+
+  async function handleFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const result = importMonsterFromJson(text);
+      if (result.success && result.monster) {
+        onSaveImportedChampion(result.monster, result.regionIndex, result.regionName);
+        importNotification = `✨ Le monstre ${result.monster.name} (Niv. ${result.monster.level}) a été importé avec succès !`;
+        importError = null;
+        activeStarterTab = 'veterans';
+      } else {
+        importError = result.error || "Impossible d'importer ce fichier.";
+        importNotification = null;
+      }
+    } catch (err) {
+      importError = `Erreur de lecture du fichier : ${err instanceof Error ? err.message : String(err)}`;
+      importNotification = null;
+    } finally {
+      // Reset input to allow selecting the same file again if needed
+      input.value = '';
+    }
+  }
 
   const FEATURES = [
     {
@@ -62,9 +114,9 @@
 
   const ELEMENT_DETAILS = [
     { type: 'fire' as const, strongVs: 'Plante', weakVs: 'Eau, Roche', role: 'Frappeur physique & sorts ardents' },
-    { type: 'water' as const, strongVs: 'Feu, Roche', weakVs: 'Plante, Électricité', role: 'Tank résistant à gros pool de PV' },
+    { type: 'water' as const, strongVs: 'Feu, Roche', weakVs: 'Plante, Électricité', role: 'Défenseur résistant avec réserve élevée de PV' },
     { type: 'grass' as const, strongVs: 'Eau, Roche', weakVs: 'Feu', role: 'Mage régénérant & contrôles' },
-    { type: 'electric' as const, strongVs: 'Eau, Roche', weakVs: 'Plante', role: 'Attaquant véloce & burst magique' },
+    { type: 'electric' as const, strongVs: 'Eau, Roche', weakVs: 'Plante', role: 'Attaquant véloce & magie explosive' },
     { type: 'rock' as const, strongVs: 'Feu', weakVs: 'Eau, Plante, Électricité', role: 'Colosse défensif à haute armure' },
     { type: 'normal' as const, strongVs: 'Équilibré', weakVs: 'Aucune faiblesse', role: 'Polyvalent adaptable à tout rôle' },
   ];
@@ -203,18 +255,250 @@
   </section>
 
   <!-- STARTER SELECTION SECTION -->
-  <section id="starters" class="scroll-mt-20 flex flex-col gap-4">
+  <section id="starters" class="scroll-mt-20 flex flex-col gap-5">
+    <!-- Hidden File Input for uploading monsters -->
+    <input
+      type="file"
+      accept=".json,application/json"
+      bind:this={fileInputElement}
+      on:change={handleFileChange}
+      class="hidden"
+    />
+
     <div class="text-center flex flex-col items-center gap-1">
       <h2 class="font-serif font-extrabold text-2xl md:text-3xl uppercase tracking-widest text-amber-300">
         Choisissez Votre Champion
       </h2>
       <p class="text-xs md:text-sm text-stone-400 max-w-lg">
-        Chaque créature dispose d'un type élémentaire, d'un profil de caractéristiques et d'attaques exclusives.
+        Forgez une nouvelle créature personnalisée, chargez un monstre importé ou partez au combat avec un champion vétéran victorieux.
       </p>
     </div>
 
+    <!-- NOTIFICATION DE SUCCÈS OU D'ERREUR D'IMPORTATION -->
+    {#if importNotification}
+      <div class="p-3 rounded-xl border border-emerald-500/50 bg-emerald-950/60 text-emerald-200 text-xs text-center flex items-center justify-between gap-2 max-w-xl mx-auto shadow-lg">
+        <span class="flex items-center gap-2">
+          <span>✅</span>
+          <span>{importNotification}</span>
+        </span>
+        <button
+          type="button"
+          on:click={() => (importNotification = null)}
+          class="text-emerald-400 hover:text-white font-bold px-2 py-0.5 rounded cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    {/if}
+
+    {#if importError}
+      <div class="p-3 rounded-xl border border-rose-500/50 bg-rose-950/60 text-rose-200 text-xs text-center flex items-center justify-between gap-2 max-w-xl mx-auto shadow-lg">
+        <span class="flex items-center gap-2">
+          <span>❌</span>
+          <span>{importError}</span>
+        </span>
+        <button
+          type="button"
+          on:click={() => (importError = null)}
+          class="text-rose-400 hover:text-white font-bold px-2 py-0.5 rounded cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    {/if}
+
+    <!-- TABS -->
+    <div class="flex flex-wrap items-center justify-center gap-2.5 border-b border-stone-800 pb-3">
+      <button
+        type="button"
+        on:click={() => (activeStarterTab = "forge")}
+        class="px-5 py-2.5 rounded-xl font-serif font-bold uppercase tracking-wider text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-2
+          {activeStarterTab === 'forge'
+            ? 'bg-amber-500 text-stone-950 shadow-[0_0_15px_rgba(251,191,36,0.4)]'
+            : 'bg-stone-900/80 text-stone-300 border border-stone-700 hover:border-stone-500'}"
+      >
+        <span>✨</span>
+        <span>Forger un Champion</span>
+      </button>
+
+      <button
+        type="button"
+        on:click={() => (activeStarterTab = "veterans")}
+        class="px-5 py-2.5 rounded-xl font-serif font-bold uppercase tracking-wider text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-2
+          {activeStarterTab === 'veterans'
+            ? 'bg-amber-500 text-stone-950 shadow-[0_0_15px_rgba(251,191,36,0.4)]'
+            : 'bg-stone-900/80 text-stone-300 border border-stone-700 hover:border-stone-500'}"
+      >
+        <span>🏆</span>
+        <span>Panthéon des Vétérans</span>
+        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-black/40 text-amber-300 font-bold">
+          {savedChampions.length}
+        </span>
+      </button>
+    </div>
+
     <div class="w-full">
-      <MonsterSelector onclick={(monster) => onStartRun(monster)} />
+      {#if activeStarterTab === "forge"}
+        <MonsterCreator onCreate={(monster) => onStartRun(monster)} />
+      {:else}
+        <!-- SECTION PANTHÉON -->
+        <div class="flex flex-col gap-4">
+          <!-- Barre d'outils du Panthéon avec bouton Importer -->
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl border border-stone-800 bg-stone-900/60">
+            <div class="text-left">
+              <h3 class="font-serif font-bold text-amber-200 text-sm flex items-center gap-2">
+                <span>🏆</span>
+                <span>Registre des Champions Victorieux</span>
+              </h3>
+              <p class="text-xs text-stone-400">
+                Champions immortalisés après avoir terrassé un Boss ou importés depuis vos fichiers.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              on:click={triggerFileInput}
+              class="w-full sm:w-auto px-4 py-2 rounded-xl font-serif font-semibold uppercase tracking-wider text-xs border border-sky-500/50 bg-sky-950/60 hover:bg-sky-900/60 text-sky-200 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm shrink-0"
+              title="Importer un fichier JSON de monstre"
+            >
+              <span>📥</span>
+              <span>Importer un Monstre (.json)</span>
+            </button>
+          </div>
+
+          {#if savedChampions.length === 0}
+            <!-- Empty state du Panthéon -->
+            <div class="flex flex-col items-center justify-center gap-3 p-8 md:p-12 text-center rounded-2xl border border-dashed border-stone-700/80 bg-stone-900/30 max-w-xl mx-auto">
+              <span class="text-5xl">🏆</span>
+              <h4 class="font-serif font-bold text-lg text-amber-200">Le Panthéon est encore vierge</h4>
+              <p class="text-xs text-stone-400 max-w-md leading-relaxed">
+                Chaque fois que vous triomphez d'un Boss de région, votre créature est automatiquement gravée ici. Vous pouvez également importer un monstre dès maintenant :
+              </p>
+              <button
+                type="button"
+                on:click={triggerFileInput}
+                class="mt-2 px-5 py-2.5 rounded-xl font-serif font-bold uppercase tracking-wider text-xs border border-sky-400/60 bg-gradient-to-r from-sky-600 to-sky-800 text-white hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer flex items-center gap-2"
+              >
+                <span>📥</span>
+                <span>Importer un fichier .json</span>
+              </button>
+            </div>
+          {:else}
+            <!-- Liste des champions -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {#each savedChampions as champ}
+                {@const monsterInstance = MonsterIO.fromSnapshot(champ.snapshot)}
+                {@const tc = TYPE_COLORS[champ.type] ?? TYPE_COLORS.normal}
+                <div
+                  class="relative flex flex-col rounded-xl overflow-hidden border-2 bg-gradient-to-b from-stone-900 to-stone-950 transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.8)] {tc.border}"
+                >
+                  <!-- Bandeau coloré -->
+                  <div class="h-1.5 w-full {tc.gradient}"></div>
+
+                  <!-- Header avec Sprite & Badge -->
+                  <div class="relative h-44 w-full flex items-center justify-center overflow-hidden" style="background: {tc.ambient}">
+                    <div class="w-36 h-36 scale-90">
+                      <SpriteDisplayer monster={monsterInstance} isPlayer={true} />
+                    </div>
+                    <div class="absolute top-2 right-2 flex items-center gap-1.5">
+                      <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border {tc.badge}">
+                        {TYPE_ICONS[champ.type]} {TYPE_LABELS[champ.type]}
+                      </span>
+                    </div>
+                    <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded-md border border-amber-400/50 bg-amber-950/80 text-[10px] font-serif font-bold text-amber-300">
+                      👑 Vainqueur : {champ.defeatedRegionName}
+                    </div>
+                  </div>
+
+                  <!-- Corps de la carte -->
+                  <div class="p-4 flex flex-col gap-3 flex-1 justify-between">
+                    <div>
+                      <div class="flex items-baseline justify-between border-b border-stone-800 pb-2">
+                        <h3 class="font-serif font-bold text-lg text-amber-100">{champ.name}</h3>
+                        <span class="font-mono font-bold text-xs text-amber-400">Niv. {champ.level}</span>
+                      </div>
+
+                      <!-- Grille de stats -->
+                      <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[11px] font-mono">
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">Force</span>
+                          <span class="font-bold text-red-300">{champ.snapshot.strength} <span class="text-stone-500 font-normal">({abilityModifier(champ.snapshot.strength) >= 0 ? '+' : ''}{abilityModifier(champ.snapshot.strength)})</span></span>
+                        </div>
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">Vitesse</span>
+                          <span class="font-bold text-sky-300">{champ.snapshot.speed} <span class="text-stone-500 font-normal">({abilityModifier(champ.snapshot.speed) >= 0 ? '+' : ''}{abilityModifier(champ.snapshot.speed)})</span></span>
+                        </div>
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">PV Max</span>
+                          <span class="font-bold text-emerald-300">{monsterInstance.maxHp}</span>
+                        </div>
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">Savoir</span>
+                          <span class="font-bold text-violet-300">{champ.snapshot.wisdom} <span class="text-stone-500 font-normal">({abilityModifier(champ.snapshot.wisdom) >= 0 ? '+' : ''}{abilityModifier(champ.snapshot.wisdom)})</span></span>
+                        </div>
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">Instinct</span>
+                          <span class="font-bold text-amber-300">{champ.snapshot.instinct} <span class="text-stone-500 font-normal">({abilityModifier(champ.snapshot.instinct) >= 0 ? '+' : ''}{abilityModifier(champ.snapshot.instinct)})</span></span>
+                        </div>
+                        <div class="bg-black/30 p-1.5 rounded border border-stone-800/80 flex flex-col items-center">
+                          <span class="text-stone-400 text-[10px]">Armure CA</span>
+                          <span class="font-bold text-sky-200">{monsterInstance.getAC()}</span>
+                        </div>
+                      </div>
+
+                      <!-- Attaques -->
+                      <div class="mt-2.5 flex flex-wrap gap-1">
+                        {#each champ.snapshot.moves as m}
+                          <span class="text-[10px] font-medium px-2 py-0.5 rounded border border-stone-700 bg-stone-900/60 text-stone-300">
+                            {m.name}
+                          </span>
+                        {/each}
+                      </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex flex-col gap-2 mt-3 pt-2 border-t border-stone-800/80">
+                      <button
+                        type="button"
+                        on:click={() => startWithChampion(champ)}
+                        class="w-full py-2.5 px-3 rounded-lg font-serif font-bold uppercase tracking-wider text-xs
+                          bg-gradient-to-r from-amber-400 to-amber-600 text-stone-950 hover:brightness-110 active:scale-95 transition-all shadow cursor-pointer text-center"
+                      >
+                        ⚔ Partir avec {champ.name}
+                      </button>
+
+                      <div class="flex gap-2">
+                        <button
+                          type="button"
+                          on:click={() => downloadMonsterFile(champ)}
+                          class="flex-1 py-1.5 px-2 rounded-lg border border-stone-700 bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-amber-200 text-xs font-serif transition-colors cursor-pointer flex items-center justify-center gap-1"
+                          title="Télécharger ce champion en fichier JSON"
+                        >
+                          <span>💾</span>
+                          <span>Télécharger</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          title="Supprimer du Panthéon"
+                          on:click={() => {
+                            if (confirm(`Supprimer ${champ.name} du Panthéon ?`)) {
+                              onDeleteChampion(champ.id);
+                            }
+                          }}
+                          class="py-1.5 px-3 rounded-lg border border-stone-700 bg-stone-900/80 hover:bg-rose-950/60 hover:border-rose-500/50 text-stone-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   </section>
 
@@ -274,7 +558,7 @@
       <div class="p-4 rounded-xl border border-stone-800 bg-stone-900/60 flex flex-col gap-2">
         <span class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">🛡️ Classe d'Armure & Dégâts</span>
         <p class="text-xs text-stone-300 leading-relaxed">
-          La défense passive est déterminée par la vitesse et les reliques d'armure. Les dégâts physiques utilisent des dés d'arme (1d6 à 1d20) selon la puissance du coup, tandis que la magie scale sur le Savoir.
+          La défense passive est déterminée par la vitesse et les reliques d'armure. Les dégâts physiques utilisent des dés d'arme (1d6 à 1d20) selon la puissance du coup, tandis que la magie s'ajuste sur le Savoir.
         </p>
         <div class="p-2.5 rounded bg-black/40 border border-stone-800 text-[11px] font-mono text-stone-400">
           • CA : <span class="text-sky-200">10 + mod(Vitesse) + Bonus Armure</span><br />

@@ -8,25 +8,28 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 ## 📋 Backlog des tâches à réaliser
 
 ### 1. Fiabilité & Moteur de jeu (P0)
-- [ ] **Cap & apprentissage à 4 capacités** : lors d'un level-up, proposer une interface pour choisir quelle attaque remplacer si le monstre dépasse 4 capacités (`BattleController.ts`, `MoveDisplayer.svelte`).
-- [ ] **Re-spawn déterministe au chargement** : sauvegarder l'état exact (snapshot) de l'ennemi en cours de combat ou un seed de génération dans `LocalStorageRunRepository.ts` (`battleStore.ts:151-160`).
-- [ ] **File d'animations centralisée** : unifier les délais et `setTimeout` dans un gestionnaire d'animation annulable pour éviter tout chevauchement en cas de clics rapides.
+- [x] ✅ **Cap & apprentissage à 4 capacités** : limite stricte `MAX_MOVES = 4`, remplacement automatique et intelligent de la capacité la plus faible lors du level-up avec journalisation détaillée (`BattleController.ts`, `Monster.ts`).
+- [x] ✅ **Re-spawn déterministe au chargement** : sauvegarde et restauration de l'état exact (`enemyMonster` snapshot, PV, buffs, cooldowns) dans `LocalStorageRunRepository.ts` et `battleStore.ts`.
+- [x] ✅ **File d'animations centralisée & anti-race conditions** : verrous d'attaque `isAttacking`/`isEnemyAttacking`, désactivation des boutons en cours d'action, et gestionnaire `_clearTimers` sur toutes les transitions.
 
 ---
 
 ### 2. Équilibrage & Gameplay (P1)
 - [ ] **Classe d'Armure des tanks lents** : revoir la formule de base `CA = 10 + mod(Vitesse)` qui pénalise les monstres Roche/Plante lents (ex. intégrer un bonus d'armure naturelle ou mod(Constitution)).
-- [ ] **Régulation du scaling des boss** : adoucir le multiplicateur de niveau des boss (`maxLevel + 2`) pour éviter les pics de difficulté excessifs en Citadelle Céleste.
-- [ ] **Rôle mécanique pour SAG (Sagesse/Instinct) & CHA (Charisme)** :
-  - *SAG* : bonus sur les soins (`2d4 + mod(CON) + mod(SAG)`) et résistance aux statuts.
-  - *CHA* : réduction des prix en boutique ou meilleures offres de reliques.
-- [ ] **Choix de relique post-Boss** : offrir une relique rare après la victoire sur un boss de région avant d'avancer vers la région suivante.
+- [x] ✅ **Régulation du scaling des boss** : adoucissement du niveau des boss (`maxLevel + 1` au lieu de `maxLevel + 2`) dans `BattleController.ts` pour éviter les pics de difficulté excessifs en Citadelle Céleste.
+- [x] ✅ **Rôle mécanique pour SAG (Sagesse/Instinct) & Savoir** :
+  - *Instinct (SAG)* : perception martiale élargissant la plage de coups critiques (`effectiveCritRange`), échelle visuelle du regard SVG.
+  - *Savoir (INT)* : bonus direct sur les soins (`(niveau + 1)d4 + mod(CON) + mod(Savoir)`), scaling des attaques magiques.
+- [x] ✅ **Choix de relique post-Boss** : offrir une relique rare après la victoire sur un boss de région avant d'avancer vers la région suivante.
 - [ ] **Effets de statut élémentaires (d20)** :
   - 🔥 Brûlure : dégâts à chaque tour.
   - 💧 Gel / Sommeil : tour sauté avec jet de sauvegarde d20.
   - ⚡ Paralysie : réduction d'initiative et risque d'échec d'action.
   - 🌿 Poison : affaiblissement progressif des PV.
-- [ ] **Hall of Fame & Meilleurs Scores** : enregistrement et affichage des meilleures runs historiques (LocalStorage).
+- [x] ✅ **Panthéon des Champions & Export/Import JSON** :
+  - Enregistrement automatique des créatures après chaque victoire de boss régional (`LocalStorageChampionRepository`).
+  - Onglet Panthéon complet sur l'écran d'accueil avec rejouabilité directe.
+  - Exportation / Téléchargement et Importation de fichiers `.json` standardisés.
 
 ---
 
@@ -54,13 +57,15 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 ## ✅ Historique des réalisations
 
 ### 🧹 Optimisations & Assets (2026-09)
+- [x] ✅ **Filtres et tris de la Boutique d'Aventurier** : filtres dédiés par statistique (Force, Vitesse, Constitution, Savoir, Instinct, Armure CA, Soins/PV, Combat spécial) et tris dynamiques (Rayon, Achetables, Prix ↗/↘, Type) dans `ShopView.svelte`.
 - [x] ✅ **Suppression des images PNG inutilisées** (`monster_1.png`, `monster_2.png`) : suppression des imports et allègement du bundle de ~320 Ko au profit du rendu 100 % SVG procédural.
 
 ### 🎨 Design & Navigation Globale (2026-09)
 - [x] ✅ **Header & Navigation persistants** (`Header.svelte`) : barre supérieure affichée sur tous les écrans (Accueil, Carte, Arène, Boutique, Victoire, Défaite) avec indicateurs en direct (Région, Champion, Niveau, Or, Score), raccourci Codex et bouton Menu.
 - [x] ✅ **Footer persistant** (`Footer.svelte`) : pied de page 4 colonnes (Branding & Stack, Liens rapides, Rappel des formules mathématiques D&D 5e, Statut de session LocalStorage).
 - [x] ✅ **Codex & Guide de Jeu interactif** (`CodexModal.svelte`) : modale accessible d'un clic partout avec onglets *Règles D&D 5e*, *Table des 6 éléments* et *Régions & Boss*.
-- [x] ✅ **Page d'accueil complète** (`Home.svelte`) : Hero banner, métriques du jeu, détection de partie active, sélecteur de starter, fiches de fonctionnalités et vitrine des régions.
+- [x] ✅ **Page d'accueil complète** (`Home.svelte`) : Hero banner, métriques du jeu, détection de partie active, création de champion, fiches de fonctionnalités et vitrine des régions.
+- [x] ✅ **Création de champion personnalisé** (`MonsterCreation.ts` + `MonsterForge.ts` + `MonsterCreator.svelte`) : assistant en 3 étapes (type élémentaire → répartition de 10 points de destin avec aperçu PV/CA → nom libre ou tiré au sort), en remplacement des 5 starters figés.
 
 ### 🛡️ Fiabilité & Résolution des Bugs (2026-09)
 - [x] ✅ **Protection achat de potion à PV max** : `buyShopItem` empêche l'achat si les PV sont pleins et désactive le bouton dans `ShopView.svelte`.
@@ -75,13 +80,17 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 
 ### 🎲 Moteur D&D 5e & Gameplay (2026-09)
 - [x] ✅ **Moteur d20 conforme aux règles** : jets d'attaque `1d20 + mod(stat) + précision vs CA`, Classe d'Armure `10 + mod(Vitesse) + reliques`, dégâts par dés d'arme physiques et scaling magique sur le Savoir.
+- [x] ✅ **Rôle de l'Instinct & du Savoir** : Instinct étendant la plage critique (`effectiveCritRange`) et modulant le regard SVG ; Savoir augmentant les soins `(niveau + 1)d4 + mod(CON) + mod(Savoir)`.
 - [x] ✅ **Système d'Initiative au tour par tour** : jet `1d20 + mod(Vitesse)` à chaque round avec annulation de riposte en cas de K.O.
 - [x] ✅ **6 Types élémentaires équilibrés** : Feu, Eau, Plante, Électricité, Roche, Normal avec multiplicateurs physiques (×2 / ×0.5) et magiques amortis (×1.5 / ×0.67).
-- [x] ✅ **Courbe de progression & gains de stats ciblés** : progression par niveau sur Force, Vitesse, Constitution et Intelligence selon l'archétype du monstre.
+- [x] ✅ **Courbe de progression & gains de stats ciblés** : progression par niveau sur Force, Vitesse, Constitution, Savoir et Instinct selon l'archétype du monstre.
+- [x] ✅ **Sélection des capacités au Level-up & Grimoire dédié** (`MoveManagerModal.svelte`) : choix interactif des 1 à 4 attaques parmi l'ensemble des capacités débloquées à chaque montée de niveau, et menu d'accès permanent via le bouton « 📜 Attaques » dans la barre supérieure.
 - [x] ✅ **Précision inversement proportionnelle à la puissance** : bonus `🎯 +N` sur les attaques faibles pour valoriser la diversité des choix.
 
 ### 🗺️ Mode Roguelike & Économie (2026-09)
 - [x] ✅ **Carte procédurale de région** : génération par couches (combats sauvages typés, feux de camp +50 % PV, boutiques, boss régional).
 - [x] ✅ **Boutique & 30+ Reliques passives** : achat de reliques à effets permanents (dégâts, armure, vol de vie, soins au départ, boost de caractéristiques).
+- [x] ✅ **Relique rare post-Boss & transition inter-régions** : octroi d'une relique majeure à la mort du boss et passage fluide vers la région suivante ou la victoire finale.
+- [x] ✅ **Panthéon des Champions & Export/Import JSON** : enregistrement automatique des monstres victorieux de boss, stockage LocalStorage, téléchargement `.json` depuis le Panthéon et import direct de monstres.
 - [x] ✅ **Sauvegarde automatique LocalStorage** : persistance de l'état de la run après chaque nœud ou combat.
 - [x] ✅ **Rendu visuel procédural SVG** : sprites personnalisés par élément avec expressions réactives (dégâts, fatigue, joie) et ornements de boss.

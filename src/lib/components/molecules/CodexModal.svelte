@@ -9,9 +9,9 @@
 
   const ELEMENT_DETAILS = [
     { type: 'fire' as const, strongVs: 'Plante', weakVs: 'Eau, Roche', role: 'Frappeur physique & sorts ardents' },
-    { type: 'water' as const, strongVs: 'Feu, Roche', weakVs: 'Plante, Électricité', role: 'Tank résistant à gros pool de PV' },
+    { type: 'water' as const, strongVs: 'Feu, Roche', weakVs: 'Plante, Électricité', role: 'Défenseur résistant avec réserve élevée de PV' },
     { type: 'grass' as const, strongVs: 'Eau, Roche', weakVs: 'Feu', role: 'Mage régénérant & contrôles' },
-    { type: 'electric' as const, strongVs: 'Eau, Roche', weakVs: 'Plante', role: 'Attaquant véloce & burst magique' },
+    { type: 'electric' as const, strongVs: 'Eau, Roche', weakVs: 'Plante', role: 'Attaquant véloce & magie explosive' },
     { type: 'rock' as const, strongVs: 'Feu', weakVs: 'Eau, Plante, Électricité', role: 'Colosse défensif à haute armure' },
     { type: 'normal' as const, strongVs: 'Équilibré', weakVs: 'Aucune faiblesse', role: 'Polyvalent adaptable à tout rôle' },
   ];
@@ -69,27 +69,27 @@
       </div>
 
       <!-- Navigation Tabs -->
-      <div class="flex border-b border-stone-800 bg-stone-950/70 px-4 pt-2 gap-2 text-xs font-serif font-bold tracking-wider uppercase">
+      <div class="flex border-b border-stone-800 bg-stone-950/70 px-4 pt-2 gap-2 text-xs font-serif font-bold tracking-wider uppercase overflow-x-auto no-scrollbar shrink-0">
         <button
           type="button"
           on:click={() => activeTab = 'rules'}
-          class="px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer {activeTab === 'rules' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'rules' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
         >
-          <span>🎲</span> Règles D&D 5e
+          <span>🎲</span> <span>Règles D&D 5e</span>
         </button>
         <button
           type="button"
           on:click={() => activeTab = 'elements'}
-          class="px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer {activeTab === 'elements' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'elements' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
         >
-          <span>🔥</span> Types & Faiblesses
+          <span>🔥</span> <span>Types & Faiblesses</span>
         </button>
         <button
           type="button"
           on:click={() => activeTab = 'regions'}
-          class="px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer {activeTab === 'regions' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'regions' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
         >
-          <span>🗺️</span> Régions & Boss
+          <span>🗺️</span> <span>Régions & Boss</span>
         </button>
       </div>
 
