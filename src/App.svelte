@@ -12,6 +12,7 @@
   import Footer from "./lib/components/molecules/Footer.svelte";
   import CodexModal from "./lib/components/molecules/CodexModal.svelte";
   import MoveManagerModal from "./lib/components/molecules/MoveManagerModal.svelte";
+  import InventoryModal from "./lib/components/molecules/InventoryModal.svelte";
   import Home from "./lib/components/molecules/Home.svelte";
   import { styles } from "./lib/styles/style";
   import { REGION_COLORS } from "./lib/styles/regionColors";
@@ -38,6 +39,7 @@
 
   let isCodexOpen = false;
   let codexTab: 'rules' | 'elements' | 'regions' = 'rules';
+  let isInventoryOpen = false;
 
   function openCodex(tab: 'rules' | 'elements' | 'regions' = 'rules') {
     codexTab = tab;
@@ -130,9 +132,11 @@
             mapLayer={run.mapLayer}
             mapLayers={run.map?.layers.length ?? 0}
             relics={run.relics}
+            inventory={run.inventory}
             score={run.score}
             gold={run.gold}
             isBossFight={$battleStore.isBossFight}
+            onOpenInventory={() => (isInventoryOpen = true)}
           />
 
           {#if phase === "map"}
@@ -165,6 +169,7 @@
               stock={run.shopStock}
               gold={run.gold}
               player={player}
+              inventory={run.inventory}
               onBuy={(item) => battleStore.buyShopItem(item)}
               onLeave={() => battleStore.leaveShop()}
             />
@@ -246,7 +251,7 @@
 
             <div
               class="order-1 md:order-2 sticky bottom-0 md:static z-30
-                pb-[env(safe-area-inset-bottom)] md:pb-0"
+                pb-[env(safe-area-inset-bottom)] md:pb-0 flex flex-col gap-2"
             >
               <div class="{styles.actionBar.container}">
                 <div class={styles.actionBar.textureOverlay}></div>
@@ -262,6 +267,27 @@
                   {/each}
                 {/if}
               </div>
+
+              {#if phase === "encounter" && !$battleStore.winner && player}
+                <div class="flex items-center justify-between px-1">
+                  <button
+                    type="button"
+                    on:click={() => (isInventoryOpen = true)}
+                    class="px-3.5 py-1.5 rounded-xl border border-amber-500/50 bg-stone-900/90 hover:bg-amber-950/40 text-amber-200 text-xs font-mono font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer active:scale-95"
+                  >
+                    <span>🎒</span>
+                    <span>Ouvrir la Sacoche ({run.inventory.reduce((a, s) => a + s.quantity, 0)} potion{run.inventory.reduce((a, s) => a + s.quantity, 0) > 1 ? 's' : ''})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    on:click={() => openCodex('elements')}
+                    class="text-xs font-mono text-stone-400 hover:text-stone-200 underline cursor-pointer"
+                  >
+                    📖 Faiblesses & Statuts
+                  </button>
+                </div>
+              {/if}
             </div>
           </div>
           {/if}
@@ -283,6 +309,18 @@
       }
     }}
   />
+
+  <!-- MODAL INVENTAIRE / SACOCHE -->
+  {#if isInventoryOpen}
+    <InventoryModal
+      inventory={run.inventory}
+      player={player}
+      isPlayerTurn={$battleStore.isPlayerTurn && !$battleStore.isAttacking && !$battleStore.isEnemyAttacking && !$battleStore.winner}
+      disabled={phase === 'encounter' && (!$battleStore.isPlayerTurn || !!$battleStore.winner || $battleStore.isAttacking || $battleStore.isEnemyAttacking)}
+      on:use={(e) => battleStore.useConsumable(e.detail.itemId)}
+      on:close={() => (isInventoryOpen = false)}
+    />
+  {/if}
 
   <!-- MODAL CODEX ET RÈGLES INTERACTIF DISPONIBLE PARTOUT -->
   <CodexModal

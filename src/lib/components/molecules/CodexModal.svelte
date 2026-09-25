@@ -134,6 +134,54 @@
                 • <span class="text-rose-400 font-bold">1 Naturel</span> : Échec critique automatique (l'attaque rate).
               </p>
             </div>
+
+            <!-- EFFETS DE STATUT ÉLÉMENTAIRES (D20) -->
+            <div class="md:col-span-2 p-4 rounded-xl border border-amber-500/40 bg-stone-900/80 flex flex-col gap-2.5">
+              <span class="font-mono font-bold text-amber-300 uppercase tracking-wider text-xs flex items-center gap-2">
+                <span>✨</span>
+                <span>Effets de Statut Élémentaires & Jets de Sauvegarde (d20)</span>
+              </span>
+              <p class="text-stone-300 leading-relaxed text-[11px]">
+                Certaines capacités élémentaires infligent des altérations d'état. La cible effectue un <span class="text-amber-300 font-bold">jet de sauvegarde d20 + mod(Constitution) vs le Degré de Difficulté (DD)</span> pour y résister ou s'en libérer :
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                <div class="p-2.5 rounded-lg border border-orange-500/40 bg-orange-950/30">
+                  <div class="font-bold text-orange-300 flex items-center gap-1.5 mb-1">
+                    <span>🔥</span> <span>Brûlure (Feu)</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Inflige <span class="text-orange-200 font-semibold">8 % des PV max</span> à chaque fin de tour. Jet de sauvegarde CON (DD 12) pour éteindre les flammes.
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-cyan-400/40 bg-cyan-950/30">
+                  <div class="font-bold text-cyan-300 flex items-center gap-1.5 mb-1">
+                    <span>❄️</span> <span>Gel (Eau)</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    <span class="text-cyan-200 font-semibold">Tour sauté</span> ! Jet de sauvegarde CON (DD 12) au début de chaque tour pour briser la glace et agir.
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-yellow-400/40 bg-yellow-950/30">
+                  <div class="font-bold text-yellow-300 flex items-center gap-1.5 mb-1">
+                    <span>⚡</span> <span>Paralysie (Électricité)</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    <span class="text-yellow-200 font-semibold">Initiative réduite (-4)</span> et jet de sauvegarde CON (DD 11) à chaque action : en cas d'échec, l'attaque est interrompue !
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-950/30">
+                  <div class="font-bold text-emerald-300 flex items-center gap-1.5 mb-1">
+                    <span>🌿</span> <span>Poison (Plante)</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    <span class="text-emerald-200 font-semibold">Dégâts croissants</span> (+5 % PV max par rang cumulé). Jet de sauvegarde CON (DD 13) pour purger la toxine.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
         {:else if activeTab === 'elements'}

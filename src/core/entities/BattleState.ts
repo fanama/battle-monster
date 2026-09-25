@@ -3,6 +3,8 @@ import type { Monster } from './Monster';
 import type { Move } from './Move';
 import type { Relic, ShopItem } from './Relic';
 import type { RegionMap } from './RegionMap';
+import type { InventorySlot } from './Consumable';
+export type { InventorySlot };
 
 /** Phase de la run roguelike (machine à états du run). */
 export type RunPhase =
@@ -34,6 +36,8 @@ export interface RunState {
   relics: Relic[];
   score: number;
   relicOffers: Relic[] | null;
+  /** Sacoche d'objets à utilisation unique (potions anti-statut, soins, buffs). */
+  inventory: InventorySlot[];
 }
 
 /** État complet du combat + run — interface unique partagée par le store et le contrôleur. */

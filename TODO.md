@@ -21,11 +21,15 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   - *Instinct (SAG)* : perception martiale élargissant la plage de coups critiques (`effectiveCritRange`), échelle visuelle du regard SVG.
   - *Savoir (INT)* : bonus direct sur les soins (`(niveau + 1)d4 + mod(CON) + mod(Savoir)`), scaling des attaques magiques.
 - [x] ✅ **Choix de relique post-Boss** : offrir une relique rare après la victoire sur un boss de région avant d'avancer vers la région suivante.
-- [ ] **Effets de statut élémentaires (d20)** :
-  - 🔥 Brûlure : dégâts à chaque tour.
-  - 💧 Gel / Sommeil : tour sauté avec jet de sauvegarde d20.
-  - ⚡ Paralysie : réduction d'initiative et risque d'échec d'action.
-  - 🌿 Poison : affaiblissement progressif des PV.
+- [x] ✅ **Effets de statut élémentaires (d20)** :
+  - 🔥 Brûlure : dégâts à chaque tour (8 % PV max), jet de sauvegarde CON (DD 12).
+  - 💧 Gel / Sommeil : tour sauté avec jet de sauvegarde d20 CON (DD 12).
+  - ⚡ Paralysie : réduction d'initiative (-4) et risque d'échec d'action sur jet de sauvegarde d20 CON (DD 11).
+  - 🌿 Poison : affaiblissement progressif des PV (+5 % par tour cumulé), jet de sauvegarde CON (DD 13).
+- [x] ✅ **Objets consommables & Sacoche d'aventurier** :
+  - Catalogue d'objets à usage unique (`Consumable.ts`) : Panacée universelle, Baume anti-brûlure, Potion de dégel, Antidote végétal, Élixir d'adrénaline, Pierre de recharge, Potion de pierre.
+  - Modale interactive de sacoche (`InventoryModal.svelte`) utilisable instantanément en combat ou pendant l'exploration.
+  - Intégration en boutique d'aventurier (`ShopView.svelte`) et pack de départ (`STARTER_INVENTORY`).
 - [x] ✅ **Panthéon des Champions & Export/Import JSON** :
   - Enregistrement automatique des créatures après chaque victoire de boss régional (`LocalStorageChampionRepository`).
   - Onglet Panthéon complet sur l'écran d'accueil avec rejouabilité directe.

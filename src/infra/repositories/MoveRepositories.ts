@@ -37,10 +37,10 @@ export class MoveRepository {
     'normal-slam': { id: 'normal-slam', name: 'Giga Impact', power: 140, type: 'normal', isPhysical: true, maxCoolDown: 3, level: 10 },
 
     // --- FIRE Moves ---
-    'fire-ember': { id: 'fire-ember', name: 'Tison', power: 35, type: 'fire', isPhysical: true, level: 1 },
+    'fire-ember': { id: 'fire-ember', name: 'Tison', power: 35, type: 'fire', isPhysical: true, level: 1, statusEffect: { type: 'burn', chance: 35, duration: 3, dc: 12 } },
     'fire-ball': { id: 'fire-ball', name: 'Boule de Feu', power: 55, type: 'fire', isPhysical: false, level: 1 },
     'fire-fang': { id: 'fire-fang', name: 'Crocs de Flammes', power: 65, type: 'fire', isPhysical: true, level: 3 },
-    'fire-blaze': { id: 'fire-blaze', name: 'Flammèche Majeure', power: 80, type: 'fire', isPhysical: false, level: 5 },
+    'fire-blaze': { id: 'fire-blaze', name: 'Flammèche Majeure', power: 80, type: 'fire', isPhysical: false, level: 5, statusEffect: { type: 'burn', chance: 50, duration: 3, dc: 13 } },
     'fire-rage': {
       id: 'fire-rage',
       name: 'Colère Ardente',
@@ -52,11 +52,11 @@ export class MoveRepository {
       maxCoolDown: 4
     },
     'fire-flare': { id: 'fire-flare', name: 'Éruption de Braises', power: 95, type: 'fire', isPhysical: true, maxCoolDown: 1, level: 9 },
-    'fire-blast': { id: 'fire-blast', name: 'Déflagration', power: 125, type: 'fire', isPhysical: false, maxCoolDown: 2, level: 11 },
+    'fire-blast': { id: 'fire-blast', name: 'Déflagration', power: 125, type: 'fire', isPhysical: false, maxCoolDown: 2, level: 11, statusEffect: { type: 'burn', chance: 75, duration: 3, dc: 14 } },
 
     // --- WATER Moves ---
     'water-splash': { id: 'water-splash', name: 'Coup de Nageoire', power: 35, type: 'water', isPhysical: true, level: 1 },
-    'water-jet': { id: 'water-jet', name: 'Jet d\'Eau', power: 50, type: 'water', isPhysical: false, level: 1 },
+    'water-jet': { id: 'water-jet', name: 'Jet d\'Eau', power: 50, type: 'water', isPhysical: false, level: 1, statusEffect: { type: 'freeze', chance: 30, duration: 2, dc: 12 } },
     'water-bubble': {
       id: 'water-bubble',
       name: 'Bulle Protectrice',
@@ -67,7 +67,7 @@ export class MoveRepository {
       statBoosts: { stat: 'constitution', value: 2 },
       maxCoolDown: 4
     },
-    'water-wave': { id: 'water-wave', name: 'Aqua-Vague', power: 75, type: 'water', isPhysical: false, level: 5 },
+    'water-wave': { id: 'water-wave', name: 'Aqua-Vague', power: 75, type: 'water', isPhysical: false, level: 5, statusEffect: { type: 'freeze', chance: 45, duration: 2, dc: 13 } },
     'water-cascade': {
       id: 'water-cascade',
       name: 'Cascade Curative',
@@ -79,13 +79,13 @@ export class MoveRepository {
       maxCoolDown: 3
     },
     'water-dive': { id: 'water-dive', name: 'Plongeon Torrentiel', power: 90, type: 'water', isPhysical: true, maxCoolDown: 1, level: 8 },
-    'water-hydro': { id: 'water-hydro', name: 'Hydrocanon', power: 120, type: 'water', isPhysical: false, maxCoolDown: 2, level: 10 },
+    'water-hydro': { id: 'water-hydro', name: 'Hydrocanon', power: 120, type: 'water', isPhysical: false, maxCoolDown: 2, level: 10, statusEffect: { type: 'freeze', chance: 65, duration: 3, dc: 14 } },
 
     // --- GRASS Moves ---
     'grass-tackle': { id: 'grass-tackle', name: 'Épine Percée', power: 35, type: 'grass', isPhysical: true, level: 1 },
-    'grass-spores': { id: 'grass-spores', name: 'Poudre Sylvestre', power: 50, type: 'grass', isPhysical: false, level: 1 },
+    'grass-spores': { id: 'grass-spores', name: 'Poudre Sylvestre', power: 50, type: 'grass', isPhysical: false, level: 1, statusEffect: { type: 'poison', chance: 85, duration: 4, dc: 13 } },
     'grass-leaf': { id: 'grass-leaf', name: 'Fouet Liane', power: 65, type: 'grass', isPhysical: true, level: 3 },
-    'grass-drain': { id: 'grass-drain', name: 'Giga-Sangsue', power: 75, type: 'grass', isPhysical: false, level: 5 },
+    'grass-drain': { id: 'grass-drain', name: 'Giga-Sangsue', power: 75, type: 'grass', isPhysical: false, level: 5, statusEffect: { type: 'poison', chance: 45, duration: 3, dc: 12 } },
     'grass-synthesis': {
       id: 'grass-synthesis',
       name: 'Photosynthèse',
@@ -97,11 +97,11 @@ export class MoveRepository {
       maxCoolDown: 3
     },
     'grass-wood-hammer': { id: 'grass-wood-hammer', name: 'Marteau de Bois', power: 95, type: 'grass', isPhysical: true, maxCoolDown: 1, level: 9 },
-    'grass-solar': { id: 'grass-solar', name: 'Rayon Solaire', power: 125, type: 'grass', isPhysical: false, maxCoolDown: 3, level: 11 },
+    'grass-solar': { id: 'grass-solar', name: 'Rayon Solaire', power: 125, type: 'grass', isPhysical: false, maxCoolDown: 3, level: 11, statusEffect: { type: 'poison', chance: 65, duration: 3, dc: 14 } },
 
     // --- ELECTRIC Moves ---
-    'elec-spark': { id: 'elec-spark', name: 'Étincelle', power: 35, type: 'electric', isPhysical: true, level: 1 },
-    'elec-shock': { id: 'elec-shock', name: 'Éclair', power: 55, type: 'electric', isPhysical: false, level: 1 },
+    'elec-spark': { id: 'elec-spark', name: 'Étincelle', power: 35, type: 'electric', isPhysical: true, level: 1, statusEffect: { type: 'paralysis', chance: 35, duration: 3, dc: 12 } },
+    'elec-shock': { id: 'elec-shock', name: 'Éclair', power: 55, type: 'electric', isPhysical: false, level: 1, statusEffect: { type: 'paralysis', chance: 50, duration: 3, dc: 13 } },
     'elec-charge': {
       id: 'elec-charge',
       name: 'Surcharge Nerveuse',
@@ -113,9 +113,9 @@ export class MoveRepository {
       maxCoolDown: 4
     },
     'elec-punch': { id: 'elec-punch', name: 'Poing Éclair', power: 70, type: 'electric', isPhysical: true, level: 5 },
-    'elec-bolt': { id: 'elec-bolt', name: 'Tonnerre', power: 85, type: 'electric', isPhysical: false, level: 7 },
+    'elec-bolt': { id: 'elec-bolt', name: 'Tonnerre', power: 85, type: 'electric', isPhysical: false, level: 7, statusEffect: { type: 'paralysis', chance: 65, duration: 3, dc: 14 } },
     'elec-volt-tackle': { id: 'elec-volt-tackle', name: 'Charge Voltage', power: 100, type: 'electric', isPhysical: true, maxCoolDown: 1, level: 9 },
-    'elec-storm': { id: 'elec-storm', name: 'Orage Apocalyptique', power: 125, type: 'electric', isPhysical: false, maxCoolDown: 2, level: 11 },
+    'elec-storm': { id: 'elec-storm', name: 'Orage Apocalyptique', power: 125, type: 'electric', isPhysical: false, maxCoolDown: 2, level: 11, statusEffect: { type: 'paralysis', chance: 85, duration: 4, dc: 15 } },
 
     // --- ROCK Moves ---
     'rock-pebble': { id: 'rock-pebble', name: 'Jet de Pierre', power: 35, type: 'rock', isPhysical: false, level: 1 },

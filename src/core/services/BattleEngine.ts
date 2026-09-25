@@ -2,6 +2,7 @@ import type { Monster, MonsterRank } from "../entities/Monster";
 import { abilityModifier } from "../entities/Monster";
 import type { Move, MonsterStat, MonsterType } from "../entities/Move";
 import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
+import { STATUS_CONFIGS, type StatusEffectType } from "../entities/StatusEffect";
 import { typeEffectiveness } from "./effectiveness";
 
 export interface BattleLog {
@@ -19,6 +20,7 @@ export interface CombatFeedback {
   kind: "damage" | "heal" | "buff" | "fumble" | "miss" | "none";
   damage: number;
   isCrit: boolean;
+  label?: string;
 }
 
 export interface TurnResult {
@@ -257,6 +259,163 @@ export class BattleEngine {
 
   // --- 2. Application des effets (mutation des monstres) ---
 
+  /**
+   * Vérifie si le monstre peut agir ce tour-ci face aux altérations de statut :
+   *  - Gel : jet de sauvegarde d20 CON (DD 12) pour briser la glace. Si échec, tour sauté !
+   *  - Paralysie : jet de sauvegarde d20 CON (DD 11). Si échec, action interrompue !
+   */
+  checkCanAct(actor: Monster): { canAct: boolean; logs: BattleLog[]; skippedDueToStatus?: StatusEffectType } {
+    const logs: BattleLog[] = [];
+
+    // 1. Contrôle du Gel
+    if (actor.hasStatus('freeze')) {
+      const roll = this.dice.roll(1, 20);
+      const saveMod = abilityModifier(actor.constitution);
+      const total = roll + saveMod;
+      const dc = 12;
+
+      if (roll === 20 || (roll !== 1 && total >= dc)) {
+        actor.removeStatus('freeze');
+        logs.push({
+          message: `❄️✨ ${actor.name} réussit son jet de sauvegarde CON [1d20${sign(saveMod)} = ${total} vs DD ${dc}] et brise la glace ! Le gel se dissipe.`,
+        });
+      } else {
+        const st = actor.getStatus('freeze')!;
+        st.duration -= 1;
+        logs.push({
+          message: `❄️❌ ${actor.name} est gelé et ne peut pas agir ! [1d20${sign(saveMod)} = ${total} < DD ${dc}].`,
+        });
+        if (st.duration <= 0) {
+          actor.removeStatus('freeze');
+          logs.push({ message: `❄️ La couche de glace finit par fondre.` });
+        }
+        return { canAct: false, logs, skippedDueToStatus: 'freeze' };
+      }
+    }
+
+    // 2. Contrôle de la Paralysie
+    if (actor.hasStatus('paralysis')) {
+      const roll = this.dice.roll(1, 20);
+      const saveMod = abilityModifier(actor.constitution);
+      const total = roll + saveMod;
+      const dc = 11;
+
+      if (roll === 20 || (roll !== 1 && total >= dc)) {
+        logs.push({
+          message: `⚡💪 ${actor.name} surmonte la paralysie pour cette action ! [1d20${sign(saveMod)} = ${total} vs DD ${dc}]`,
+        });
+      } else {
+        logs.push({
+          message: `⚡❌ Une décharge nerveuse paralyse ${actor.name} ! [1d20${sign(saveMod)} = ${total} < DD ${dc}] Son action échoue !`,
+        });
+        return { canAct: false, logs, skippedDueToStatus: 'paralysis' };
+      }
+    }
+
+    return { canAct: true, logs };
+  }
+
+  /**
+   * Traitement des effets de statut en fin de tour pour le monstre actif :
+   *  - Brûlure : dégâts fixes de feu (8 % PV max) + jet CON (DD 12) pour éteindre.
+   *  - Poison : dégâts progressifs (5 % × toxicité PV max) + jet CON (DD 13) pour purger.
+   *  - Paralysie : jet CON (DD 12) pour récupérer sa pleine motricité.
+   */
+  processEndOfTurnStatus(monster: Monster): { logs: BattleLog[]; totalDamage: number; fainted: boolean } {
+    const logs: BattleLog[] = [];
+    let totalDamage = 0;
+
+    // 1. Brûlure
+    if (monster.hasStatus('burn')) {
+      const burnDmg = Math.max(1, Math.floor(monster.maxHp * 0.08));
+      monster.takeDamage(burnDmg);
+      totalDamage += burnDmg;
+      logs.push({
+        message: `🔥 ${monster.name} brûle et subit ${burnDmg} dégâts de feu !`,
+      });
+
+      if (monster.isFainted()) {
+        return { logs, totalDamage, fainted: true };
+      }
+
+      const saveRoll = this.dice.roll(1, 20);
+      const saveMod = abilityModifier(monster.constitution);
+      const saveTotal = saveRoll + saveMod;
+      if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 12)) {
+        monster.removeStatus('burn');
+        logs.push({
+          message: `🔥✨ ${monster.name} réussit son jet de sauvegarde [1d20${sign(saveMod)} = ${saveTotal} vs DD 12] et éteint les flammes !`,
+        });
+      } else {
+        const st = monster.getStatus('burn');
+        if (st) {
+          st.duration -= 1;
+          if (st.duration <= 0) {
+            monster.removeStatus('burn');
+            logs.push({ message: `🔥 Les flammes autour de ${monster.name} finissent par s'éteindre.` });
+          }
+        }
+      }
+    }
+
+    // 2. Poison (dégâts progressifs)
+    if (monster.hasStatus('poison')) {
+      const st = monster.getStatus('poison')!;
+      const potency = st.potency ?? 1;
+      const poisonDmg = Math.max(1, Math.floor(monster.maxHp * (0.05 * potency)));
+      monster.takeDamage(poisonDmg);
+      totalDamage += poisonDmg;
+      logs.push({
+        message: `🌿 ${monster.name} souffre du poison (toxicité ${potency}) : -${poisonDmg} PV !`,
+      });
+      st.potency = potency + 1;
+
+      if (monster.isFainted()) {
+        return { logs, totalDamage, fainted: true };
+      }
+
+      const saveRoll = this.dice.roll(1, 20);
+      const saveMod = abilityModifier(monster.constitution);
+      const saveTotal = saveRoll + saveMod;
+      if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 13)) {
+        monster.removeStatus('poison');
+        logs.push({
+          message: `🌿✨ Le système immunitaire de ${monster.name} neutralise le poison [1d20${sign(saveMod)} = ${saveTotal} vs DD 13] !`,
+        });
+      } else {
+        st.duration -= 1;
+        if (st.duration <= 0) {
+          monster.removeStatus('poison');
+          logs.push({ message: `🌿 Le poison dans les veines de ${monster.name} s'estompe naturellement.` });
+        }
+      }
+    }
+
+    // 3. Paralysie (jet de récupération de fin de tour)
+    if (monster.hasStatus('paralysis')) {
+      const saveRoll = this.dice.roll(1, 20);
+      const saveMod = abilityModifier(monster.constitution);
+      const saveTotal = saveRoll + saveMod;
+      if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 12)) {
+        monster.removeStatus('paralysis');
+        logs.push({
+          message: `⚡✨ ${monster.name} dissipe la paralysie [1d20${sign(saveMod)} = ${saveTotal} vs DD 12] et retrouve sa pleine motricité !`,
+        });
+      } else {
+        const st = monster.getStatus('paralysis');
+        if (st) {
+          st.duration -= 1;
+          if (st.duration <= 0) {
+            monster.removeStatus('paralysis');
+            logs.push({ message: `⚡ Les spasmes électriques de ${monster.name} cessent.` });
+          }
+        }
+      }
+    }
+
+    return { logs, totalDamage, fainted: monster.isFainted() };
+  }
+
   /** Soin (règle sorts D&D) : 2d4 + mod(Constitution) + mod(Savoir), plafonné aux PV max. */
   applyHeal(attacker: Monster, move: Move): number {
     const healAmount = Math.max(
@@ -383,6 +542,30 @@ export class BattleEngine {
             `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
             `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${final}.`,
         });
+
+        // Application de l'effet de statut élémentaire (si la capacité en possède un et la cible est vivante)
+        if (actualMoveInstance.statusEffect && !defender.isFainted()) {
+          const statusEffect = actualMoveInstance.statusEffect;
+          const chanceRoll = this.dice.roll(1, 100);
+          if (chanceRoll <= statusEffect.chance) {
+            const saveRoll = this.dice.roll(1, 20);
+            const saveMod = abilityModifier(defender.constitution);
+            const saveTotal = saveRoll + saveMod;
+            const dc = statusEffect.dc ?? 12;
+            const cfg = STATUS_CONFIGS[statusEffect.type];
+
+            if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= dc)) {
+              logs.push({
+                message: `🛡️ ${defender.name} réussit son jet de sauvegarde CON [1d20${sign(saveMod)} = ${saveTotal} vs DD ${dc}] et résiste à l'effet ${cfg.name} !`,
+              });
+            } else {
+              defender.addStatus(statusEffect.type, statusEffect.duration ?? 3, 1);
+              logs.push({
+                message: `${cfg.icon} Échec du jet de sauvegarde [1d20${sign(saveMod)} = ${saveTotal} < DD ${dc}] ! ${defender.name} subit l'effet ${cfg.name} (${statusEffect.duration ?? 3} tours) !`,
+              });
+            }
+          }
+        }
       } else {
         feedback = { kind: "miss", damage: 0, isCrit: false };
         logs.push({

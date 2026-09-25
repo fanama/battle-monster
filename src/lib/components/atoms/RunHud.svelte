@@ -1,18 +1,22 @@
 <script lang="ts">
   import { REGIONS } from "../../../core/entities/Region";
   import type { Relic } from "../../../core/entities/Relic";
+  import type { InventorySlot } from "../../../core/entities/Consumable";
   import { REGION_COLORS } from "../../styles/regionColors";
 
   export let regionIndex: number;
   export let mapLayer: number;
   export let mapLayers: number;
   export let relics: Relic[];
+  export let inventory: InventorySlot[] = [];
   export let score: number;
   export let gold: number;
   export let isBossFight: boolean = false;
+  export let onOpenInventory: (() => void) | undefined = undefined;
 
   $: region = REGIONS[regionIndex];
   $: dots = Array.from({ length: mapLayers }, (_, i) => i);
+  $: totalPotions = (inventory ?? []).reduce((acc, slot) => acc + slot.quantity, 0);
 
   // Accent coloré par région — même source que l'arène de combat.
   $: regionColors = REGION_COLORS[region.id] ?? REGION_COLORS["region-verdure"];
@@ -66,6 +70,19 @@
       <span class="text-stone-500 text-[10px] uppercase tracking-wider">aucune relique</span>
     {/if}
   </div>
+
+  <!-- Sacoche d'inventaire -->
+  {#if onOpenInventory}
+    <button
+      type="button"
+      on:click={onOpenInventory}
+      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border border-amber-500/40 bg-stone-900/80 hover:bg-amber-950/40 text-amber-200 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+      title="Ouvrir la sacoche d'objets et potions"
+    >
+      <span>🎒</span>
+      <span>Sacoche ({totalPotions})</span>
+    </button>
+  {/if}
 
   <!-- Or + score -->
   <span class="ml-auto flex items-center gap-3">

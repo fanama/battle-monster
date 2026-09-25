@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Move, MonsterType } from "../../../core/entities/Move";
   import { TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
+  import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
 
@@ -120,6 +121,16 @@
           class={`text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold ${effectivenessBadge}`}
         >
           {effectiveness > 1 ? '⚔ Super eff.' : effectiveness < 1 ? '🛡 Peu eff.' : ''}
+        </span>
+      {/if}
+
+      {#if move.statusEffect}
+        {@const stCfg = STATUS_CONFIGS[move.statusEffect.type]}
+        <span
+          class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold {stCfg.badgeClass}"
+          title="{stCfg.name} ({move.statusEffect.chance}% de chance, DD {move.statusEffect.dc ?? 12}) : {stCfg.description}"
+        >
+          {stCfg.icon} {stCfg.name} {move.statusEffect.chance}%
         </span>
       {/if}
     {:else}

@@ -1,4 +1,6 @@
 import type { MonsterStat, Move, MonsterType } from './Move';
+import type { ActiveStatus, StatusEffectType } from './StatusEffect';
+export type { ActiveStatus, StatusEffectType };
 
 /**
  * D&D ability modifier: floor((stat - 10) / 2). E.g. 10 → +0, 12 → +1, 18 → +4.
@@ -45,6 +47,8 @@ export class Monster {
   public rank: MonsterRank = 'normal';
   /** Bonus d'armure (reliques/équipement), ajouté à la CA. */
   public armorBonus: number = 0;
+  /** Statuts élémentaires actifs (Brûlure, Gel, Paralysie, Poison). */
+  public statuses: ActiveStatus[] = [];
 
   constructor(
     public readonly id: string,
@@ -157,6 +161,38 @@ export class Monster {
     this.moves.forEach(move => {
       move.coolDown = 0;
     });
+  }
+
+  // --- Gestion des Statuts Élémentaires ---
+
+  hasStatus(type: StatusEffectType): boolean {
+    return this.statuses.some(s => s.type === type);
+  }
+
+  getStatus(type: StatusEffectType): ActiveStatus | undefined {
+    return this.statuses.find(s => s.type === type);
+  }
+
+  addStatus(type: StatusEffectType, duration = 3, potency = 1): boolean {
+    const existing = this.getStatus(type);
+    if (existing) {
+      // Renouvelle la durée si supérieure
+      existing.duration = Math.max(existing.duration, duration);
+      if (potency > (existing.potency ?? 1)) {
+        existing.potency = potency;
+      }
+      return false; // Pas un nouveau statut
+    }
+    this.statuses.push({ type, duration, potency });
+    return true; // Nouveau statut appliqué
+  }
+
+  removeStatus(type: StatusEffectType): void {
+    this.statuses = this.statuses.filter(s => s.type !== type);
+  }
+
+  clearStatuses(): void {
+    this.statuses = [];
   }
 
   /**
@@ -291,6 +327,7 @@ export interface MonsterSnapshot {
   currentHp: number;
   rank: MonsterRank;
   armorBonus: number;
+  statuses?: ActiveStatus[];
 }
 
 export namespace MonsterIO {
@@ -317,13 +354,14 @@ export namespace MonsterIO {
       currentHp: monster.currentHp,
       rank: monster.rank,
       armorBonus: monster.armorBonus,
+      statuses: monster.statuses.map(s => ({ ...s })),
     };
   }
 
   /**
    * Reconstruction d'un monstre depuis un snapshot : repasse par le constructeur
    * (qui recale `maxHp`, `currentHp` et `experienceToNextLevel`), puis restaure
-   * l'état sauvegardé (expérience, PV courants, cooldowns, rang, armure).
+   * l'état sauvegardé (expérience, PV courants, cooldowns, rang, armure, statuts).
    */
   export function fromSnapshot(snapshot: MonsterSnapshot): Monster {
     const monster = new Monster(
@@ -345,6 +383,7 @@ export namespace MonsterIO {
     monster.rank = snapshot.rank;
     monster.armorBonus = snapshot.armorBonus ?? 0;
     monster.moves = snapshot.moves.map(move => ({ ...move }));
+    monster.statuses = (snapshot.statuses ?? []).map(s => ({ ...s }));
     return monster;
   }
 }

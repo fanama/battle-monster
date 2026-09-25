@@ -1,4 +1,6 @@
 import type { MonsterStat } from './Move';
+import { CONSUMABLE_CATALOG, type ConsumableItem } from './Consumable';
+export type { ConsumableItem };
 
 /**
  * Effets d'une relique (objet passif de run roguelike).
@@ -32,7 +34,7 @@ export interface Relic {
 }
 
 /** Article vendu en boutique. */
-export type ShopItemKind = 'relic' | 'heal';
+export type ShopItemKind = 'relic' | 'heal' | 'consumable';
 
 export interface ShopItem {
   id: string;
@@ -43,6 +45,8 @@ export interface ShopItem {
   desc: string;
   /** Relique vendue (si `kind === 'relic'`). */
   relic?: Relic;
+  /** Consommable vendu (si `kind === 'consumable'`). */
+  consumable?: ConsumableItem;
   /** Acheté dans la boutique courante (état local). */
   bought?: boolean;
 }
@@ -789,29 +793,58 @@ export function rollRelicOffers(count = 5, random: () => number = Math.random): 
 export const POTION_PRICE = 30;
 
 /**
- * Génère le stock d'une boutique : `count` reliques distinctes + 1 potion
- * (le store appelle `rollShopStock(3)`). `random` est injectable pour des
- * tests déterministes (défaut : Math.random).
+ * Construit les articles « consommables » de la boutique à partir du catalogue
+ * complet (`CONSUMABLE_CATALOG`). Toujours entièrement disponible : ces objets
+ * à usage unique sont rachetables autant de fois que l'or le permet.
  */
-export function rollShopStock(count = 2, random: () => number = Math.random): ShopItem[] {
-  const stock: ShopItem[] = rollRelicOffers(count, random).map((relic) => ({
-    id: `shop-${relic.id}`,
-    kind: 'relic',
-    price: relic.price,
-    label: relic.name,
-    icon: relic.icon,
-    desc: relic.description,
-    relic,
+export function buildConsumableShopItems(): ShopItem[] {
+  return CONSUMABLE_CATALOG.map((item) => ({
+    id: `shop-consumable-${item.id}`,
+    kind: 'consumable' as const,
+    price: item.price,
+    label: item.name,
+    icon: item.icon,
+    desc: item.description,
+    consumable: item,
     bought: false,
   }));
+}
+
+/**
+ * Génère le stock d'une boutique : reliques distinctes + 1 soin à l'auberge +
+ * TOUS les objets consommables du catalogue (potions anti-statut, panacée,
+ * soins de poche, élixirs).
+ * `random` est injectable pour des tests déterministes (défaut : Math.random).
+ */
+export function rollShopStock(count = 2, random: () => number = Math.random): ShopItem[] {
+  // 1. Rayon Alchimie & Consommables (toutes les potions utiles)
+  const stock: ShopItem[] = buildConsumableShopItems();
+
+  // 2. Potion de soin immédiat à l'auberge
   stock.push({
-    id: 'shop-potion',
+    id: 'shop-potion-fullheal',
     kind: 'heal',
     price: POTION_PRICE,
-    label: 'Potion de Soin',
-    icon: '🧪',
-    desc: 'Restaure tous les PV',
+    label: 'Repos & Potion Totale',
+    icon: '🏨',
+    desc: 'Restaure immédiatement tous les PV à l\'auberge',
     bought: false,
   });
+
+  // 3. Reliques passives distinctes
+  const relicOffers = rollRelicOffers(count, random);
+  for (const relic of relicOffers) {
+    stock.push({
+      id: `shop-${relic.id}`,
+      kind: 'relic',
+      price: relic.price,
+      label: relic.name,
+      icon: relic.icon,
+      desc: relic.description,
+      relic,
+      bought: false,
+    });
+  }
+
   return stock;
 }

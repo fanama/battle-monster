@@ -2,6 +2,8 @@ import type { Monster } from '../entities/Monster';
 import { abilityModifier, MAX_MOVES } from '../entities/Monster';
 import type { RunState } from '../entities/BattleState';
 import type { Move, MonsterType } from '../entities/Move';
+import { STATUS_CONFIGS } from '../entities/StatusEffect';
+import type { ConsumableItem, InventorySlot } from '../entities/Consumable';
 import { REGIONS } from '../entities/Region';
 import {
   rollRelicOffers,
@@ -166,11 +168,15 @@ export class BattleController {
   resolveRound(opts: ResolveRoundOptions): ResolveRoundResult {
     const { player, enemy } = opts;
 
-    const playerInitiative = this.dice.roll(1, 20) + abilityModifier(player.speed);
-    const enemyInitiative = this.dice.roll(1, 20) + abilityModifier(enemy.speed);
+    const playerPara = player.hasStatus('paralysis') ? -4 : 0;
+    const enemyPara = enemy.hasStatus('paralysis') ? -4 : 0;
+    const playerInitiative = this.dice.roll(1, 20) + abilityModifier(player.speed) + playerPara;
+    const enemyInitiative = this.dice.roll(1, 20) + abilityModifier(enemy.speed) + enemyPara;
     const playerFirst = playerInitiative >= enemyInitiative;
+    const playerTag = playerPara ? ' (⚡ -4)' : '';
+    const enemyTag = enemyPara ? ' (⚡ -4)' : '';
     const logs = [
-      `⚡ ${player.name} ${playerInitiative} vs ${enemy.name} ${enemyInitiative} → ${playerFirst ? player.name : enemy.name} agit en premier.`,
+      `⚡ ${player.name} ${playerInitiative}${playerTag} vs ${enemy.name} ${enemyInitiative}${enemyTag} → ${playerFirst ? player.name : enemy.name} agit en premier.`,
     ];
 
     let playerTurn: PlayTurnResult | null = null;
@@ -234,6 +240,36 @@ export class BattleController {
   playTurn(opts: PlayTurnOptions): PlayTurnResult {
     const { attacker, defender, move, attackerSide } = opts;
 
+    // 1. Vérification des altérations de statut empêchant l'action (Gel, Paralysie)
+    const actCheck = this.engine.checkCanAct(attacker);
+    const preLogs = actCheck.logs.map(log => log.message);
+
+    if (!actCheck.canAct) {
+      // Cooldowns décrémentés même en cas de tour sauté
+      this.engine.manageCooldowns(attacker, move);
+
+      // Traitement des statuts de fin de tour sur l'attaquant (Brûlure, Poison)
+      const endStatus = this.engine.processEndOfTurnStatus(attacker);
+      const allLogs = [...preLogs, ...endStatus.logs.map(log => log.message)];
+
+      let winner: PlayTurnResult['winner'] = null;
+      if (attacker.isFainted()) {
+        winner = attackerSide === 'player' ? 'enemy' : 'player';
+        allLogs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
+      }
+
+      return {
+        logs: allLogs,
+        feedback: { kind: 'miss', damage: 0, isCrit: false },
+        move,
+        feedbackTarget: attacker,
+        winner,
+        leveledUp: false,
+        learnedNewMoves: false,
+        lifesteal: 0,
+      };
+    }
+
     const hasModifiers = (opts.damagePercent ?? 0) > 0
       || (opts.critRange ?? 1) > 1
       || (opts.experiencePercent ?? 0) > 0;
@@ -245,11 +281,18 @@ export class BattleController {
         }
       : undefined;
     const turn = this.engine.executeTurn(attacker, defender, move, engineModifiers);
-    const logs = turn.logs.map(log => log.message);
+    const logs = [...preLogs, ...turn.logs.map(log => log.message)];
+
+    // Traitement des statuts de fin de tour sur l'attaquant
+    const endStatus = this.engine.processEndOfTurnStatus(attacker);
+    endStatus.logs.forEach(log => logs.push(log.message));
 
     let winner: PlayTurnResult['winner'] = null;
     if (defender.isFainted()) {
       winner = attackerSide === 'player' ? 'player' : 'enemy';
+      logs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
+    } else if (attacker.isFainted()) {
+      winner = attackerSide === 'player' ? 'enemy' : 'player';
       logs.push(winner === 'player' ? 'Victoire !' : 'Défaite...');
     }
 
@@ -314,9 +357,10 @@ export class BattleController {
 
   // --- Spawn & progression de run ---
 
-  /** Prépare un combat : reset des cooldowns + soin de début (reliques). */
+  /** Prépare un combat : reset des cooldowns & statuts + soin de début (reliques). */
   private prepareCombat(player: Monster, run: RunState): void {
     player.resetCooldowns();
+    player.clearStatuses();
     const healPercent = relicHealStartPercent(run.relics);
     if (healPercent > 0 && player.currentHp < player.maxHp) {
       player.heal(Math.floor(player.maxHp * healPercent / 100));
@@ -345,6 +389,103 @@ export class BattleController {
     const bossLevel = region.maxLevel + 1;
     const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
     return { enemyMonster: enemy, logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`] };
+  }
+
+  /** Ajoute un objet consommable à la sacoche du joueur. */
+  addConsumableToInventory(run: RunState, item: ConsumableItem, quantity = 1): RunState {
+    const inventory = [...(run.inventory ?? [])];
+    const existingIndex = inventory.findIndex(slot => slot.item.id === item.id);
+    if (existingIndex !== -1) {
+      inventory[existingIndex] = {
+        ...inventory[existingIndex],
+        quantity: inventory[existingIndex].quantity + quantity,
+      };
+    } else {
+      inventory.push({ item, quantity });
+    }
+    return { ...run, inventory };
+  }
+
+  /**
+   * Utilise un objet consommable depuis la sacoche (en combat ou hors combat).
+   * Applique instantanément la purge de statut, soin, remise à zéro des recharges ou buff.
+   */
+  useConsumable(
+    player: Monster,
+    run: RunState,
+    itemId: string
+  ): { run: RunState; logs: string[]; feedback: CombatFeedback } | null {
+    const inventory = [...(run.inventory ?? [])];
+    const slotIndex = inventory.findIndex(slot => slot.item.id === itemId);
+    if (slotIndex === -1 || inventory[slotIndex].quantity <= 0) return null;
+
+    const item = inventory[slotIndex].item;
+    const logs: string[] = [];
+    let feedback: CombatFeedback = { kind: 'none', damage: 0, isCrit: false };
+
+    // 1. Purge de statut (anti-statut ou panacée)
+    if (item.cureStatus === 'all') {
+      const count = player.statuses.length;
+      player.clearStatuses();
+      logs.push(`✨ ${player.name} boit ${item.name} et purifie tous ses effets de statut ! (${count} dissipé${count > 1 ? 's' : ''})`);
+      feedback = { kind: 'buff', damage: 0, isCrit: false };
+    } else if (item.cureStatus) {
+      const cfg = STATUS_CONFIGS[item.cureStatus];
+      const had = player.hasStatus(item.cureStatus);
+      player.removeStatus(item.cureStatus);
+      if (had) {
+        logs.push(`✨ ${player.name} applique ${item.name} : l'effet ${cfg.name} est complètement dissipé !`);
+      } else {
+        logs.push(`✨ ${player.name} applique ${item.name} en prévention.`);
+      }
+      feedback = { kind: 'buff', damage: 0, isCrit: false };
+    }
+
+    // 2. Soin partiel ou fixe
+    if (item.healPercent) {
+      const healAmt = Math.max(1, Math.floor(player.maxHp * (item.healPercent / 100)));
+      const restored = player.heal(healAmt);
+      logs.push(`🧪 ${player.name} récupère +${restored} PV (${item.name}).`);
+      feedback = { kind: 'heal', damage: restored, isCrit: false };
+    } else if (item.healFlat) {
+      const restored = player.heal(item.healFlat);
+      logs.push(`🧪 ${player.name} récupère +${restored} PV (${item.name}).`);
+      feedback = { kind: 'heal', damage: restored, isCrit: false };
+    }
+
+    // 3. Réinitialisation des cooldowns
+    if (item.resetCooldowns) {
+      player.resetCooldowns();
+      logs.push(`⚡ ${player.name} absorbe ${item.name} : tous les temps de recharge sont remis à zéro !`);
+      feedback = { kind: 'buff', damage: 0, isCrit: false };
+    }
+
+    // 4. Boost de stat
+    if (item.statBoost) {
+      player.boostStat(item.statBoost.stat, item.statBoost.value);
+      logs.push(`🥊 ${player.name} ressent une poussée d'énergie : +${item.statBoost.value} ${item.statBoost.stat} !`);
+      feedback = { kind: 'buff', damage: item.statBoost.value, isCrit: false };
+    }
+
+    // 5. Bonus d'armure temporaire
+    if (item.acBonus) {
+      player.armorBonus += item.acBonus;
+      logs.push(`🛡️ ${player.name} renforce sa posture : +${item.acBonus} CA !`);
+      feedback = { kind: 'buff', damage: item.acBonus, isCrit: false };
+    }
+
+    // Décrémentation de la quantité dans l'inventaire
+    if (inventory[slotIndex].quantity > 1) {
+      inventory[slotIndex] = {
+        ...inventory[slotIndex],
+        quantity: inventory[slotIndex].quantity - 1,
+      };
+    } else {
+      inventory.splice(slotIndex, 1);
+    }
+
+    const nextRun = { ...run, inventory };
+    return { run: nextRun, logs, feedback };
   }
 
   /** Applique une relique au monstre (stats permanentes + armure). */

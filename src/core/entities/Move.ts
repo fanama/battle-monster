@@ -1,3 +1,6 @@
+import type { MoveStatusEffect } from './StatusEffect';
+export type { MoveStatusEffect };
+
 export type MonsterType = 'fire' | 'water' | 'grass' | 'normal' | 'electric' | 'rock';
 
 export const TYPE_LABELS: Record<MonsterType, string> = {
@@ -48,6 +51,7 @@ export interface Move {
   // Les capacités de soin suivent la règle D&D : (niveau + 1)d4 + mod(Constitution) + mod(Savoir)
   isHeal?: boolean;
   statBoosts?: StatBoost;
+  statusEffect?: MoveStatusEffect;
 }
 
 /**

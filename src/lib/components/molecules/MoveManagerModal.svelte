@@ -2,6 +2,7 @@
   import type { Move } from "../../../core/entities/Move";
   import type { Monster } from "../../../core/entities/Monster";
   import { TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
+  import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { MAX_MOVES } from "../../../core/entities/Monster";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
 
@@ -185,6 +186,13 @@
                           ⏳ {equippedMove.maxCoolDown} tr
                         </span>
                       {/if}
+
+                      {#if equippedMove.statusEffect}
+                        {@const st = STATUS_CONFIGS[equippedMove.statusEffect.type]}
+                        <span class="px-1.5 py-0.5 rounded {st.badgeClass} font-bold">
+                          {st.icon} {st.name} {equippedMove.statusEffect.chance}%
+                        </span>
+                      {/if}
                     </div>
                   </div>
 
@@ -295,6 +303,13 @@
                     {#if move.maxCoolDown && move.maxCoolDown > 0}
                       <span class="px-1.5 py-0.5 rounded bg-sky-950 text-sky-300">
                         ⏳ Recharge {move.maxCoolDown} tours
+                      </span>
+                    {/if}
+
+                    {#if move.statusEffect}
+                      {@const st = STATUS_CONFIGS[move.statusEffect.type]}
+                      <span class="px-1.5 py-0.5 rounded {st.badgeClass} font-bold">
+                        {st.icon} {st.name} {move.statusEffect.chance}%
                       </span>
                     {/if}
                   </div>

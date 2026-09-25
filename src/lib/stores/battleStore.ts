@@ -5,6 +5,7 @@ import { MonsterIO } from '../../core/entities/Monster';
 import type { Move } from '../../core/entities/Move';
 import type { Relic, ShopItem } from '../../core/entities/Relic';
 import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent, rollShopStock, RELIC_CATALOG } from '../../core/entities/Relic';
+import { STARTER_INVENTORY, type ConsumableItem, type InventorySlot } from '../../core/entities/Consumable';
 import { REGIONS } from '../../core/entities/Region';
 import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
 import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
@@ -98,6 +99,10 @@ export class BattleStore {
       relics: [],
       score: 0,
       relicOffers: null,
+      inventory: STARTER_INVENTORY.map(slot => ({
+        item: { ...slot.item },
+        quantity: slot.quantity,
+      })),
     };
   }
 
@@ -161,7 +166,19 @@ export class BattleStore {
 
     this._clearTimers();
     const player = MonsterIO.fromSnapshot(save.playerMonster);
-    const run: RunState = { ...save.run, path: save.run.path ?? [] };
+    const run: RunState = {
+      ...save.run,
+      path: save.run.path ?? [],
+      inventory: save.run.inventory ?? STARTER_INVENTORY.map(slot => ({
+        item: { ...slot.item },
+        quantity: slot.quantity,
+      })),
+      shopStock: save.run.shopStock && save.run.shopStock.some(i => i.kind === 'consumable')
+        ? save.run.shopStock
+        : save.run.phase === 'shop'
+          ? rollShopStock(RELIC_CATALOG.length)
+          : save.run.shopStock,
+    };
 
     let enemyMonster: Monster | null = null;
     let isBoss = run.bossBattle;
@@ -371,7 +388,10 @@ export class BattleStore {
         const healed = player.maxHp - player.currentHp;
         if (healed <= 0) return state; // PV pleins : pas d'achat ni d'or perdu.
         player.heal(healed);
-        logs = [...logs, `🧪 ${item.label} : +${healed} PV.`];
+        logs = [...logs, `🏨 ${item.label} : +${healed} PV.`];
+      } else if (item.kind === 'consumable' && item.consumable) {
+        nextRun = this.controller.addConsumableToInventory(nextRun, item.consumable);
+        logs = [...logs, `🎒 ${item.icon} ${item.label} ajouté à votre sacoche.`];
       } else if (item.relic) {
         this.controller.applyRelic(player, item.relic);
         nextRun = this.controller.grantRelic({ ...run, phase: 'shop' }, item.relic);
@@ -379,11 +399,51 @@ export class BattleStore {
       }
 
       nextRun = { ...nextRun, gold: nextRun.gold - item.price };
-      item.bought = true;
+      if (item.kind !== 'consumable') {
+        item.bought = true;
+      }
       const next: BattleState = { ...state, run: nextRun, logs };
       this._persistState(next);
       return next;
     });
+  };
+
+  /**
+   * Utilise un objet consommable depuis la sacoche d'inventaire.
+   * L'action peut être effectuée pendant le tour du joueur ou hors combat.
+   */
+  public useConsumable = (itemId: string): boolean => {
+    let success = false;
+    this.store.update(state => {
+      if (!state.playerMonster) return state;
+      // Pendant un combat, utilisable uniquement si c'est le tour du joueur et pas d'animation en cours
+      if (state.run.phase === 'encounter') {
+        if (!state.isPlayerTurn || state.isAttacking || state.isEnemyAttacking || state.winner) {
+          return state;
+        }
+      }
+
+      const res = this.controller.useConsumable(state.playerMonster, state.run, itemId);
+      if (!res) return state;
+
+      success = true;
+      const next: BattleState = {
+        ...state,
+        run: res.run,
+        logs: [...state.logs, ...res.logs],
+        playerFeedback: res.feedback.kind !== 'none' ? res.feedback : state.playerFeedback,
+      };
+
+      if (res.feedback.kind !== 'none') {
+        const key = 'playerFeedback';
+        if (this.feedbackTimers[key]) clearTimeout(this.feedbackTimers[key]!);
+        this.feedbackTimers[key] = setTimeout(() => this._clearFeedbackField(key), FEEDBACK_CLEAR_DELAY);
+      }
+
+      this._persistState(next);
+      return next;
+    });
+    return success;
   };
 
   /** Quitte la boutique : progression sur la carte (couche suivante ou boss). */

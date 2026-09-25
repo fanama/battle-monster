@@ -6,6 +6,7 @@
   import type { Move } from "../../../core/entities/Move";
   import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
   import { abilityModifier } from "../../../core/entities/Monster";
+  import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import type { CombatFeedback } from "../../../core/services/BattleEngine";
 
@@ -120,6 +121,22 @@
           🛡 CA {monster.getAC()}
         </span>
       </div>
+
+      {#if monster.statuses && monster.statuses.length > 0}
+        <div class="flex flex-wrap gap-1 mt-1">
+          {#each monster.statuses as st}
+            {@const cfg = STATUS_CONFIGS[st.type]}
+            <span
+              class="inline-flex items-center gap-1 text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full border {cfg.badgeClass} animate-pulse"
+              title="{cfg.name} : {cfg.description} ({st.duration} tour{st.duration > 1 ? 's' : ''} restant{st.duration > 1 ? 's' : ''})"
+            >
+              <span>{cfg.icon}</span>
+              <span>{cfg.name}</span>
+              <span class="opacity-80">({st.duration}t{st.potency && st.potency > 1 ? ` · rg ${st.potency}` : ''})</span>
+            </span>
+          {/each}
+        </div>
+      {/if}
 
       <div class={monsterStyles.info.healthWrapper}>
         <HealthBar current={monster.currentHp} max={monster.maxHp} />
