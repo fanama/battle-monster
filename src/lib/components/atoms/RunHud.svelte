@@ -14,6 +14,21 @@
   export let isBossFight: boolean = false;
   export let onOpenInventory: (() => void) | undefined = undefined;
 
+  let expandedRelicId: string | null = null;
+
+  function toggleRelicTooltip(relicId: string): void {
+    expandedRelicId = expandedRelicId === relicId ? null : relicId;
+  }
+
+  function closeRelicTooltipOnOutsideClick(event: MouseEvent): void {
+    const target = event.target as Element | null;
+    if (!target?.closest("[data-relic-trigger]")) expandedRelicId = null;
+  }
+
+  function handleRelicTooltipKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") expandedRelicId = null;
+  }
+
   $: region = REGIONS[regionIndex];
   $: dots = Array.from({ length: mapLayers }, (_, i) => i);
   $: totalPotions = (inventory ?? []).reduce((acc, slot) => acc + slot.quantity, 0);
@@ -21,6 +36,8 @@
   // Accent coloré par région — même source que l'arène de combat.
   $: regionColors = REGION_COLORS[region.id] ?? REGION_COLORS["region-verdure"];
 </script>
+
+<svelte:window on:click={closeRelicTooltipOnOutsideClick} on:keydown={handleRelicTooltipKeydown} />
 
 <div
   class="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 pb-2 text-xs md:text-sm text-stone-300"
@@ -58,12 +75,31 @@
   <!-- Reliques collectées (anneau doré) -->
   <div class="flex items-center gap-1">
     {#if relics.length > 0}
-      {#each relics as relic}
-        <span
-          class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-700 to-amber-900 border border-amber-300/70 text-sm shadow-[0_0_6px_rgba(251,191,36,0.4)]"
-          title={relic.name}
-        >
-          {relic.icon}
+      {#each relics as relic, relicIndex}
+        <span class="group relative inline-flex shrink-0">
+          <button
+            type="button"
+            data-relic-trigger={relic.id}
+            on:click={() => toggleRelicTooltip(relic.id)}
+            class="inline-flex h-11 w-11 touch-manipulation cursor-help items-center justify-center rounded-full border border-amber-300/70 bg-gradient-to-br from-amber-700 to-amber-900 text-sm shadow-[0_0_6px_rgba(251,191,36,0.4)] transition-transform group-hover:-translate-y-0.5 group-hover:border-amber-200 group-hover:shadow-[0_0_10px_rgba(251,191,36,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 sm:h-6 sm:w-6"
+            aria-label={`${relic.name} : ${relic.description}`}
+            aria-describedby={`relic-description-${relic.id}`}
+            aria-expanded={expandedRelicId === relic.id}
+            aria-controls={`relic-description-${relic.id}`}
+          >
+            {relic.icon}
+          </button>
+          <span
+            id={`relic-description-${relic.id}`}
+            role="tooltip"
+            class="pointer-events-none absolute top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-400/70 bg-stone-950/95 px-3 py-2 text-left shadow-xl backdrop-blur-sm transition-all duration-150 sm:left-1/2 sm:right-auto sm:-translate-x-1/2
+              {expandedRelicId === relic.id ? 'visible translate-y-0 opacity-100' : 'invisible translate-y-1 opacity-0'}
+              {relicIndex > (relics.length - 1) / 2 ? 'right-0' : 'left-0'}
+              group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:visible group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
+          >
+            <span class="block font-serif text-xs font-bold text-amber-200">{relic.name}</span>
+            <span class="mt-1 block text-[11px] leading-relaxed text-stone-300">{relic.description}</span>
+          </span>
         </span>
       {/each}
     {:else}

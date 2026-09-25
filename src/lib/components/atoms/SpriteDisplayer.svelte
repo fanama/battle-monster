@@ -2,9 +2,31 @@
   import type { Monster } from "../../../core/entities/Monster";
 
   export let monster: Monster;
-  export let isPlayer: boolean;
+  export let isPlayer: boolean = false;
 
   type ElementType = Monster['type'];
+  type LimbSide = 'left' | 'right';
+
+  interface ArmRig {
+    upper: string;
+    forearm: string;
+    shoulderX: number;
+    shoulderY: number;
+    elbowX: number;
+    elbowY: number;
+    handX: number;
+    handY: number;
+  }
+
+  interface LegRig {
+    thigh: string;
+    shin: string;
+    hipX: number;
+    kneeX: number;
+    kneeY: number;
+    ankleX: number;
+    ankleY: number;
+  }
 
   interface Palette {
     skin: string;
@@ -128,29 +150,47 @@
       C ${120 - rx * 0.58} 103 ${120 - rx * 0.9} 89 ${120 - rx} 73 Z`;
   }
 
-  function leftArmPath(type: ElementType): string {
-    if (type === 'rock') return 'M 88 119 C 70 126 62 145 64 166';
-    if (type === 'water') return 'M 89 121 C 76 133 70 148 70 163';
-    if (type === 'grass') return 'M 87 121 C 72 135 66 150 67 165';
-    if (type === 'fire') return 'M 88 120 C 70 132 63 147 64 161';
-    if (type === 'electric') return 'M 88 119 C 69 131 62 145 63 159';
-    return 'M 88 120 C 72 132 66 148 67 164';
+  function buildArmRig(type: ElementType, shoulderWidth: number, side: LimbSide): ArmRig {
+    const direction = side === 'left' ? -1 : 1;
+    const shoulderX = 120 + direction * (shoulderWidth - 2);
+    const elbowReach = type === 'water' ? 32 : type === 'grass' ? 34 : type === 'fire' || type === 'electric' ? 35 : 33;
+    const handReach = type === 'water' ? 50 : type === 'grass' ? 53 : type === 'fire' || type === 'electric' ? 56 : 53;
+    const elbowY = type === 'fire' || type === 'electric' ? 135 : type === 'rock' ? 137 : 139;
+    const handY = type === 'fire' || type === 'electric' ? 162 : type === 'rock' ? 168 : 165;
+    const elbowX = 120 + direction * elbowReach;
+    const handX = 120 + direction * handReach;
+
+    return {
+      upper: `M ${shoulderX} 119 C ${shoulderX + direction * 5} 125 ${elbowX - direction * 4} 128 ${elbowX} ${elbowY}`,
+      forearm: `M ${elbowX} ${elbowY} C ${elbowX + direction * 3} 146 ${handX - direction * 4} 151 ${handX} ${handY}`,
+      shoulderX,
+      shoulderY: 119,
+      elbowX,
+      elbowY,
+      handX,
+      handY
+    };
   }
 
-  function leftLegPath(type: ElementType): string {
-    if (type === 'fire' || type === 'electric') return 'M 106 176 L 94 197 L 106 210 L 102 225';
-    if (type === 'water') return 'M 106 176 C 97 192 97 208 104 224';
-    if (type === 'grass') return 'M 106 176 L 99 198 L 104 225';
-    if (type === 'rock') return 'M 106 177 L 99 195 L 102 224';
-    return 'M 106 176 L 100 199 L 104 225';
-  }
+  function buildLegRig(type: ElementType, waistWidth: number, side: LimbSide): LegRig {
+    const direction = side === 'left' ? -1 : 1;
+    const hipX = 120 + direction * (9 + (waistWidth - 25) * 0.16);
+    const kneeReach = type === 'fire' || type === 'electric' ? 26 : type === 'grass' ? 22 : type === 'water' ? 23 : type === 'rock' ? 21 : 20;
+    const kneeY = type === 'rock' ? 196 : type === 'water' ? 199 : 198;
+    const ankleReach = type === 'fire' || type === 'electric' || type === 'rock' ? 18 : 16;
+    const ankleY = type === 'water' || type === 'rock' ? 224 : 225;
+    const kneeX = 120 + direction * kneeReach;
+    const ankleX = 120 + direction * ankleReach;
 
-  function rightLegPath(type: ElementType): string {
-    if (type === 'fire' || type === 'electric') return 'M 134 176 L 146 197 L 134 210 L 138 225';
-    if (type === 'water') return 'M 134 176 C 143 192 143 208 136 224';
-    if (type === 'grass') return 'M 134 176 L 141 198 L 136 225';
-    if (type === 'rock') return 'M 134 177 L 141 195 L 138 224';
-    return 'M 134 176 L 140 199 L 136 225';
+    return {
+      thigh: `M ${hipX} 174 C ${hipX + direction * 2} 182 ${kneeX - direction * 3} 189 ${kneeX} ${kneeY}`,
+      shin: `M ${kneeX} ${kneeY} C ${kneeX + direction * 1} 207 ${ankleX - direction * 2} 215 ${ankleX} ${ankleY}`,
+      hipX,
+      kneeX,
+      kneeY,
+      ankleX,
+      ankleY
+    };
   }
 
   $: type = monster.type;
@@ -180,21 +220,11 @@
   $: bellyShape = bellyPath(waistWidth);
   $: headShape = headPath(type, headRadiusX, headRadiusY);
   $: rigScale = (isBoss ? 1.07 : 1) + Math.min(monster.level, 20) * 0.002;
-  $: legLeft = leftLegPath(type);
-  $: legRight = rightLegPath(type);
+  $: leftArm = buildArmRig(type, shoulderWidth, 'left');
+  $: rightArm = buildArmRig(type, shoulderWidth, 'right');
+  $: leftLeg = buildLegRig(type, waistWidth, 'left');
+  $: rightLeg = buildLegRig(type, waistWidth, 'right');
   $: legStretch = 1 + agility * 0.008;
-  $: armLeft = leftArmPath(type);
-  $: armRight = type === 'rock'
-    ? 'M 152 119 C 170 126 178 145 176 166'
-    : type === 'water'
-      ? 'M 151 121 C 164 133 170 148 170 163'
-      : type === 'grass'
-        ? 'M 153 121 C 168 135 174 150 173 165'
-        : type === 'fire'
-          ? 'M 152 120 C 170 132 177 147 176 161'
-          : type === 'electric'
-            ? 'M 152 119 C 171 131 178 145 177 159'
-            : 'M 152 120 C 168 132 174 148 173 164';
 </script>
 
 <div class="sprite-root relative h-full w-full">
@@ -388,42 +418,58 @@
 
           <g transform={`translate(0 176) scale(1 ${legStretch}) translate(0 -176)`}>
             <g class="leg-group" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path d={legLeft} stroke={palette.line} stroke-width={limbWidth + 5} />
-            <path d={legRight} stroke={palette.line} stroke-width={limbWidth + 5} />
-            <path d={legLeft} stroke="url(#{gid}-skin)" stroke-width={limbWidth} />
-            <path d={legRight} stroke="url(#{gid}-skin)" stroke-width={limbWidth} />
-            <path d={legLeft} stroke={palette.skinLight} stroke-width={Math.max(1.5, limbWidth * 0.17)} opacity="0.34" transform="translate(-2 -1)" />
-            <path d={legRight} stroke={palette.skinLight} stroke-width={Math.max(1.5, limbWidth * 0.17)} opacity="0.26" transform="translate(-2 -1)" />
-          </g>
+              <path d={leftLeg.thigh} stroke={palette.line} stroke-width={limbWidth + 5} />
+              <path d={rightLeg.thigh} stroke={palette.line} stroke-width={limbWidth + 5} />
+              <path d={leftLeg.shin} stroke={palette.line} stroke-width={limbWidth + 4} />
+              <path d={rightLeg.shin} stroke={palette.line} stroke-width={limbWidth + 4} />
+              <path d={leftLeg.thigh} stroke="url(#{gid}-skin)" stroke-width={limbWidth + 1} />
+              <path d={rightLeg.thigh} stroke="url(#{gid}-skin)" stroke-width={limbWidth + 1} />
+              <path d={leftLeg.shin} stroke="url(#{gid}-skin)" stroke-width={Math.max(8, limbWidth - 1)} />
+              <path d={rightLeg.shin} stroke="url(#{gid}-skin)" stroke-width={Math.max(8, limbWidth - 1)} />
+              <path d={leftLeg.thigh} stroke={palette.skinLight} stroke-width={Math.max(1.5, limbWidth * 0.16)} opacity="0.28" transform="translate(-2 -1)" />
+              <path d={rightLeg.thigh} stroke={palette.skinLight} stroke-width={Math.max(1.5, limbWidth * 0.16)} opacity="0.2" transform="translate(-2 -1)" />
+              <ellipse cx={leftLeg.kneeX} cy={leftLeg.kneeY} rx={limbWidth * 0.54} ry={limbWidth * 0.48} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2" />
+              <ellipse cx={rightLeg.kneeX} cy={rightLeg.kneeY} rx={limbWidth * 0.54} ry={limbWidth * 0.48} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2" />
+            </g>
 
           {#if type === 'fire'}
             <g stroke={palette.line} stroke-width="1.6" stroke-linecap="round">
-              <path d="M 100 225 L 91 231 M 105 225 L 100 233 M 108 226 L 109 233" />
-              <path d="M 140 225 L 149 231 M 135 225 L 140 233 M 132 226 L 131 233" />
+              <path d="M 100 225 L 91 231 M 105 225 L 100 233 M 108 226 L 109 233" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 140 225 L 149 231 M 135 225 L 140 233 M 132 226 L 131 233" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
             </g>
           {:else if type === 'water'}
-            <path d="M 103 221 C 90 220 84 226 88 231 C 98 233 107 229 108 223 Z" fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="2" />
-            <path d="M 137 221 C 150 220 156 226 152 231 C 142 233 133 229 132 223 Z" fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="2" />
+            <path d="M 103 221 C 90 220 84 226 88 231 C 98 233 107 229 108 223 Z" fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="2" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+            <path d="M 137 221 C 150 220 156 226 152 231 C 142 233 133 229 132 223 Z" fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="2" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
           {:else if type === 'grass'}
             <g fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="1.5">
-              <path d="M 104 221 C 94 225 86 226 80 222 C 84 232 96 234 106 226 Z" />
-              <path d="M 136 221 C 146 225 154 226 160 222 C 156 232 144 234 134 226 Z" />
+              <path d="M 104 221 C 94 225 86 226 80 222 C 84 232 96 234 106 226 Z" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 136 221 C 146 225 154 226 160 222 C 156 232 144 234 134 226 Z" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
             </g>
           {:else if type === 'electric'}
-            <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2">
-              <path d="M 102 219 C 91 217 82 224 87 231 C 97 234 108 229 108 222 Z" />
-              <path d="M 138 219 C 149 217 158 224 153 231 C 143 234 132 229 132 222 Z" />
+            <path d="M 102 219 C 91 217 82 224 87 231 C 97 234 108 229 108 222 Z" fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+            <path d="M 138 219 C 149 217 158 224 153 231 C 143 234 132 229 132 222 Z" fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
+            <g stroke={palette.bellyLight} stroke-width="1.5" stroke-linecap="round">
+              <path d="M 89 229 L 85 233 M 94 231 L 92 235" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 151 229 L 155 233 M 146 231 L 148 235" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
             </g>
-            <path d="M 89 229 L 85 233 M 94 231 L 92 235 M 151 229 L 155 233 M 146 231 L 148 235" stroke={palette.bellyLight} stroke-width="1.5" stroke-linecap="round" />
           {:else if type === 'rock'}
-            <path d="M 90 215 L 111 217 L 108 233 L 84 232 Z M 129 217 L 150 215 L 156 232 L 132 233 Z" fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" stroke-linejoin="round" />
-            <path d="M 88 222 L 105 223 M 136 223 L 151 221" stroke={palette.skinLight} stroke-width="1.2" opacity="0.45" />
+            <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" stroke-linejoin="round">
+              <path d="M 90 215 L 111 217 L 108 233 L 84 232 Z" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 129 217 L 150 215 L 156 232 L 132 233 Z" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
+            </g>
+            <g stroke={palette.skinLight} stroke-width="1.2" opacity="0.45">
+              <path d="M 88 222 L 105 223" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 136 223 L 151 221" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
+            </g>
           {:else}
             <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2">
-              <path d="M 103 220 C 91 217 82 224 86 231 C 97 235 108 229 108 222 Z" />
-              <path d="M 137 220 C 149 217 158 224 154 231 C 143 235 132 229 132 222 Z" />
+              <path d="M 103 220 C 91 217 82 224 86 231 C 97 235 108 229 108 222 Z" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 137 220 C 149 217 158 224 154 231 C 143 235 132 229 132 222 Z" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
             </g>
-            <path d="M 91 230 L 88 234 M 97 232 L 96 236 M 149 230 L 152 234 M 143 232 L 144 236" stroke={palette.bellyLight} stroke-width="1.4" stroke-linecap="round" />
+            <g stroke={palette.bellyLight} stroke-width="1.4" stroke-linecap="round">
+              <path d="M 91 230 L 88 234 M 97 232 L 96 236" transform={`translate(${leftLeg.ankleX - 104} ${leftLeg.ankleY - 225})`} />
+              <path d="M 149 230 L 152 234 M 143 232 L 144 236" transform={`translate(${rightLeg.ankleX - 136} ${rightLeg.ankleY - 225})`} />
+            </g>
           {/if}
           </g>
 
@@ -455,43 +501,62 @@
           {/if}
 
           <g class="arm-group" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path d={armLeft} stroke={palette.line} stroke-width={limbWidth + 5} />
-            <path d={armRight} stroke={palette.line} stroke-width={limbWidth + 5} />
-            <path d={armLeft} stroke="url(#{gid}-skin)" stroke-width={limbWidth} />
-            <path d={armRight} stroke="url(#{gid}-skin)" stroke-width={limbWidth} />
-            <path d={armLeft} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.15)} opacity="0.3" transform="translate(-2 -1)" />
-            <path d={armRight} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.15)} opacity="0.22" transform="translate(-2 -1)" />
-            <ellipse cx={120 - shoulderWidth + 2} cy="120" rx={limbWidth * 0.66} ry={limbWidth * 0.72} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" />
-            <ellipse cx={120 + shoulderWidth - 2} cy="120" rx={limbWidth * 0.66} ry={limbWidth * 0.72} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" />
+            <g class="arm-left">
+              <path d={leftArm.upper} stroke={palette.line} stroke-width={limbWidth + 5} />
+              <path d={leftArm.forearm} stroke={palette.line} stroke-width={limbWidth + 4} />
+              <path d={leftArm.upper} stroke="url(#{gid}-skin)" stroke-width={limbWidth + 1} />
+              <path d={leftArm.forearm} stroke="url(#{gid}-skin)" stroke-width={Math.max(8, limbWidth - 1)} />
+              <path d={leftArm.upper} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.14)} opacity="0.28" transform="translate(-2 -1)" />
+              <path d={leftArm.forearm} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.13)} opacity="0.2" transform="translate(-2 -1)" />
+              <ellipse cx={leftArm.shoulderX} cy={leftArm.shoulderY} rx={limbWidth * 0.72} ry={limbWidth * 0.78} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" />
+              <ellipse cx={leftArm.elbowX} cy={leftArm.elbowY} rx={limbWidth * 0.5} ry={limbWidth * 0.46} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2" />
+            </g>
+            <g class="arm-right">
+              <path d={rightArm.upper} stroke={palette.line} stroke-width={limbWidth + 5} />
+              <path d={rightArm.forearm} stroke={palette.line} stroke-width={limbWidth + 4} />
+              <path d={rightArm.upper} stroke="url(#{gid}-skin)" stroke-width={limbWidth + 1} />
+              <path d={rightArm.forearm} stroke="url(#{gid}-skin)" stroke-width={Math.max(8, limbWidth - 1)} />
+              <path d={rightArm.upper} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.14)} opacity="0.2" transform="translate(2 -1)" />
+              <path d={rightArm.forearm} stroke={palette.skinLight} stroke-width={Math.max(1.4, limbWidth * 0.13)} opacity="0.16" transform="translate(2 -1)" />
+              <ellipse cx={rightArm.shoulderX} cy={rightArm.shoulderY} rx={limbWidth * 0.72} ry={limbWidth * 0.78} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" />
+              <ellipse cx={rightArm.elbowX} cy={rightArm.elbowY} rx={limbWidth * 0.5} ry={limbWidth * 0.46} fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2" />
+            </g>
           </g>
 
           {#if type === 'water'}
             <g fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="2">
-              <path d="M 67 155 C 53 157 48 166 51 174 C 62 172 70 165 73 158 Z" />
-              <path d="M 173 155 C 187 157 192 166 189 174 C 178 172 170 165 167 158 Z" />
+              <path d="M 67 155 C 53 157 48 166 51 174 C 62 172 70 165 73 158 Z" transform={`translate(${leftArm.handX - 67} ${leftArm.handY - 165})`} />
+              <path d="M 173 155 C 187 157 192 166 189 174 C 178 172 170 165 167 158 Z" transform={`translate(${rightArm.handX - 173} ${rightArm.handY - 165})`} />
             </g>
           {:else if type === 'grass'}
             <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2">
-              <path d="M 65 155 C 56 157 54 169 60 176 C 69 172 73 165 73 158 Z" />
-              <path d="M 175 155 C 184 157 186 169 180 176 C 171 172 167 165 167 158 Z" />
+              <path d="M 65 155 C 56 157 54 169 60 176 C 69 172 73 165 73 158 Z" transform={`translate(${leftArm.handX - 65} ${leftArm.handY - 165})`} />
+              <path d="M 175 155 C 184 157 186 169 180 176 C 171 172 167 165 167 158 Z" transform={`translate(${rightArm.handX - 175} ${rightArm.handY - 165})`} />
             </g>
-            <g fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="1.3">
+            <g fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="1.3" transform={`translate(${leftArm.handX - 65} ${leftArm.handY - 165})`}>
               <path d="M 60 171 C 50 168 47 161 51 156 C 59 158 63 164 60 171 Z" />
+            </g>
+            <g fill="url(#{gid}-accent)" stroke={palette.line} stroke-width="1.3" transform={`translate(${rightArm.handX - 175} ${rightArm.handY - 165})`}>
               <path d="M 180 171 C 190 168 193 161 189 156 C 181 158 177 164 180 171 Z" />
             </g>
           {:else if type === 'rock'}
             <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.5" stroke-linejoin="round" filter="url(#{gid}-soft-shadow)">
-              <path d="M 64 149 C 53 151 49 164 55 175 C 67 178 77 170 78 158 Z" />
-              <path d="M 176 149 C 187 151 191 164 185 175 C 173 178 163 170 162 158 Z" />
+              <path d="M 64 149 C 53 151 49 164 55 175 C 67 178 77 170 78 158 Z" transform={`translate(${leftArm.handX - 64} ${leftArm.handY - 166})`} />
+              <path d="M 176 149 C 187 151 191 164 185 175 C 173 178 163 170 162 158 Z" transform={`translate(${rightArm.handX - 176} ${rightArm.handY - 166})`} />
             </g>
-            <path d="M 57 159 L 72 163 M 183 159 L 168 163" stroke={palette.skinLight} stroke-width="1.4" opacity="0.38" />
+            <g stroke={palette.skinLight} stroke-width="1.4" opacity="0.38">
+              <path d="M 57 159 L 72 163" transform={`translate(${leftArm.handX - 64} ${leftArm.handY - 166})`} />
+              <path d="M 183 159 L 168 163" transform={`translate(${rightArm.handX - 176} ${rightArm.handY - 166})`} />
+            </g>
           {:else}
             <g fill="url(#{gid}-skin)" stroke={palette.line} stroke-width="2.2">
-              <ellipse cx={type === 'fire' || type === 'electric' ? 63 : 66} cy="166" rx="10" ry="9" transform={`rotate(-12 ${type === 'fire' || type === 'electric' ? 63 : 66} 166)`} />
-              <ellipse cx={type === 'fire' || type === 'electric' ? 177 : 174} cy="166" rx="10" ry="9" transform={`rotate(12 ${type === 'fire' || type === 'electric' ? 177 : 174} 166)`} />
+              <ellipse cx={leftArm.handX} cy={leftArm.handY} rx="10" ry="9" transform={`rotate(-12 ${leftArm.handX} ${leftArm.handY})`} />
+              <ellipse cx={rightArm.handX} cy={rightArm.handY} rx="10" ry="9" transform={`rotate(12 ${rightArm.handX} ${rightArm.handY})`} />
             </g>
-            <g stroke={palette.bellyLight} stroke-width="1.8" stroke-linecap="round" opacity="0.9">
+            <g stroke={palette.bellyLight} stroke-width="1.8" stroke-linecap="round" opacity="0.9" transform={`translate(${leftArm.handX - 66} ${leftArm.handY - 166})`}>
               <path d="M 58 171 L 53 175 M 63 172 L 59 177 M 68 172 L 65 177" />
+            </g>
+            <g stroke={palette.bellyLight} stroke-width="1.8" stroke-linecap="round" opacity="0.9" transform={`translate(${rightArm.handX - 174} ${rightArm.handY - 166})`}>
               <path d="M 182 171 L 187 175 M 177 172 L 181 177 M 172 172 L 175 177" />
             </g>
           {/if}
