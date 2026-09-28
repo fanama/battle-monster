@@ -31,7 +31,7 @@
     <!-- En-tête / sprite du champion -->
     <div class={monsterStyles.spriteSection.wrapper} style="background: {tc.ambient}">
       <div class={monsterStyles.spriteSection.overlay}></div>
-      <SpriteDisplayer {monster} isPlayer={true} />
+      <SpriteDisplayer {monster} isPlayer={false} />
     </div>
 
     <div class={monsterStyles.nameTag.wrapper_base}>

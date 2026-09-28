@@ -398,7 +398,7 @@
                   <!-- Header avec Sprite & Badge -->
                   <div class="relative h-44 w-full flex items-center justify-center overflow-hidden" style="background: {tc.ambient}">
                     <div class="w-36 h-36 scale-90">
-                      <SpriteDisplayer monster={monsterInstance} isPlayer={true} />
+                      <SpriteDisplayer monster={monsterInstance} isPlayer={false} />
                     </div>
                     <div class="absolute top-2 right-2 flex items-center gap-1.5">
                       <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border {tc.badge}">
