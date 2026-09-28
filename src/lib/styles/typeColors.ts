@@ -111,12 +111,3 @@ export const TYPE_ICONS: Record<MonsterType, string> = {
   electric: '⚡',
   rock: '🪨',
 };
-
-/** Couleurs secondaires pour éléments divers de l'UI (HUD, reliques…). */
-export const UI_COLORS = {
-  player: 'border-sky-400 bg-sky-400/10',
-  enemy: 'border-rose-500 bg-rose-500/10',
-  gold: 'bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500',
-  xp: 'bg-gradient-to-r from-sky-500 to-cyan-400',
-  ac: 'border-sky-400/60',
-} as const;

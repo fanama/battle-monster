@@ -3,7 +3,6 @@
   import type { InventorySlot } from "../../../core/entities/Consumable";
   import type { Monster } from "../../../core/entities/Monster";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
-  import { styles } from "../../styles/style";
 
   export let inventory: InventorySlot[] = [];
   export let player: Monster | null = null;
@@ -26,28 +25,26 @@
 </script>
 
 <div
-  class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+  class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm"
   on:click|self={handleClose}
   on:keydown={(e) => e.key === 'Escape' && handleClose()}
   tabindex="-1"
   role="dialog"
   aria-modal="true"
-  aria-label="Sacoche d'aventurier"
->
+  aria-label="Sacoche d'aventurier">
   <div
-    class="flex flex-col w-full max-w-xl max-h-[90vh] rounded-2xl border-2 sm:border-4 border-stone-600
-      bg-gradient-to-b from-stone-900 via-stone-925 to-stone-950 shadow-2xl overflow-hidden"
-  >
+    class="flex flex-col w-full max-w-xl max-h-[90dvh] rounded-2xl border-2 sm:border-4 border-stone-600
+      bg-gradient-to-b from-stone-900 via-stone-900 to-stone-950 shadow-2xl overflow-hidden">
     <!-- En-tête -->
-    <div class="flex items-center justify-between p-3.5 sm:p-4 border-b border-stone-700/80 bg-stone-900/90">
-      <div class="flex items-center gap-2.5">
-        <span class="text-2xl sm:text-3xl p-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30">🎒</span>
-        <div>
-          <h2 class="font-serif font-bold text-base sm:text-lg text-amber-200 uppercase tracking-widest">
+    <div class="flex items-center justify-between gap-2 p-3.5 sm:p-4 border-b border-stone-700/80 bg-stone-900/90">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="text-2xl sm:text-3xl shrink-0 p-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30">🎒</span>
+        <div class="min-w-0">
+          <h2 class="font-serif font-bold text-base sm:text-lg text-amber-200 uppercase tracking-widest truncate">
             Sacoche d'Aventurier
           </h2>
-          <p class="text-xs text-stone-400">
-            Potions anti-statut, soins rapides et élixirs de combat
+          <p class="text-xs text-stone-400 truncate">
+            Soins, élixirs et contre-statut
           </p>
         </div>
       </div>
@@ -55,9 +52,8 @@
       <button
         type="button"
         on:click={handleClose}
-        class="w-8 h-8 rounded-lg border border-stone-700 bg-stone-800 text-stone-400 hover:text-stone-100 hover:border-stone-500 transition-colors flex items-center justify-center cursor-pointer font-bold"
-        aria-label="Fermer la sacoche"
-      >
+        class="w-8 h-8 shrink-0 rounded-lg border border-stone-700 bg-stone-800 text-stone-400 hover:text-stone-100 hover:border-stone-500 transition-colors flex items-center justify-center cursor-pointer font-bold"
+        aria-label="Fermer la sacoche">
         ✕
       </button>
     </div>
@@ -85,8 +81,7 @@
               {@const cfg = STATUS_CONFIGS[status.type]}
               <span
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-rose-500/40 bg-rose-950/60 text-rose-200 text-xs font-mono font-bold animate-pulse"
-                title="{cfg.description} (Sauvegarde {cfg.saveLabel})"
-              >
+                title="{cfg.description} (Sauvegarde {cfg.saveLabel})">
                 <span>{cfg.icon}</span>
                 <span>{cfg.name}</span>
               </span>
@@ -97,7 +92,7 @@
     {/if}
 
     <!-- Liste des objets -->
-    <div class="flex-grow overflow-y-auto p-3 sm:p-4 space-y-2.5 max-h-[55vh]">
+    <div class="flex-grow overflow-y-auto p-3 sm:p-4 space-y-2.5 max-h-[58dvh]">
       {#if inventory.length === 0}
         <div class="flex flex-col items-center justify-center py-12 text-center text-stone-400">
           <span class="text-4xl mb-2 opacity-60">🎒</span>
@@ -114,8 +109,7 @@
             class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 transition-all
               {curesCurrentStatus
                 ? 'border-emerald-500/60 bg-emerald-950/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-                : 'border-stone-800 bg-stone-900/60 hover:border-stone-700'}"
-          >
+                : 'border-stone-800 bg-stone-900/60 hover:border-stone-700'}">
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-11 h-11 shrink-0 rounded-xl bg-black/50 border border-stone-700 flex items-center justify-center text-2xl shadow-inner">
                 {slot.item.icon}
@@ -126,11 +120,11 @@
                   <h4 class="font-serif font-bold text-sm text-stone-100 truncate">
                     {slot.item.name}
                   </h4>
-                  <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border border-amber-500/40 bg-amber-950/40 text-amber-300">
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border border-amber-500/40 bg-amber-950/40 text-amber-300">
                     x{slot.quantity}
                   </span>
                   {#if curesCurrentStatus}
-                    <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border border-emerald-400 bg-emerald-900/60 text-emerald-200 animate-pulse">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border border-emerald-400 bg-emerald-900/60 text-emerald-200 animate-pulse">
                       Purge active !
                     </span>
                   {/if}
@@ -151,8 +145,7 @@
                     ? 'border-stone-800 bg-stone-950 text-stone-600 cursor-not-allowed'
                     : curesCurrentStatus
                       ? 'border-emerald-400 bg-emerald-600 text-stone-950 hover:bg-emerald-500 cursor-pointer shadow-md'
-                      : 'border-amber-400/80 bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-sm'}"
-              >
+                      : 'border-amber-400/80 bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-sm'}">
                 Utiliser
               </button>
             </div>
@@ -174,8 +167,7 @@
       <button
         type="button"
         on:click={handleClose}
-        class="px-4 py-1.5 rounded-lg border border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700 font-serif text-xs transition-colors cursor-pointer"
-      >
+        class="px-4 py-1.5 rounded-lg border border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700 font-serif text-xs transition-colors cursor-pointer">
         Fermer
       </button>
     </div>

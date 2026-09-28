@@ -131,7 +131,4 @@ src/
 Les pistes d'amélioration — **bugs connus (P0)**, **équilibrage** (CA, courbe d'XP, économie d'or, boss), **accessibilité** (aria-live, modales, `prefers-reduced-motion`), **hygiène** (code mort, PNG inutilisés, tests Vitest, migration Svelte 5) — sont détaillées dans [`TODO.md`](./TODO.md) (priorités : [§16 — revue complète](./TODO.md), puis persistance, tests, audio, rebalance…).
 
 ### Limites connues (résumé)
-- Le **Charisme** n'a (encore) aucun rôle mécanique (réservé aux négociations marchandes futures).
-- Le **set de moves** est remplacé au level-up (pas d'apprentissage choisi) et peut dépasser 4 moves.
-- L'**ennemi sauvage n'est pas sauvegardé** : son niveau/stats sont relancés à la reprise d'un combat.
-- Aucun **test automatisé** pour l'instant (le `bun run check` couvre le typage, pas le comportement).
+- Les fonctionnalités prioritaires P0 (plafonnement de la CA effective, rôle mécanique du Charisme, scaling adaptatif des ennemis sur le joueur) et la suite de tests automatisés (`bun test`) sont désormais actives et validées.

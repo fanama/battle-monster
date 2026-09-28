@@ -2,6 +2,8 @@
   import { tick } from "svelte";
 
   export let logs: string[] = [];
+  /** Occupe toute la hauteur du panneau (onglet Journal) au lieu d'une hauteur fixe. */
+  export let fill: boolean = false;
 
   let logsContainer: HTMLDivElement;
   let autoScroll = true;
@@ -41,7 +43,7 @@
   on:scroll={handleScroll}
   class="
     /* Structure & Size */
-    h-40 md:h-64 overflow-y-auto flex flex-col gap-1 p-3 md:p-4 rounded-sm
+    {fill ? 'h-full min-h-0' : 'h-40 md:h-64'} overflow-y-auto flex flex-col gap-1 p-3 md:p-4 rounded-sm
     
     /* D&D Aesthetics */
     bg-[#fdf6e3] border-4 border-double border-amber-900/60

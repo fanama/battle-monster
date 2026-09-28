@@ -15,7 +15,15 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 ---
 
 ### 2. Équilibrage & Gameplay (P1)
-- [ ] **Classe d'Armure des tanks lents** : revoir la formule de base `CA = 10 + mod(Vitesse)` qui pénalise les monstres Roche/Plante lents (ex. intégrer un bonus d'armure naturelle ou mod(Constitution)).
+- [x] ✅ **Plafonnement de la CA effective** : Vitesse plafonnée à +5 (`AC_SPEED_MOD_CAP`), bonus d'armure avec soft cap à +6 (`effectiveArmorBonus`), et hard cap absolu à 24 (`AC_HARD_CAP`) pour éviter l'intouchabilité (`Monster.ts`).
+- [x] ✅ **Rôle mécanique pour le Charisme** :
+  - *Dégâts magiques* : canalisation et amplification magique en pourcentage (`charismaMagicFactor()`, +2 % par point au-delà de 10).
+  - *Soins* : bonus direct sur les capacités curatives (`charismaHealBonus()`).
+  - *Visuel SVG* : expression du sprite (sourire à 14+, éclat à 16+).
+- [x] ✅ **Scaling adaptatif des ennemis sur le joueur** :
+  - *Sauvages* : niveau calé sur celui du joueur ±1 (`WILD_LEVEL_OFFSETS`), borné par la région (`BattleController.ts`).
+  - *Boss* : niveau calé sur `joueur + 1`, borné par `maxLevel + 1`.
+  - *Stats* : scaling dynamique sur le niveau (`RandomEnemyFactory.ts`).
 - [x] ✅ **Régulation du scaling des boss** : adoucissement du niveau des boss (`maxLevel + 1` au lieu de `maxLevel + 2`) dans `BattleController.ts` pour éviter les pics de difficulté excessifs en Citadelle Céleste.
 - [x] ✅ **Rôle mécanique pour SAG (Sagesse/Instinct) & Savoir** :
   - *Instinct (SAG)* : perception martiale élargissant la plage de coups critiques (`effectiveCritRange`), échelle visuelle du regard SVG.
@@ -42,14 +50,15 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 - [ ] **Support `prefers-reduced-motion`** : désactiver ou atténuer les secousses de caméra (shake) et animations d'attaque pour les utilisateurs sensibles.
 - [ ] **Unification de la langue (100 % FR)** : harmoniser les derniers termes anglophones résiduels.
 - [ ] **Effets sonores (Web Audio API)** : synthétiser des sons rétro légers pour les jets de dés d20, coups critiques, coups portés, soins et victoires.
-- [ ] **Détails cumulés des reliques** : infobulle ou panneau listant l'ensemble des passifs actifs dans le HUD (`RunHud.svelte`).
+- [x] **Détails cumulés des reliques** : onglet « Reliques » listant l'ensemble des passifs actifs et leurs bonus cumulés (`RelicList.svelte`).
 
 ---
 
 ### 4. Hygiène de code & Infrastructure (P3)
-- [ ] **Suppression des assets et code morts résiduels** :
-  - Retirer les composants et fichiers de template inutilisés (`src/lib/Counter.svelte`, `src/assets/svelte.svg`, `public/vite.svg`, `bun.lockb`).
-  - Nettoyer les fonctions non appelées dans `MoveRepositories.ts` (`getMoveById`, `getMoveByName`, `getAllMoves`, `getMovesByType`).
+- [x] **Suppression des assets et code morts résiduels** :
+  - Composants et fichiers de template retirés (`src/lib/Counter.svelte`, `src/assets/svelte.svg`, `public/vite.svg`, `bun.lockb`).
+  - Fonctions non appelées retirées de `MoveRepositories.ts` (`getMoveById`, `getMoveByName`, `getAllMoves`, `getMovesByType`).
+  - Imports, helpers et clés de style morts éliminés (`UI_COLORS`, `lastLayerIndex`, `reachableCols`, `createLocalStorageRunRepository`, `styles.layout.title`, `styles.actionBar.moveWrapper`, `styles.winner`).
 - [ ] **Suite de tests automatisés (Vitest / Bun test)** :
   - Tests unitaires de `BattleEngine` (jets d'attaque d20, calculs CA, critiques 20 nat, fumbles 1 nat, dégâts physiques et magiques, initiative).
   - Tests de persistance `LocalStorageRunRepository` et roundtrip `MonsterIO`.

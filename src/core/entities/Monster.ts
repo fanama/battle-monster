@@ -33,6 +33,44 @@ const HP_SCALE_PER_LEVEL = 0.85;
 /** Nombre maximum d'attaques qu'un monstre peut équiper simultanément. */
 export const MAX_MOVES = 4;
 
+// --- Plafonds de Classe d'Armure (rebalance P0) ---
+
+/** Base D&D de la CA. */
+export const AC_BASE = 10;
+
+/** Part du modificateur de Vitesse qui compte : au-delà, la Vitesse n'esquive plus. */
+export const AC_SPEED_MOD_CAP = 5;
+
+/** Bonus d'armure (reliques, élixirs) à plein effet ; au-delà, demi-valeur. */
+export const AC_ARMOR_SOFT_CAP = 6;
+
+/** Plafond absolu de la CA effective (garde-fou anti-intouchabilité). */
+export const AC_HARD_CAP = 24;
+
+/** Bonus d'armure effectif : plein effet jusqu'à `+6`, puis un point sur deux. */
+export function effectiveArmorBonus(armorBonus: number): number {
+  if (armorBonus <= AC_ARMOR_SOFT_CAP) return armorBonus;
+  return AC_ARMOR_SOFT_CAP + Math.floor((armorBonus - AC_ARMOR_SOFT_CAP) / 2);
+}
+
+// --- Charisme (rebalance P0) ---
+
+/** Charisme de référence : en dessous, aucun bonus (valeur de création). */
+export const CHARISMA_BASE = 10;
+
+/** Points de Charisme nécessaires pour +100 % de dégâts magiques. */
+export const CHARISMA_MAGIC_PER_POINT = 50;
+
+/** Bonus de dégâts magiques (en %) apporté par un Charisme donné. */
+export function charismaMagicPercent(charisma: number): number {
+  return Math.floor((Math.max(0, charisma - CHARISMA_BASE) / CHARISMA_MAGIC_PER_POINT) * 100);
+}
+
+/** Bonus de soin (PV par sort de soin) apporté par un Charisme donné. */
+export function charismaHealBonus(charisma: number): number {
+  return Math.max(0, abilityModifier(charisma));
+}
+
 /**
  * Represents a Monster entity in the game.
  * Handles stats, leveling logic, and stat buffs.
@@ -198,9 +236,45 @@ export class Monster {
   /**
    * Armor Class (CA), D&D rule: 10 + mod(Vitesse) + BonusArmure.
    * L'armure provient des reliques (+2 par exemple).
+   *
+   * **Plafonnée (rebalance P0)** : sans plafond, empiler de la CA (19 reliques
+   * + un élixir rachtable à l'infini) rendait le monstre mathématiquement
+   * intouchable — au-delà de CA ≈ 28, l'attaquant ne passe plus que par
+   * naturel 20 ou critique, donc plus aucun jet ne peut le toucher. La
+   * conversion stats → CA est donc bornée :
+   *  - Vitesse : seul `mod(Vitesse)` jusqu'à `+5` compte (au-delà, la Vitesse
+   *    n'esquive plus) ;
+   *  - Armure : plein effet jusqu'à `+6`, puis chaque point suivant ne compte
+   *    que pour un demi-point ;
+   *  - Plafond absolu : `AC_HARD_CAP`.
    */
   getAC(): number {
-    return 10 + abilityModifier(this.speed) + this.armorBonus;
+    const speedMod = Math.min(abilityModifier(this.speed), AC_SPEED_MOD_CAP);
+    const raw = AC_BASE + speedMod + effectiveArmorBonus(this.armorBonus);
+    return Math.min(AC_HARD_CAP, raw);
+  }
+
+  /**
+   * CA *brute* (sans plafond). Sert à afficher au joueur la part de sa CA qui
+   * est bridée : `getACCappedPoints()` vaut 0 tant que rien n'est saturé.
+   */
+  getRawAC(): number {
+    return AC_BASE + abilityModifier(this.speed) + this.armorBonus;
+  }
+
+  /** Points de CA ajoutés mais non appliqués (saturation vitesse / armure). */
+  getACCappedPoints(): number {
+    return Math.max(0, this.getRawAC() - this.getAC());
+  }
+
+  /**
+   * Charisme → dégâts magiques : `× (1 + (charisme - 10) / 50)`.
+   * Le Charisme n'est ni alloué à la création ni accordé par la croissance : il
+   * ne vient que des reliques. On utilise un **ratio** et non un modificateur
+   * pour que les petits incréments de relique (+3, +5) comptent vraiment.
+   */
+  charismaMagicFactor(): number {
+    return 1 + charismaMagicPercent(this.charisma) / 100;
   }
 
   /**
@@ -288,6 +362,9 @@ export class Monster {
    *  - Vitesse : Classe d'Armure (CA)
    *  - Constitution : PV max
    *  - Instinct : perception martiale (chances de critique, regard du sprite)
+   *  - Charisme : **croissance nulle par conception** — il ne s'obtient que par
+   *    les reliques (dégâts magiques et soins). Les reliques qui en donnent
+   *    seraient sinon inertes.
    */
   private getStatGrowth(type: MonsterType) {
     switch (type) {

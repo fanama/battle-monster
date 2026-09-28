@@ -77,33 +77,33 @@
       type="button"
       class="fixed inset-0 w-full h-full bg-black/80 backdrop-blur-md cursor-default transition-opacity"
       on:click={onClose}
-      aria-label="Fermer le menu des attaques"
-    ></button>
+      aria-label="Fermer le menu des attaques"></button>
 
     <!-- Modal Dialog -->
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="moves-modal-title"
-      class="relative z-10 w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border-2 border-violet-500/60
-        bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.95)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-    >
+      class="relative z-10 w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl border-2 border-violet-500/60
+        bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.95)] overflow-hidden">
       <!-- Modal Header -->
-      <div class="px-5 py-4 border-b border-stone-800 flex items-center justify-between bg-stone-900/80">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-violet-950/80 border border-violet-500/50 flex items-center justify-center text-xl shadow-inner">
+      <div class="px-4 sm:px-5 py-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-900/80">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 shrink-0 rounded-xl bg-violet-950/80 border border-violet-500/50 flex items-center justify-center text-xl shadow-inner">
             {isLevelUp ? '🎉' : '📜'}
           </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 id="moves-modal-title" class="font-serif font-black text-lg md:text-xl uppercase tracking-wider text-amber-300">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2
+                id="moves-modal-title"
+                class="font-serif font-black text-base sm:text-lg md:text-xl uppercase tracking-wider text-amber-300">
                 {isLevelUp ? 'Montée de Niveau !' : 'Grimoire des Capacités'}
               </h2>
-              <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full border border-stone-700 bg-stone-800 text-stone-300">
+              <span class="text-[10px] sm:text-xs font-mono font-bold px-2 py-0.5 rounded-full border border-stone-700 bg-stone-800 text-stone-300 shrink-0">
                 {monster.name} · Niv. {monster.level}
               </span>
             </div>
-            <p class="text-xs font-mono text-stone-400 mt-0.5">
+            <p class="text-[11px] sm:text-xs font-mono text-stone-400 mt-0.5">
               {isLevelUp
                 ? 'Choisissez les attaques à équiper parmi votre arsenal débloqué (1 à 4).'
                 : 'Configurez et ordonnez votre set de combat actif.'}
@@ -114,9 +114,8 @@
         <button
           type="button"
           on:click={onClose}
-          class="w-8 h-8 rounded-lg border border-stone-700 bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
-          aria-label="Fermer"
-        >
+          class="w-8 h-8 shrink-0 rounded-lg border border-stone-700 bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
+          aria-label="Fermer">
           ✕
         </button>
       </div>
@@ -144,8 +143,7 @@
                 {@const isHeal = equippedMove.isHeal}
                 {@const isBuff = Boolean(equippedMove.statBoosts)}
                 <div
-                  class="relative flex flex-col justify-between p-3 rounded-xl border-2 {tc.borderStrong} bg-stone-900/90 shadow-md transition-all"
-                >
+                  class="relative flex flex-col justify-between p-3 rounded-xl border-2 {tc.borderStrong} bg-stone-900/90 shadow-md transition-all">
                   <!-- Filet haut -->
                   <span class="absolute top-0 inset-x-0 h-1 {tc.gradient} rounded-t-xl"></span>
 
@@ -204,8 +202,7 @@
                         disabled={idx === 0}
                         on:click={() => moveUp(idx)}
                         class="px-1.5 py-0.5 rounded border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
-                        title="Monter"
-                      >
+                        title="Monter">
                         ←
                       </button>
                       <button
@@ -213,8 +210,7 @@
                         disabled={idx === selectedMoves.length - 1}
                         on:click={() => moveDown(idx)}
                         class="px-1.5 py-0.5 rounded border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
-                        title="Descendre"
-                      >
+                        title="Descendre">
                         →
                       </button>
                     </div>
@@ -223,8 +219,7 @@
                       type="button"
                       disabled={selectedMoves.length <= 1}
                       on:click={() => toggleEquip(equippedMove)}
-                      class="px-2 py-0.5 rounded border border-rose-600/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[10px] font-bold disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
-                    >
+                      class="px-2 py-0.5 rounded border border-rose-600/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[10px] font-bold disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer">
                       Retirer
                     </button>
                   </div>
@@ -261,8 +256,7 @@
               {@const isBuff = Boolean(move.statBoosts)}
               {@const accBonus = moveAccuracyBonus(move)}
               <div
-                class="flex flex-col justify-between p-3.5 rounded-xl border transition-all {equipped ? 'border-amber-500/70 bg-stone-900/90 shadow-md' : 'border-stone-800 bg-stone-900/40 hover:border-stone-700'}"
-              >
+                class="flex flex-col justify-between p-3.5 rounded-xl border transition-all {equipped ? 'border-amber-500/70 bg-stone-900/90 shadow-md' : 'border-stone-800 bg-stone-900/40 hover:border-stone-700'}">
                 <div>
                   <div class="flex items-center justify-between gap-1">
                     <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border {tc.badge}">
@@ -325,8 +319,7 @@
                       type="button"
                       disabled={selectedMoves.length <= 1}
                       on:click={() => toggleEquip(move)}
-                      class="px-2.5 py-1 rounded-lg border border-stone-700 bg-stone-800 hover:bg-rose-950 hover:border-rose-600/50 hover:text-rose-300 text-stone-300 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                    >
+                      class="px-2.5 py-1 rounded-lg border border-stone-700 bg-stone-800 hover:bg-rose-950 hover:border-rose-600/50 hover:text-rose-300 text-stone-300 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer">
                       Retirer
                     </button>
                   {:else}
@@ -335,8 +328,7 @@
                       type="button"
                       on:click={() => toggleEquip(move)}
                       class="px-3 py-1 rounded-lg font-serif font-bold text-xs uppercase tracking-wider
-                        border border-violet-500/50 bg-violet-950/60 hover:bg-violet-900/80 text-violet-200 transition-all cursor-pointer shadow-sm"
-                    >
+                        border border-violet-500/50 bg-violet-950/60 hover:bg-violet-900/80 text-violet-200 transition-all cursor-pointer shadow-sm">
                       + Équiper
                     </button>
                   {/if}
@@ -357,8 +349,7 @@
           <button
             type="button"
             on:click={onClose}
-            class="px-4 py-2 rounded-xl font-serif text-xs uppercase tracking-wider text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
-          >
+            class="px-4 py-2 rounded-xl font-serif text-xs uppercase tracking-wider text-stone-400 hover:text-stone-200 transition-colors cursor-pointer">
             Fermer
           </button>
 
@@ -368,8 +359,7 @@
             on:click={handleConfirm}
             class="px-5 py-2 rounded-xl font-serif font-bold text-xs uppercase tracking-wider
               bg-gradient-to-r from-amber-400 to-amber-600 text-stone-950 border border-amber-300
-              hover:brightness-110 active:scale-95 transition-all shadow-[0_0_12px_rgba(251,191,36,0.3)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-          >
+              hover:brightness-110 active:scale-95 transition-all shadow-[0_0_12px_rgba(251,191,36,0.3)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
             💾 Valider mes Attaques
           </button>
         </div>

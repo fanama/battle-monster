@@ -202,7 +202,7 @@
   </svg>
 
   <p class="mt-1 text-[10px] md:text-xs text-stone-400 font-mono">
-    {currentLayer + 1} / {rows.length} — nœuds reliés à votre position ({reachable.size} {reachable.size > 1 ? "choix" : "choix"})
+    {currentLayer + 1} / {rows.length} — nœuds reliés à votre position ({reachable.size} choix{reachable.size > 1 ? "s" : ""})
   </p>
 </div>
 

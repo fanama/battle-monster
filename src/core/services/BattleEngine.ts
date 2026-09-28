@@ -1,5 +1,5 @@
 import type { Monster, MonsterRank } from "../entities/Monster";
-import { abilityModifier } from "../entities/Monster";
+import { abilityModifier, charismaHealBonus } from "../entities/Monster";
 import type { Move, MonsterStat, MonsterType } from "../entities/Move";
 import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
 import { STATUS_CONFIGS, type StatusEffectType } from "../entities/StatusEffect";
@@ -135,7 +135,9 @@ export class BattleEngine {
    * D&D attack resolution:
    *  - arme physique : 1d20 + mod(Force) + BonusPrécision
    *  - sort :          1d20 + mod(Savoir/i) + BonusPrécision
-   *  - CA : 10 + mod(Vitesse)
+   *  - CA : 10 + mod(Vitesse) + armure, **plafonnée** (cf. `Monster.getAC` :
+   *    sans plafond, `total >= ac` devenait impossible et le monstre
+   *    intouchable). `AttackOutcome.ac` renvoie la CA *effective*.
    *  - 20 naturel → touche + critique ; 1 naturel → fumble (raté).
    *  - `critRange` élargit les jets de critique (ex. 2 → 19-20), reliques joueur.
    *  - Le bonus de précision (`moveAccuracyBonus`) est INVERSÉ à la puissance :
@@ -166,8 +168,9 @@ export class BattleEngine {
    * D&D damage roll:
    *  - physique : 1dX + mod(Force) + BonusDégâts (crit : 2dX) — les dégâts
    *    suivent la puissance (dé + terme linéaire), pas la précision.
-   *  - magique :  Charisme(i) × (1 + power/120) (crit : ×2) — la magie monte en
-   *    puissance avec la move pour contrebalancer sa précision réduite.
+   *  - magique :  Savoir × (1 + power/120) × Charisme (crit : ×2) — la magie
+   *    monte en puissance avec la move pour contrebalancer sa précision
+   *    réduite, et le Charisme (reliques) la canalise en pourcentage.
    */
   rollDamage(attacker: Monster, move: Move, crit: boolean): DamageRoll {
     if (move.isPhysical) {
@@ -184,11 +187,13 @@ export class BattleEngine {
       };
     }
     const factor = 1 + move.power / 120;
-    const total = attacker.wisdom * factor * (crit ? 2 : 1);
+    const charmFactor = attacker.charismaMagicFactor();
+    const total = attacker.wisdom * factor * charmFactor * (crit ? 2 : 1);
+    const charm = charmFactor > 1 ? ` × Charisme${charmFactor.toFixed(2)}` : '';
     return {
       desc: crit
-        ? `Savoir ×${(factor * 2).toFixed(2)}`
-        : `Savoir ×${factor.toFixed(2)}`,
+        ? `Savoir ×${(factor * 2).toFixed(2)}${charm} (crit)`
+        : `Savoir ×${factor.toFixed(2)}${charm}`,
       total: Math.max(1, total),
     };
   }
@@ -416,13 +421,19 @@ export class BattleEngine {
     return { logs, totalDamage, fainted: monster.isFainted() };
   }
 
-  /** Soin (règle sorts D&D) : 2d4 + mod(Constitution) + mod(Savoir), plafonné aux PV max. */
+  /**
+   * Soin (règle sorts D&D) : `(niveau + 1)d4 + mod(Constitution) +
+   * max(0, mod(Savoir)) + max(0, mod(Charisme))`, plafonné aux PV max.
+   * Le Charisme s'ajoute au Savoir (rebalance P0) : il rend les reliques
+   * « +N Charisme » jouables, et donne un vrai archétype de soigneur.
+   */
   applyHeal(attacker: Monster, move: Move): number {
     const healAmount = Math.max(
       1,
       this.dice.roll(attacker.level + 1, 4) +
         abilityModifier(attacker.constitution) +
-        Math.max(0, abilityModifier(attacker.wisdom)),
+        Math.max(0, abilityModifier(attacker.wisdom)) +
+        charismaHealBonus(attacker.charisma),
     );
     attacker.heal(healAmount);
     return healAmount;

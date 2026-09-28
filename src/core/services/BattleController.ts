@@ -3,8 +3,8 @@ import { abilityModifier, MAX_MOVES } from '../entities/Monster';
 import type { RunState } from '../entities/BattleState';
 import type { Move, MonsterType } from '../entities/Move';
 import { STATUS_CONFIGS } from '../entities/StatusEffect';
-import type { ConsumableItem, InventorySlot } from '../entities/Consumable';
-import { REGIONS } from '../entities/Region';
+import type { ConsumableItem } from '../entities/Consumable';
+import { REGIONS, type RegionDef } from '../entities/Region';
 import {
   rollRelicOffers,
   rollRareRelicOffers,
@@ -21,6 +21,22 @@ const BOSS_SCORE_BONUS = 150;
 const RELIC_SCORE_BONUS = 15;
 const WILD_GOLD_BASE = 8; // or gagné par combat sauvage : base + niveau ennemi
 const BOSS_GOLD = 60; // or gagné en battant le boss de région
+
+// --- Scaling des ennemis sur le joueur (rebalance P0) ---
+
+/**
+ * Écarts de niveau tirés pour un sauvage, autour du niveau du joueur.
+ * Avant, le niveau venait **uniquement** de la région : un joueur sous-élevé
+ * entrait en région 3 et se prenait 4 niveaux d'écart (mur), un joueur
+ * sur-élevé massacrait la région 1 sans risque. L'ennemi suit maintenant le
+ * joueur, borné par la bande régionale — la région reste le palier de
+ * difficulté, mais elle ne peut plus être ni un mur ni un parcours sans
+ * aucune résistance.
+ */
+const WILD_LEVEL_OFFSETS: readonly number[] = [-1, 0, 1];
+
+/** Le boss se cale un niveau au-dessus du joueur, dans la bande de la région. */
+const BOSS_LEVEL_OFFSET = 1;
 
 export interface BattleControllerDeps {
   engine: BattleEngine;
@@ -367,6 +383,30 @@ export class BattleController {
     }
   }
 
+  /**
+   * Niveau d'un sauvage : niveau du joueur + écart tiré, borné par la bande
+   * `[minLevel, maxLevel]` de la région. Un joueur dans les clous de la région
+   * croise des adversaires de son niveau ; un joueur sous-élevé n'est plus
+   * facing-checké, un joueur sur-élevé ne rencontre plus des proies.
+   */
+  private wildLevelFor(player: Monster, region: RegionDef): number {
+    const offset = WILD_LEVEL_OFFSETS[Math.floor(this.random() * WILD_LEVEL_OFFSETS.length)];
+    return Math.min(region.maxLevel, Math.max(region.minLevel, player.level + offset));
+  }
+
+  /**
+   * Niveau du boss : un cran au-dessus du joueur, borné comme les sauvages.
+   * Le plafond `maxLevel + 1` est inchangé, donc un joueur dans les clous
+   * affronte **exactement** le même boss qu'avant ; un joueur sous-élevé (ou
+   * qui grimpe vite) voit le boss s'adapter au lieu d'être un mur.
+   */
+  private bossLevelFor(player: Monster, region: RegionDef): number {
+    return Math.min(
+      region.maxLevel + 1,
+      Math.max(region.minLevel + 1, player.level + BOSS_LEVEL_OFFSET),
+    );
+  }
+
   /** Lance un combat sauvage (niveau & type tirés dans la région ; `opts.type` force le type — nœud de la carte). */
   enterWildCombat(
     player: Monster,
@@ -375,7 +415,7 @@ export class BattleController {
   ): { enemyMonster: Monster; logs: string[] } {
     this.prepareCombat(player, run);
     const region = REGIONS[run.regionIndex];
-    const level = region.minLevel + Math.floor(this.random() * (region.maxLevel - region.minLevel + 1));
+    const level = this.wildLevelFor(player, region);
     const type = opts.type ?? region.types[Math.floor(this.random() * region.types.length)];
     const enemy = this.enemyFactory.createRandomEnemy(level, { type });
     return { enemyMonster: enemy, logs: [`Un ${enemy.name} sauvage (niv. ${enemy.level}) apparaît !`] };
@@ -385,8 +425,7 @@ export class BattleController {
   enterBossCombat(player: Monster, run: RunState): { enemyMonster: Monster; logs: string[] } {
     this.prepareCombat(player, run);
     const region = REGIONS[run.regionIndex];
-    // Scaling adouci : maxLevel + 1 (au lieu de +2) pour éviter les pics de difficulté excessifs en Citadelle Céleste
-    const bossLevel = region.maxLevel + 1;
+    const bossLevel = this.bossLevelFor(player, region);
     const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
     return { enemyMonster: enemy, logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`] };
   }

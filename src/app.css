@@ -1,3 +1,46 @@
 @import "tailwindcss";
 
+/* Palier « petit » (téléphones compacts) utilisé par les composants. */
+@theme {
+  --breakpoint-xs: 26rem;
+}
 
+/*
+ * Mobile first : la page elle-même ne déborde JAMAIS (ni en largeur, ni en
+ * hauteur). Tout le défilement est interne au shell de l'app (App.svelte) et
+ * à ses panneaux. `dvh` est utilisé partout pour tenir compte des barres
+ * d'adresse des navigateurs mobiles.
+ */
+@layer base {
+  html,
+  body,
+  #app {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+/* Barre de défilement invisible (lignes HUD, filtres, onglets). */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Zone de défilement interne : jamais de débordement horizontal. */
+@utility scroll-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}

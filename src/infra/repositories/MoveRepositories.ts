@@ -1,4 +1,4 @@
-import type { Move, MonsterType } from "../../core/entities/Move";
+import type { Move } from "../../core/entities/Move";
 import type { Monster } from "../../core/entities/Monster";
 
 /**
@@ -135,45 +135,6 @@ export class MoveRepository {
     'rock-earthquake': { id: 'rock-earthquake', name: 'Tremblement', power: 100, type: 'rock', isPhysical: true, maxCoolDown: 1, level: 9 },
     'rock-meteor': { id: 'rock-meteor', name: 'Chute de Météore', power: 130, type: 'rock', isPhysical: true, maxCoolDown: 3, level: 11 },
   };
-
-  /**
-   * Retrieves a move by its unique ID.
-   * @param id The unique identifier of the move.
-   * @returns The Move object or undefined if not found.
-   */
-  public getMoveById(id: string): Move | undefined {
-    return MoveRepository.moves[id];
-  }
-
-  /**
-   * Retrieves a move by its display name (case-insensitive).
-   * @param name The display name of the move (e.g., 'Boule de feu').
-   * @returns The Move object or undefined if not found.
-   */
-  public getMoveByName(name: string): Move | undefined {
-    const lowerCaseName = name.toLowerCase();
-    return Object.values(MoveRepository.moves).find(
-      move => move.name.toLowerCase() === lowerCaseName
-    );
-  }
-
-  /**
-   * Retrieves all moves currently defined in the repository.
-   * @returns An array of all Move objects.
-   */
-  public getAllMoves(): Move[] {
-    return Object.values(MoveRepository.moves);
-  }
-
-  /**
-   * Retrieves all moves of a specific MonsterType.
-   * @param type The type to filter by ('fire', 'water', 'grass', 'normal', 'electric', 'rock').
-   * @returns An array of Move objects matching the type.
-   */
-  public getMovesByType(type: MonsterType): Move[] {
-    // Use static moves directly, as 'this' isn't required for getAllMoves()
-    return Object.values(MoveRepository.moves).filter(move => move.type === type);
-  }
 
   /**
    * Retrieves all moves for a specific monster, based on its type and level.

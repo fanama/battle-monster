@@ -48,7 +48,3 @@ export class LocalStorageRunRepository implements SaveRepository {
     }
   }
 }
-
-export function createLocalStorageRunRepository(): LocalStorageRunRepository {
-  return new LocalStorageRunRepository();
-}

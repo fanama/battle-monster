@@ -88,10 +88,6 @@ export function generateRegionMap(
   return result;
 }
 
-/** Index de la dernière couche (ou -1 si la carte est vide). */
-export function lastLayerIndex(map: RegionMap): number {
-  return map.layers.length - 1;
-}
 
 /**
  * Nœud de la couche `layer` portant la colonne `col`.
@@ -108,9 +104,4 @@ export function nodeAtCol(map: RegionMap, layer: number, col: number): MapNode |
  */
 export function areLinked(fromCol: number, toCol: number): boolean {
   return Math.abs(fromCol - toCol) <= 1;
-}
-
-/** Colonnes accessibles depuis `col` sur une couche suivante de `colCount` colonnes. */
-export function reachableCols(col: number, colCount: number): number[] {
-  return [col - 1, col, col + 1].filter(c => c >= 0 && c < colCount);
 }

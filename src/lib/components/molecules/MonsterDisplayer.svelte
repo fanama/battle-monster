@@ -25,12 +25,12 @@
 
   $: tc = TYPE_COLORS[(monster?.type ?? 'normal')];
 
-  // Text shown by the floating number
+  // Text shown by the floating feedback on mobile & desktop
   $: floatLabel = feedback
     ? feedback.kind === 'damage'
       ? `-${feedback.damage}`
       : feedback.kind === 'heal'
-        ? `+${feedback.damage}`
+        ? `+${feedback.damage} PV`
         : feedback.kind === 'buff'
           ? `+${feedback.damage} ⬆`
           : feedback.kind === 'fumble'
@@ -40,8 +40,8 @@
 
   $: isHit = feedback && (feedback.kind === 'damage' || feedback.kind === 'fumble' || feedback.kind === 'miss');
   $: isDamageTaken = feedback && feedback.kind === 'damage';
-
   $: isUtilityMove = lastMove && lastMove.power === 0;
+  $: moveType = lastMove?.type ?? monster?.type ?? 'normal';
 </script>
 
 <div
@@ -57,14 +57,32 @@
   "
 >
   {#if monster}
+    <!-- BANNIÈRE D'ANNONCE D'ATTAQUE (Très visible sur mobile) -->
+    {#if isAttacking && lastMove}
+      <div
+        class="absolute -top-3 z-40 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border-2
+          border-amber-300 bg-stone-950/95 font-serif font-black text-[10px] sm:text-xs text-amber-200
+          shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-attack-pulse flex items-center gap-1 sm:gap-1.5 whitespace-nowrap"
+      >
+        <span>{TYPE_ICONS[lastMove.type]}</span>
+        <span class="tracking-wide">{lastMove.name} !</span>
+      </div>
+    {/if}
+
+    <!-- FEEDBACK VISUEL & CHIFFRES FLOTTANTS (Optimisé mobile) -->
     {#if feedback && feedback.kind !== 'none'}
-      <div class="feedback-fx absolute inset-0 z-30 pointer-events-none">
-        <!-- Red flash on the monster that got struck -->
+      <div class="feedback-fx absolute inset-0 z-40 pointer-events-none flex flex-col items-center justify-center">
+        <!-- Flash d'impact élémentaire sur la créature frappée -->
         {#if isDamageTaken}
           <div class="absolute inset-0 hit-flash {feedback.isCrit ? 'hit-flash-crit' : ''}"></div>
+          
+          <!-- Effet de coupure / onde élémentaire selon le type d'attaque -->
+          <div class="impact-elemental-vfx impact-{moveType} {feedback.isCrit ? 'impact-crit-scale' : ''}">
+            <div class="impact-slash"></div>
+          </div>
         {/if}
 
-        <!-- Floating number: damage / heal / buff / fumble / miss -->
+        <!-- Badge & Nombre flottant de combat -->
         <div
           class="float-num
             {feedback.kind === 'damage' ? 'num-damage' : ''}
@@ -74,7 +92,10 @@
             {feedback.kind === 'miss' ? 'num-miss' : ''}
             {feedback.isCrit ? 'num-crit' : ''}"
         >
-          {floatLabel}
+          {#if feedback.isCrit}
+            <span class="crit-tag">💥 CRITIQUE !</span>
+          {/if}
+          <span class="num-text">{floatLabel}</span>
         </div>
       </div>
     {/if}
@@ -224,97 +245,109 @@
 </div>
 
 <style>
-  /* --- Attacks (Slide/Lunge) --- */
+  /* --- Attaques physiques & magiques (Lunge vers l'adversaire) --- */
+  /* Le joueur (à gauche) se projette vers la droite */
   .attack-player {
-    animation: attack-lunge-left 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
+    animation: attack-lunge-player 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
+    z-index: 25;
   }
 
+  /* L'ennemi (à droite) se projette vers la gauche */
   .attack-enemy {
-    animation: attack-lunge-right 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
+    animation: attack-lunge-enemy 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
+    z-index: 25;
   }
 
-  /* --- Utility (Heal/Boost Jump) --- */
+  /* --- Capacité de soutien / soin / buff (Saut vertical) --- */
   .jump-animation {
-    animation: hop-up 0.4s ease-in-out;
+    animation: hop-up 0.42s ease-in-out;
   }
 
-  @keyframes attack-lunge-left {
+  @keyframes attack-lunge-player {
     0% {
       transform: translateX(0);
     }
-    30% {
-      transform: translateX(-62%) scale(1.06);
+    35% {
+      transform: translateX(clamp(24px, 36%, 65px)) scale(1.08);
     }
     70% {
-      transform: translateX(8%);
+      transform: translateX(-4%);
     }
     100% {
       transform: translateX(0);
     }
   }
 
-  @keyframes attack-lunge-right {
+  @keyframes attack-lunge-enemy {
     0% {
       transform: translateX(0);
     }
-    30% {
-      transform: translateX(62%) scale(1.06);
+    35% {
+      transform: translateX(clamp(-65px, -36%, -24px)) scale(1.08);
     }
     70% {
-      transform: translateX(-8%);
+      transform: translateX(4%);
     }
     100% {
       transform: translateX(0);
     }
   }
 
-  /* Vertical jump for healing or buffs */
   @keyframes hop-up {
     0% {
       transform: translateY(0);
     }
-    50% {
-      transform: translateY(-40px) scale(1.1);
+    40% {
+      transform: translateY(-28px) scale(1.08);
     }
     100% {
-      transform: translateY(0) scale(1);
+      transform: translateY(0);
     }
   }
 
-  /* --- Receiver hit reaction: shake --- */
+  @keyframes attack-pulse {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-4px) scale(1.05); }
+  }
+
+  .animate-attack-pulse {
+    animation: attack-pulse 0.6s ease-in-out infinite;
+  }
+
+  /* --- Réaction aux coups subis : Shake --- */
   .shake {
-    animation: shake-hit 0.4s ease both;
+    animation: shake-hit 0.38s ease both;
     will-change: transform;
   }
 
   .shake-crit {
-    animation: shake-hit-crit 0.5s ease both;
+    animation: shake-hit-crit 0.48s ease both;
   }
 
   @keyframes shake-hit {
     0%, 100% { transform: translate(0, 0); }
-    15% { transform: translate(-7px, 3px); }
-    35% { transform: translate(6px, -4px); }
-    55% { transform: translate(-5px, 2px); }
-    75% { transform: translate(3px, -2px); }
+    15% { transform: translate(-6px, 3px); }
+    35% { transform: translate(6px, -3px); }
+    55% { transform: translate(-4px, 2px); }
+    75% { transform: translate(3px, -1px); }
   }
 
   @keyframes shake-hit-crit {
     0%, 100% { transform: translate(0, 0) scale(1); }
     20% { transform: translate(-10px, 5px) scale(1.08); }
-    45% { transform: translate(9px, -6px) scale(1.05); }
-    70% { transform: translate(-6px, 3px) scale(1.02); }
+    45% { transform: translate(9px, -5px) scale(1.05); }
+    70% { transform: translate(-5px, 2px) scale(1.02); }
   }
 
-  /* --- Red flash on the struck monster --- */
+  /* --- Flash lumineux sur la cible frappée --- */
   .hit-flash {
-    background: radial-gradient(circle, rgba(255, 60, 60, 0.7), rgba(255, 60, 60, 0.2) 70%);
-    animation: hit-flash-out 0.55s ease-out forwards;
+    background: radial-gradient(circle, rgba(255, 60, 60, 0.75), rgba(255, 60, 60, 0.2) 70%);
+    animation: hit-flash-out 0.5s ease-out forwards;
   }
 
   .hit-flash-crit {
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 90, 90, 0.3) 65%);
-    animation: hit-flash-out 0.7s ease-out forwards;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 90, 90, 0.4) 65%);
+    animation: hit-flash-out 0.65s ease-out forwards;
   }
 
   @keyframes hit-flash-out {
@@ -322,37 +355,167 @@
     100% { opacity: 0; }
   }
 
-  /* --- Floating number --- */
-  .float-num {
+  /* --- VFX élémentaires lors de l'impact --- */
+  .impact-elemental-vfx {
     position: absolute;
-    left: 50%;
-    top: 22%;
-    z-index: 40;
-    font-weight: 800;
-    font-size: 1.5rem;
+    inset: 10% 5%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 35;
+    animation: impact-fade 0.45s ease-out forwards;
+  }
+
+  .impact-crit-scale {
+    transform: scale(1.25);
+  }
+
+  .impact-slash {
+    width: 90%;
+    height: 4px;
+    border-radius: 9999px;
+    transform: rotate(-35deg);
+    animation: slash-anim 0.35s ease-out forwards;
+  }
+
+  .impact-fire .impact-slash {
+    background: linear-gradient(90deg, transparent, #ff4500, #ffd700, #ff4500, transparent);
+    box-shadow: 0 0 15px #ff4500, 0 0 25px #ffa500;
+  }
+
+  .impact-water .impact-slash {
+    background: linear-gradient(90deg, transparent, #00bfff, #ffffff, #1e90ff, transparent);
+    box-shadow: 0 0 15px #00bfff, 0 0 25px #00ffff;
+  }
+
+  .impact-electric .impact-slash {
+    background: linear-gradient(90deg, transparent, #ffff00, #ffffff, #ffd700, transparent);
+    box-shadow: 0 0 15px #ffff00, 0 0 30px #ffffff;
+  }
+
+  .impact-grass .impact-slash {
+    background: linear-gradient(90deg, transparent, #32cd32, #adff2f, #228b22, transparent);
+    box-shadow: 0 0 15px #32cd32, 0 0 25px #7fff00;
+  }
+
+  .impact-rock .impact-slash {
+    background: linear-gradient(90deg, transparent, #d2b48c, #f5deb3, #8b4513, transparent);
+    box-shadow: 0 0 15px #d2b48c, 0 0 25px #a0522d;
+  }
+
+  .impact-normal .impact-slash {
+    background: linear-gradient(90deg, transparent, #ffffff, #dcdcdc, #ffffff, transparent);
+    box-shadow: 0 0 15px #ffffff, 0 0 25px #e0e0e0;
+  }
+
+  @keyframes slash-anim {
+    0% { transform: rotate(-35deg) scaleX(0.2); opacity: 0.2; }
+    50% { transform: rotate(-35deg) scaleX(1.1); opacity: 1; }
+    100% { transform: rotate(-35deg) scaleX(1.3); opacity: 0; }
+  }
+
+  @keyframes impact-fade {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* --- Nombres et labels flottants de combat (Optimisé Mobile) --- */
+  .float-num {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    z-index: 50;
     line-height: 1;
     white-space: nowrap;
-    transform: translate(-50%, 0);
-    animation: float-up 1.1s ease-out forwards;
-    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.75);
+    animation: float-pop 1.05s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.9));
   }
 
-  .num-damage { color: #ff5252; }
-  .num-heal { color: #4ade80; }
-  .num-buff { color: #fbbf24; }
-  .num-fumble { color: #ff7043; }
-  .num-miss { color: #a8a29e; }
-  .num-crit {
-    font-size: 2.1rem;
+  .crit-tag {
+    font-size: 0.75rem;
     font-weight: 900;
-    color: #ffd54f;
+    color: #fef08a;
+    background: rgba(180, 83, 9, 0.85);
+    border: 1px solid #facc15;
+    border-radius: 9999px;
+    padding: 1px 8px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
   }
 
-  @keyframes float-up {
-    0% { opacity: 0; transform: translate(-50%, 14px) scale(0.5); }
-    12% { opacity: 1; transform: translate(-50%, 0) scale(1.2); }
-    30% { transform: translate(-50%, -8px) scale(1); }
-    75% { opacity: 1; }
-    100% { opacity: 0; transform: translate(-50%, -56px) scale(0.85); }
+  .num-text {
+    font-size: 1.6rem;
+    font-weight: 900;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    letter-spacing: -0.02em;
+  }
+
+  @media (min-width: 640px) {
+    .num-text {
+      font-size: 2.1rem;
+    }
+  }
+
+  .num-damage .num-text {
+    color: #ef4444;
+    text-shadow: 0 0 12px rgba(239, 68, 68, 0.7), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .num-heal .num-text {
+    color: #4ade80;
+    text-shadow: 0 0 12px rgba(74, 222, 128, 0.7), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .num-buff .num-text {
+    color: #fbbf24;
+    text-shadow: 0 0 12px rgba(251, 191, 36, 0.7), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .num-fumble .num-text {
+    color: #fb923c;
+    text-shadow: 0 0 12px rgba(251, 146, 60, 0.7), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .num-miss .num-text {
+    color: #cbd5e1;
+    text-shadow: 0 0 10px rgba(203, 213, 225, 0.5), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .num-crit .num-text {
+    font-size: 2rem;
+    color: #fde047;
+    text-shadow: 0 0 15px rgba(250, 204, 21, 0.9), 0 2px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  @media (min-width: 640px) {
+    .num-crit .num-text {
+      font-size: 2.6rem;
+    }
+  }
+
+  @keyframes float-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(12px) scale(0.6);
+    }
+    18% {
+      opacity: 1;
+      transform: translateY(-8px) scale(1.15);
+    }
+    35% {
+      transform: translateY(-12px) scale(1);
+    }
+    75% {
+      opacity: 1;
+      transform: translateY(-24px) scale(0.95);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-38px) scale(0.85);
+    }
   }
 </style>

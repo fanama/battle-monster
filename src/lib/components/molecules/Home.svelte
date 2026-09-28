@@ -1,7 +1,7 @@
 <script lang="ts">
   import { MonsterIO, type Monster } from "../../../core/entities/Monster";
   import { REGIONS } from "../../../core/entities/Region";
-  import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
+  import { TYPE_LABELS } from "../../../core/entities/Move";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import { abilityModifier } from "../../../core/entities/Monster";
   import type { SavedChampion } from "../../../core/services/ports";

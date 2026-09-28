@@ -32,27 +32,27 @@
       type="button"
       class="fixed inset-0 w-full h-full bg-black/80 backdrop-blur-md cursor-default transition-opacity"
       on:click={onClose}
-      aria-label="Fermer le codex"
-    ></button>
+      aria-label="Fermer le codex"></button>
 
     <!-- Modal Dialog -->
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="codex-title"
-      class="relative z-10 w-full max-w-3xl max-h-[85vh] flex flex-col rounded-2xl border-2 border-amber-500/50
-        bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.9)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-    >
+      class="relative z-10 w-full max-w-3xl max-h-[88dvh] flex flex-col rounded-2xl border-2 border-amber-500/50
+        bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.9)] overflow-hidden">
       <!-- Modal Header -->
-      <div class="px-5 py-4 border-b border-stone-800 flex items-center justify-between bg-stone-900/60">
-        <div class="flex items-center gap-2.5">
-          <span class="text-2xl">📖</span>
-          <div>
-            <h2 id="codex-title" class="font-serif font-black text-lg md:text-xl uppercase tracking-wider text-amber-300">
+      <div class="px-4 sm:px-5 py-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-900/60">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="text-2xl shrink-0">📖</span>
+          <div class="min-w-0">
+            <h2
+              id="codex-title"
+              class="font-serif font-black text-base sm:text-lg md:text-xl uppercase tracking-wider text-amber-300 truncate">
               Codex & Guide de Jeu
             </h2>
-            <p class="text-[11px] font-mono text-stone-400">
-              Système de règles D&D 5e · Table des éléments · Régions
+            <p class="text-[11px] font-mono text-stone-400 truncate">
+              D&D 5e · Éléments · Régions
             </p>
           </div>
         </div>
@@ -60,10 +60,9 @@
         <button
           type="button"
           on:click={onClose}
-          class="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white
+          class="w-8 h-8 shrink-0 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white
             flex items-center justify-center font-bold text-sm transition-colors cursor-pointer"
-          aria-label="Fermer"
-        >
+            aria-label="Fermer">
           ✕
         </button>
       </div>
@@ -73,22 +72,19 @@
         <button
           type="button"
           on:click={() => activeTab = 'rules'}
-          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'rules' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
-        >
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'rules' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}">
           <span>🎲</span> <span>Règles D&D 5e</span>
         </button>
         <button
           type="button"
           on:click={() => activeTab = 'elements'}
-          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'elements' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
-        >
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'elements' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}">
           <span>🔥</span> <span>Types & Faiblesses</span>
         </button>
         <button
           type="button"
           on:click={() => activeTab = 'regions'}
-          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'regions' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}"
-        >
+          class="px-3 sm:px-4 py-2.5 border-b-2 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 {activeTab === 'regions' ? 'border-amber-400 text-amber-300 bg-amber-950/20' : 'border-transparent text-stone-400 hover:text-stone-200'}">
           <span>🗺️</span> <span>Régions & Boss</span>
         </button>
       </div>
@@ -112,11 +108,74 @@
             <div class="p-4 rounded-xl border border-stone-800 bg-stone-900/60 flex flex-col gap-2">
               <span class="font-mono font-bold text-sky-400 uppercase tracking-wider text-xs">🛡️ Classe d'Armure (CA)</span>
               <p class="text-stone-300 leading-relaxed">
-                La défense de base est déterminée par la dextérité (vitesse) et augmentée par les reliques d'armure passives.
+                La défense de base est déterminée par la vitesse et augmentée par les reliques d'armure passives (plafonnée à 24 pour éviter l'intouchabilité).
               </p>
               <div class="p-2.5 rounded bg-black/50 border border-stone-800 font-mono text-[11px] text-stone-400">
-                • CA de base : <span class="text-sky-300">10 + mod(Vitesse) + Reliques</span><br/>
-                • Exemple : Vitesse 16 (+3) = <span class="text-amber-200">CA 13</span>
+                • CA : <span class="text-sky-300">10 + mod(Vitesse ≤ +5) + Armure</span><br/>
+                • Plafond effectif : <span class="text-amber-200">Max 24 CA</span>
+              </div>
+            </div>
+
+            <!-- TABLEAU DES 6 CARACTÉRISTIQUES -->
+            <div class="md:col-span-2 p-4 rounded-xl border border-stone-800 bg-stone-900/70 flex flex-col gap-2.5">
+              <span class="font-mono font-bold text-amber-300 uppercase tracking-wider text-xs flex items-center gap-2">
+                <span>📊</span>
+                <span>Rôle des 6 Caractéristiques (D&D 5e)</span>
+              </span>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-1">
+                <div class="p-2.5 rounded-lg border border-red-500/30 bg-red-950/20">
+                  <div class="font-bold text-red-300 flex items-center gap-1.5 mb-1">
+                    <span>🥊</span> <span>Force</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Touche physique (<span class="text-red-200 font-mono">1d20 + mod(FOR)</span>) et bonus direct aux dégâts d'arme physiques.
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-sky-500/30 bg-sky-950/20">
+                  <div class="font-bold text-sky-300 flex items-center gap-1.5 mb-1">
+                    <span>💨</span> <span>Vitesse</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Initiative de round (<span class="text-sky-200 font-mono">1d20 + mod(VIT)</span>) et esquive ajoutée à la Classe d'Armure (max +5).
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20">
+                  <div class="font-bold text-emerald-300 flex items-center gap-1.5 mb-1">
+                    <span>❤️</span> <span>Constitution</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Pool de PV max et <span class="text-emerald-200 font-semibold">jets de sauvegarde</span> face aux statuts (Brûlure, Gel, Paralysie, Poison).
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-violet-500/30 bg-violet-950/20">
+                  <div class="font-bold text-violet-300 flex items-center gap-1.5 mb-1">
+                    <span>🧠</span> <span>Savoir</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Touche magique (<span class="text-violet-200 font-mono">1d20 + mod(SAV)</span>), puissance des sorts et bonus de soins.
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20">
+                  <div class="font-bold text-amber-300 flex items-center gap-1.5 mb-1">
+                    <span>👁️</span> <span>Instinct</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Perception martiale étendant la <span class="text-amber-200 font-semibold">plage de coups critiques</span> (19-20 dès mod(INS) ≥ +2).
+                  </p>
+                </div>
+
+                <div class="p-2.5 rounded-lg border border-pink-500/30 bg-pink-950/20">
+                  <div class="font-bold text-pink-300 flex items-center gap-1.5 mb-1">
+                    <span>✨</span> <span>Charisme</span>
+                  </div>
+                  <p class="text-[11px] text-stone-300">
+                    Canalisation arcanique (<span class="text-pink-200 font-semibold">+2 % dégâts magiques / pt &gt; 10</span>) et bonus brut aux sorts de soin.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -238,8 +297,7 @@
           type="button"
           on:click={onClose}
           class="px-5 py-2 rounded-lg font-serif font-bold text-xs uppercase tracking-wider
-            bg-stone-800 hover:bg-stone-700 text-stone-200 transition-colors cursor-pointer"
-        >
+            bg-stone-800 hover:bg-stone-700 text-stone-200 transition-colors cursor-pointer">
           Fermer
         </button>
       </div>

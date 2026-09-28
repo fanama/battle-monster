@@ -5,7 +5,7 @@ import { MonsterIO } from '../../core/entities/Monster';
 import type { Move } from '../../core/entities/Move';
 import type { Relic, ShopItem } from '../../core/entities/Relic';
 import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent, rollShopStock, RELIC_CATALOG } from '../../core/entities/Relic';
-import { STARTER_INVENTORY, type ConsumableItem, type InventorySlot } from '../../core/entities/Consumable';
+import { STARTER_INVENTORY } from '../../core/entities/Consumable';
 import { REGIONS } from '../../core/entities/Region';
 import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
 import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
