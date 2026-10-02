@@ -8,7 +8,7 @@ import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExpe
 import { STARTER_INVENTORY } from '../../core/entities/Consumable';
 import { REGIONS } from '../../core/entities/Region';
 import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
-import type { BattleController, PlayTurnResult } from '../../core/services/BattleController';
+import type { BattleController, PlayTurnOptions, PlayTurnResult } from '../../core/services/BattleController';
 import { SAVE_VERSION, type RunSave, type SaveRepository, type ChampionRepository, type SavedChampion } from '../../core/services/ports';
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
@@ -250,60 +250,70 @@ export class BattleStore {
       const enemy = state.enemyMonster;
       const move = player.moves[moveIndex];
 
-      // Le controller résout le round ENTIER (mutations) : initiative d20 +
-      // mod(Vitesse), puis les deux actions dans l'ordre. On ne fait ici que
-      // rejouer les observables (logs, feedback, animations) avec des timers.
-      const round = this.controller.resolveRound({
-        player,
-        enemy,
+      // 1. Jet d'initiative (1d20 + mod(Vitesse)) : il décide de l'ordre.
+      const round = this.controller.beginRound({ player, enemy });
+
+      // 2. Les deux camps agissent STRICTEMENT dans cet ordre : le tour du
+      //    second n'est exécuté (et muté) qu'après l'animation du premier,
+      //    afin que PV, logs et feedback suivent réellement l'initiative.
+      //    Le tour suivant est annulé si le premier a mis la cible K.O.
+      const playerTurnOpts = (): PlayTurnOptions => ({
+        attacker: player,
+        defender: enemy,
         move,
+        attackerSide: 'player',
         damagePercent: relicDamagePercent(state.run.relics),
         lifestealPercent: relicLifestealPercent(state.run.relics),
         critRange: relicMaxCritRange(state.run.relics),
         experiencePercent: relicExperiencePercent(state.run.relics),
       });
-
-      const playerAction = round.playerTurn;
-      const enemyAction = round.enemyTurn;
+      const enemyTurnOpts = (): PlayTurnOptions => ({
+        attacker: enemy,
+        defender: player,
+        // L'IA choisit sa riposte au moment où elle agit (après les dégâts reçus).
+        move: this.controller.selectEnemyMove(enemy.moves, enemy, player),
+        attackerSide: 'enemy',
+      });
 
       if (round.playerFirst) {
-        // Le joueur agit immédiatement ; l'ennemi réagit après le délai.
-        const followUp = enemyAction != null;
+        // Le joueur ouvre le round ; l'ennemi réagit après le délai,
+        // uniquement s'il est toujours en vie.
+        const first = this.controller.playTurn(playerTurnOpts());
+        const followUp = first.winner == null;
         let s: BattleState = {
           ...state,
           isPlayerTurn: false,
           isAttacking: true,
-          playerLastMove: playerAction?.move ?? move,
-          logs: [...state.logs, round.logs[0], ...(playerAction?.logs ?? [])],
-          winner: followUp ? null : round.winner,
+          playerLastMove: first.move,
+          logs: [...state.logs, ...round.logs, ...first.logs],
+          winner: followUp ? null : first.winner,
         };
-        if (playerAction) s = this._attachFeedback(s, playerAction);
+        s = this._attachFeedback(s, first);
         if (!followUp) s = this._applyRoundWinner(s);
         this._endAnimLater('isAttacking');
-        if (followUp) this._enemyLater(enemyAction!, round.winner);
-        if (playerAction?.leveledUp) {
+        if (followUp) this._enemyLater(enemyTurnOpts);
+        if (first.leveledUp) {
           this._later(() => this.openMoveModal(true), (followUp ? ENEMY_TURN_DELAY : 0) + ANIMATION_END_DELAY + 300);
         }
         return s;
       }
 
-      // Ennemi plus rapide : il frappe en premier, le joueur réagit ensuite.
-      const followUp = playerAction != null;
+      // Ennemi plus rapide : il frappe en premier, le joueur réagit ensuite
+      // (seulement s'il est toujours debout).
+      const first = this.controller.playTurn(enemyTurnOpts());
+      const followUp = first.winner == null;
       let s: BattleState = {
         ...state,
         isPlayerTurn: false,
         isEnemyAttacking: true,
-        enemyLastMove: enemyAction?.move ?? null,
-        logs: [...state.logs, round.logs[0], ...(enemyAction?.logs ?? [])],
-        winner: followUp ? null : round.winner,
+        enemyLastMove: first.move,
+        logs: [...state.logs, ...round.logs, ...first.logs],
+        winner: followUp ? null : first.winner,
       };
-      if (enemyAction) s = this._attachFeedback(s, enemyAction);
+      s = this._attachFeedback(s, first);
       if (!followUp) s = this._applyRoundWinner(s);
       this._endAnimLater('isEnemyAttacking');
-      if (followUp) this._playerLater(playerAction!, round.winner);
-      if (playerAction?.leveledUp) {
-        this._later(() => this.openMoveModal(true), ENEMY_TURN_DELAY + ANIMATION_END_DELAY + 300);
-      }
+      if (followUp) this._playerLater(playerTurnOpts);
       return s;
     });
   };
@@ -650,19 +660,22 @@ export class BattleStore {
   }
 
   /**
-   * Rejoue le tour de l'ennemi (déjà muté de façon synchrone par resolveRound) :
-   * logs, feedback, animation, puis rend la main au joueur et applique l'issue.
+   * Exécute (après le délai) le tour de l'ennemi — second dans l'ordre
+   * d'initiative — puis affiche logs, feedback et issue du round.
+   * Les mutations n'ont lieu qu'à cet instant : les PV ennemis/joueur
+   * défilent donc dans le bon ordre.
    */
-  private _enemyLater(action: PlayTurnResult, roundWinner: 'player' | 'enemy' | null): void {
+  private _enemyLater(makeOpts: () => PlayTurnOptions): void {
     this._later(() => {
       this.store.update(state => {
         if (state.winner) return state;
+        const action = this.controller.playTurn(makeOpts());
         let s: BattleState = {
           ...state,
           isEnemyAttacking: true,
           enemyLastMove: action.move,
           logs: [...state.logs, ...action.logs],
-          winner: roundWinner,
+          winner: action.winner,
         };
         s = this._attachFeedback(s, action);
         s = this._applyRoundWinner(s);
@@ -672,23 +685,32 @@ export class BattleStore {
     }, ENEMY_TURN_DELAY);
   }
 
-  /** Rejoue le tour du joueur dans un round où l'ennemi passait en premier. */
-  private _playerLater(action: PlayTurnResult, roundWinner: 'player' | 'enemy' | null): void {
+  /**
+   * Exécute (après le délai) le tour du joueur — second dans l'ordre
+   * d'initiative — puis affiche logs, feedback et issue du round.
+   */
+  private _playerLater(makeOpts: () => PlayTurnOptions): void {
     this._later(() => {
+      let leveledUp = false;
       this.store.update(state => {
         if (state.winner) return state;
+        const action = this.controller.playTurn(makeOpts());
+        leveledUp = action.leveledUp;
         let s: BattleState = {
           ...state,
           isAttacking: true,
           playerLastMove: action.move,
           logs: [...state.logs, ...action.logs],
-          winner: roundWinner,
+          winner: action.winner,
         };
         s = this._attachFeedback(s, action);
         s = this._applyRoundWinner(s);
         this._endAnimLater('isAttacking');
         return { ...s, isPlayerTurn: s.winner == null };
       });
+      if (leveledUp) {
+        this._later(() => this.openMoveModal(true), ANIMATION_END_DELAY + 300);
+      }
     }, ENEMY_TURN_DELAY);
   }
 

@@ -78,6 +78,7 @@
         <li>• Modificateur : floor((Stat - 10) / 2)</li>
         <li>• Armure : 10 + mod(Vitesse) + Reliques</li>
         <li>• Toucher : 1d20 + mod(Stat) ≥ CA</li>
+        <li>• Défense : dégâts − mod(CON) positif (min 1)</li>
         <li>• 20 Naturel : Coup critique doublé</li>
       </ul>
     </div>

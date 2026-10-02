@@ -101,7 +101,8 @@
               </p>
               <div class="p-2.5 rounded bg-black/50 border border-stone-800 font-mono text-[11px] text-stone-400">
                 • Physique : <span class="text-amber-300">1d20 + mod(Force) + Précision ≥ CA</span><br/>
-                • Magique : <span class="text-purple-300">1d20 + mod(Savoir) + Précision ≥ CA</span>
+                • Magique : <span class="text-purple-300">1d20 + mod(Savoir) + Précision ≥ CA</span><br/>
+                • Défense : <span class="text-emerald-300">dégâts − mod(Constitution) positif de la victime (min. 1)</span>
               </div>
             </div>
 
@@ -146,7 +147,7 @@
                     <span>❤️</span> <span>Constitution</span>
                   </div>
                   <p class="text-[11px] text-stone-300">
-                    Pool de PV max et <span class="text-emerald-200 font-semibold">jets de sauvegarde</span> face aux statuts (Brûlure, Gel, Paralysie, Poison).
+                    Pool de PV max, <span class="text-emerald-200 font-semibold">jets de sauvegarde</span> face aux statuts (Brûlure, Gel, Paralysie, Poison) et <span class="text-emerald-200 font-semibold">absorption des dégâts</span> : un modificateur positif est retiré aux attaques reçues.
                   </p>
                 </div>
 
@@ -182,7 +183,7 @@
             <div class="p-4 rounded-xl border border-stone-800 bg-stone-900/60 flex flex-col gap-2">
               <span class="font-mono font-bold text-emerald-400 uppercase tracking-wider text-xs">⚡ Initiative & Ordre de Tour</span>
               <p class="text-stone-300 leading-relaxed">
-                Au début de chaque tour, chaque combattant lance un jet d'initiative (<span class="font-mono text-emerald-300">1d20 + mod(Vitesse)</span>). Le plus rapide frappe en premier. Si le coup met K.O., la riposte est annulée.
+                Au début de chaque tour, chaque combattant lance un jet d'initiative (<span class="font-mono text-emerald-300">1d20 + mod(Vitesse)</span>). Le plus rapide frappe en premier, puis le second n'agit qu'après la frappe précédente : les attaques, les logs et les PV défilent donc toujours dans l'ordre des jets. Si le premier coup met K.O., la riposte est annulée.
               </p>
             </div>
 

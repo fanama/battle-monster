@@ -67,6 +67,16 @@ function sign(n: number): string {
 }
 
 /**
+ * Absorption de dégâts de la victime : si son modificateur de Constitution
+ * est **positif**, il est retiré des dégâts d'attaque qu'elle subit (règle
+ * « robustesse »). Un modificateur négatif ne rend jamais plus vulnérable :
+ * il vaut alors 0. Les dégâts restent bornés à 1 au minimum.
+ */
+export function constitutionDamageReduction(defender: Monster): number {
+  return Math.max(0, abilityModifier(defender.constitution));
+}
+
+/**
  * Maps a move's power to a weapon die face count (1d6…1d20).
  * Recalibré à la hausse (rebalance §5) : les mouvements physiques doivent
  * rester compétitifs face à la magie.
@@ -171,6 +181,10 @@ export class BattleEngine {
    *  - magique :  Savoir × (1 + power/120) × Charisme (crit : ×2) — la magie
    *    monte en puissance avec la move pour contrebalancer sa précision
    *    réduite, et le Charisme (reliques) la canalise en pourcentage.
+   *
+   * Le résultat est **brut** : l'absorption par la Constitution de la victime
+   * (`constitutionDamageReduction`) s'applique ensuite, dans `executeTurn`
+   * et `calculateDamage`, sur le dégât final.
    */
   rollDamage(attacker: Monster, move: Move, crit: boolean): DamageRoll {
     if (move.isPhysical) {
@@ -226,10 +240,12 @@ export class BattleEngine {
     const outcome = this.resolveAttack(attacker, defender, move);
     if (!outcome.hit) return 0;
     const roll = this.rollDamage(attacker, move, outcome.crit);
-    return this.computeFinalDamage(
+    const base = this.computeFinalDamage(
       roll.total,
       this.typeMultiplier(move.type, defender.type, move.isPhysical),
     );
+    // Absorption : mod(Constitution) positif de la victime retiré des dégâts.
+    return Math.max(1, base - constitutionDamageReduction(defender));
   }
 
   /**
@@ -536,22 +552,29 @@ export class BattleEngine {
           defender.type,
           actualMoveInstance.isPhysical,
         );
-        const final = this.computeFinalDamage(
+        const base = this.computeFinalDamage(
           roll.total,
           multiplier,
           modifiers,
         );
+        // Absorption : si le mod(Constitution) de la victime est positif, il
+        // est retiré des dégâts d'attaque (minimum 1 dégât infligé).
+        const reduction = constitutionDamageReduction(defender);
+        const final = Math.max(1, base - reduction);
         defender.takeDamage(final);
         feedback = { kind: "damage", damage: final, isCrit: outcome.crit };
 
         const critMark = outcome.crit ? " 💥 CRITIQUE !" : "";
         const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}]`;
         const effective = multiplier !== 1 ? ` (×${multiplier})` : "";
+        const soak = reduction > 0
+          ? ` − ${reduction} (mod CON ${sign(reduction)} de ${defender.name})`
+          : "";
 
         logs.push({
           message:
             `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
-            `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${final}.`,
+            `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${base}${soak} = ${final}.`,
         });
 
         // Application de l'effet de statut élémentaire (si la capacité en possède un et la cible est vivante)

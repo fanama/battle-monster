@@ -81,31 +81,23 @@ export interface PlayTurnResult {
   lifesteal: number;
 }
 
-/** Entrée d'une résolution de round complet (les deux camps agissent). */
-export interface ResolveRoundOptions {
+/** Entrée d'un round : seuls les jets d'initiative y sont roulés. */
+export interface BeginRoundOptions {
   player: Monster;
   enemy: Monster;
-  /** Move choisi par le joueur. */
-  move: Move;
-  /** % de dégâts supplémentaires (reliques joueur). */
-  damagePercent?: number;
-  /** % de vol de vie (reliques joueur). */
-  lifestealPercent?: number;
-  /** Range de critiques élargi (reliques joueur). */
-  critRange?: number;
-  /** Bonus d'EXP en % (reliques joueur). */
-  experiencePercent?: number;
 }
 
-export interface ResolveRoundResult {
+/**
+ * Plan d'ordre d'action d'un round : les deux camps agissent **dans l'ordre
+ * des jets d'initiative**, le second tour n'étant exécuté qu'après le
+ * premier (le store enchaîne animations et PV dans cet ordre).
+ */
+export interface RoundPlan {
   /** Le joueur agit en premier (initiative d20 + mod(Vitesse)). */
   playerFirst: boolean;
   playerInitiative: number;
   enemyInitiative: number;
-  playerTurn: PlayTurnResult | null;
-  enemyTurn: PlayTurnResult | null;
-  winner: 'player' | 'enemy' | null;
-  /** Log d'initiative (affiché dans le journal). */
+  /** Log d'initiative (affiché en tête du round dans le journal). */
   logs: string[];
 }
 
@@ -176,12 +168,13 @@ export class BattleController {
   // --- Tour & round de combat ---
 
   /**
-   * Résout un round complet : initiative d20 + mod(Vitesse) (règle D&D) pour
-   * décider qui agit en premier, puis exécution des deux camps dans l'ordre
-   * (le tour du perdant est annulé s'il a déjà mis le vainqueur K.O.).
-   * Ne gère ni timers ni animations : le store rejoue les résultats.
+   * Résout **l'ordre d'action** d'un round : initiative `1d20 + mod(Vitesse)`
+   * (règle D&D, −4 si paralysie) pour chaque camp. Les tours eux-mêmes sont
+   * ensuite exécutés un à un dans cet ordre via `playTurn` — le second n'a
+   * lieu que si la cible du premier est toujours debout (riposte annulée en
+   * cas de K.O.).
    */
-  resolveRound(opts: ResolveRoundOptions): ResolveRoundResult {
+  beginRound(opts: BeginRoundOptions): RoundPlan {
     const { player, enemy } = opts;
 
     const playerPara = player.hasStatus('paralysis') ? -4 : 0;
@@ -195,57 +188,7 @@ export class BattleController {
       `⚡ ${player.name} ${playerInitiative}${playerTag} vs ${enemy.name} ${enemyInitiative}${enemyTag} → ${playerFirst ? player.name : enemy.name} agit en premier.`,
     ];
 
-    let playerTurn: PlayTurnResult | null = null;
-    let enemyTurn: PlayTurnResult | null = null;
-    let winner: ResolveRoundResult['winner'] = null;
-
-    if (playerFirst) {
-      playerTurn = this.playTurn({
-        attacker: player,
-        defender: enemy,
-        move: opts.move,
-        attackerSide: 'player',
-        damagePercent: opts.damagePercent,
-        lifestealPercent: opts.lifestealPercent,
-        critRange: opts.critRange,
-        experiencePercent: opts.experiencePercent,
-      });
-      if (!enemy.isFainted()) {
-        enemyTurn = this.playTurn({
-          attacker: enemy,
-          defender: player,
-          move: this.selectEnemyMove(enemy.moves, enemy, player),
-          attackerSide: 'enemy',
-        });
-        winner = enemyTurn.winner;
-      } else {
-        winner = playerTurn.winner;
-      }
-    } else {
-      enemyTurn = this.playTurn({
-        attacker: enemy,
-        defender: player,
-        move: this.selectEnemyMove(enemy.moves, enemy, player),
-        attackerSide: 'enemy',
-      });
-      if (!player.isFainted()) {
-        playerTurn = this.playTurn({
-          attacker: player,
-          defender: enemy,
-          move: opts.move,
-          attackerSide: 'player',
-          damagePercent: opts.damagePercent,
-          lifestealPercent: opts.lifestealPercent,
-          critRange: opts.critRange,
-          experiencePercent: opts.experiencePercent,
-        });
-        winner = playerTurn.winner;
-      } else {
-        winner = enemyTurn.winner;
-      }
-    }
-
-    return { playerFirst, playerInitiative, enemyInitiative, playerTurn, enemyTurn, winner, logs };
+    return { playerFirst, playerInitiative, enemyInitiative, logs };
   }
 
   /**
