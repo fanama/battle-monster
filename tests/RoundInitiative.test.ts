@@ -74,8 +74,13 @@ describe("Ordre d'attaque du round (jets d'initiative)", () => {
     const plan = controller.beginRound({ player: hero, enemy: enemy() });
     expect(plan.playerFirst).toBe(false);
 
+    // Héros à bout de course : un seul coup suffit. La réserve est baissée
+    // explicitement plutôt que d'être fixée par la réserve max — ce test porte
+    // sur l'annulation de la riposte, pas sur l'échelle de PV.
+    hero.currentHp = 10;
+
     // 1er tour : l'ennemi frappe (12 + 0 + 5 précision = 17 ≥ CA 12),
-    // dégâts 8 + 4 + 10 (FOR 30) + 2 = 24 ≥ 21 PV max du joueur niv. 1.
+    // dégâts 8 + 4 + 10 (FOR 30) + 2 = 24 ≥ 10 PV restants.
     const enemyAction = controller.playTurn({
       attacker: enemy(),
       defender: hero,

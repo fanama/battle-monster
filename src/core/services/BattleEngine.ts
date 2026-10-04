@@ -1,5 +1,5 @@
 import type { Monster, MonsterRank } from "../entities/Monster";
-import { abilityModifier, charismaHealBonus } from "../entities/Monster";
+import { abilityModifier, charismaHealBonus, levelPaceFactor } from "../entities/Monster";
 import type { Move, MonsterStat, MonsterType } from "../entities/Move";
 import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
 import {
@@ -80,6 +80,19 @@ export function constitutionDamageReduction(defender: Monster): number {
 }
 
 /**
+ * Dégâts de statuts en fin de tour, en fraction du PV max de la victime.
+ *
+ * Rééquilibré avec le reste du moteur : à 8 % / 5 %, une brûlure durait 3 tours
+ * à elle seule consommait un quart de la réserve de PV, et le poison empilait
+ * sa toxicité bien au-delà0. En miroir, les deux camps
+ * s'infligeaient le même statut en boucle et les combats s'éternisaient
+ * (24 rounds moyens au niveau 9). Ces deux valeurs sont des partages de PV, pas
+ * des multiplicateurs de dégâts : ils restent lisibles pour le joueur.
+ */
+export const BURN_DAMAGE_RATIO = 0.06;
+export const POISON_DAMAGE_RATIO = 0.04;
+
+/**
  * Maps a move's power to a weapon die face count (1d6…1d20).
  * Recalibré à la hausse (rebalance §5) : les mouvements physiques doivent
  * rester compétitifs face à la magie.
@@ -93,9 +106,27 @@ function powerToDie(power: number): number {
 }
 
 /**
+ * Dé d'un sort : **quatre faces de plus** que le dé d'arme equivalent.
+ *
+ * C'est la compensation de la puissance de type dampée (magie ×1.5 / ×0.67
+ * contre ×2 / ×0.5 en physique). Multiplicateur moyen sur un adversaire tiré
+ * au hasard : ×1.20 en physique contre ×1.07 en magie — sans ce dé plus gros,
+ * le sort serait Structurellement plus faible alors que sa table de types est
+ * volontairement plus douce.
+ */
+export const SPELL_DIE_BONUS = 4;
+
+/** Dé d'un sort, dimensionné par la puissance du move (comme `powerToDie`). */
+function powerToSpellDie(power: number): number {
+  return powerToDie(power) + SPELL_DIE_BONUS;
+}
+
+/**
  * Bonus de dégâts d'un move physique, analogue au BonusDégâts d'une arme :
  * ajouté aux dégâts uniquement (le bonus de *toucher* est `moveAccuracyBonus`,
  * inversé à la puissance — voir `core/entities/Move.ts`).
+ *
+ * Physique uniquement : le sort n'a pas d'arme, son dé fait déjà office.
  */
 function moveDamageBonus(move: Move): number {
   return Math.floor(move.power / 20);
@@ -182,38 +213,67 @@ export class BattleEngine {
 
   /**
    * D&D damage roll:
-   *  - physique : 1dX + mod(Force) + BonusDégâts (crit : 2dX) — les dégâts
-   *    suivent la puissance (dé + terme linéaire), pas la précision.
-   *  - magique :  Savoir × (1 + power/120) × Charisme (crit : ×2) — la magie
-   *    monte en puissance avec la move pour contrebalancer sa précision
-   *    réduite, et le Charisme (reliques) la canalise en pourcentage.
+   *  - physique : `1dX + P/10 + P/20 + mod(Force)` (crit : `2dX`) — un
+   *    modificateur d'arme sur le jet de dégâts, comme au d20.
+   *  - magique : `1d(X+4) + P/10 + mod(Savoir)` (crit : `2d(X+4)`) — même
+   *    squelette que l'arme, avec un **dé plus gros** pour compenser la
+   *    puissance de type dampée de la magie.
+   *
+   * **Pourquoi ce changement** : la formule historique `Savoir × (1 + P/120)`
+   * faisait des dégâts magiques une fonction *linéaire de la caractéristique
+   * brute*. Or le Savoir croît de +2 à +3 par niveau, là où le modificateur de
+   * Force ne change que tous les 2 points : mesuré au niveau 7, un monstre
+   * Plante (Savoir 24) faisait 32 de dégâts moyens avec son meilleur sort
+   * contre 18-21 pour tous les types physiques (Force 22-24). La magie
+   * simplement ignorait l'investissement physique et écrasait le reste du
+   * catalogue. Passer le sort sur `mod(Savoir)` réaligne les deux natures.
+   *
+   * Le Charisme reste le multiplicateur **exclusif** de la magie
+   * (`charismaMagicFactor`, +2 % par point au-delà de 10) : c'est désormais
+   * le seul levier d'amplification, ce qui lui donne enfin un rôle mécanique
+   * lisible côté sorcier.
    *
    * Le résultat est **brut** : l'absorption par la Constitution de la victime
    * (`constitutionDamageReduction`) s'applique ensuite, dans `executeTurn`
    * et `calculateDamage`, sur le dégât final.
    */
   rollDamage(attacker: Monster, move: Move, crit: boolean): DamageRoll {
+    const count = crit ? 2 : 1;
+    // Les dégâts progressent sur la même courbe que les PV (`levelPaceFactor`),
+    // sans quoi chaque niveau gagné doublait la réserve sans rien gagner au coup.
+    const pace = levelPaceFactor(attacker.level);
     if (move.isPhysical) {
       const sides = powerToDie(move.power);
-      const count = crit ? 2 : 1;
-      const total =
-        this.dice.roll(count, sides) +
-        movePowerFlat(move) +
-        abilityModifier(attacker.strength) +
-        moveDamageBonus(move);
+      const total = Math.max(
+        1,
+        Math.floor(
+          (this.dice.roll(count, sides) +
+            movePowerFlat(move) +
+            abilityModifier(attacker.strength) +
+            moveDamageBonus(move)) *
+            pace,
+        ),
+      );
       return {
         desc: `${count}d${sides}+${movePowerFlat(move)}`,
-        total: Math.max(1, total),
+        total,
       };
     }
-    const factor = 1 + move.power / 120;
+    const sides = powerToSpellDie(move.power);
     const charmFactor = attacker.charismaMagicFactor();
-    const total = attacker.wisdom * factor * charmFactor * (crit ? 2 : 1);
+    const total = Math.max(
+      1,
+      Math.floor(
+        (this.dice.roll(count, sides) +
+          movePowerFlat(move) +
+          abilityModifier(attacker.wisdom)) *
+          pace *
+          charmFactor,
+      ),
+    );
     const charm = charmFactor > 1 ? ` × Charisme${charmFactor.toFixed(2)}` : "";
     return {
-      desc: crit
-        ? `Savoir ×${(factor * 2).toFixed(2)}${charm} (crit)`
-        : `Savoir ×${factor.toFixed(2)}${charm}`,
+      desc: `${count}d${sides}${sides > 20 ? '' : '+' + movePowerFlat(move)}${charm}${crit ? ' (crit)' : ''}`,
       total: Math.max(1, total),
     };
   }
@@ -362,7 +422,7 @@ export class BattleEngine {
 
     // 1. Brûlure
     if (monster.hasStatus("burn")) {
-      const burnDmg = Math.max(1, Math.floor(monster.maxHp * 0.08));
+      const burnDmg = Math.max(1, Math.floor(monster.maxHp * BURN_DAMAGE_RATIO));
       monster.takeDamage(burnDmg);
       totalDamage += burnDmg;
       logs.push({
@@ -401,7 +461,7 @@ export class BattleEngine {
       const potency = st.potency ?? 1;
       const poisonDmg = Math.max(
         1,
-        Math.floor(monster.maxHp * (0.05 * potency)),
+        Math.floor(monster.maxHp * (POISON_DAMAGE_RATIO * potency)),
       );
       monster.takeDamage(poisonDmg);
       totalDamage += poisonDmg;

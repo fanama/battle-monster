@@ -78,18 +78,18 @@ describe('Modal de gestion (MoveManagerModal) — effets affichés', () => {
 describe('Dépôt de moves — les effets existent bien dans les données', () => {
   const repo = read('src/infra/repositories/MoveRepositories.ts');
 
-  test('cinq moves de buff déclarent un statBoosts', () => {
-    expect(repo.match(/statBoosts:/g)?.length).toBe(5);
+  test('un move de buff par type déclare un statBoosts (6 au total)', () => {
+    expect(repo.match(/statBoosts:/g)?.length).toBe(6);
   });
 
-  test('les trois sorts de soin déclarent healPower', () => {
-    expect(repo.match(/healPower:/g)?.length).toBe(3);
+  test('un sort de soin par type déclare healPower (6 au total)', () => {
+    expect(repo.match(/healPower:/g)?.length).toBe(6);
   });
 
   test('aucun sort de soin ne porte de power > 0', () => {
     // Garantit qu'un soin n'est jamais résolu comme une attaque dans
     // `executeTurn` (`if (power > 0)`), donc n'inflige pas de dégâts.
-    for (const id of ['normal-heal', 'water-cascade', 'grass-synthesis']) {
+    for (const id of ['normal-heal', 'water-cascade', 'fire-bain', 'elec-regen']) {
       // Bloc de l'objet du move : de son id jusqu'à sa fermeture.
       const block = new RegExp(`"${id}":\\s*\\{([\\s\\S]*?)\\n\\s*\\},`).exec(repo);
       expect(block?.[1], `bloc ${id} introuvable`).toBeTruthy();

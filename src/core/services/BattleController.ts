@@ -34,10 +34,19 @@ const BOSS_GOLD = 60; // or gagné en battant le boss de région
  * Les soins doivent compter via `healPower` : avec `power: 0`, ils avaient le
  * score le plus bas de l'arsenal et étaient donc **toujours** le premier move
  * écrasé au level-up — le soin était appris puis perdu à chaque montée.
+ *
+ * **Le score sert d'abord à classer des moves de même nature** : un move
+ * utilitaire (soin / amplification) ne remplace un move d'attaque que si le
+ * panneau n'en contient aucun (cf. `isOffensive`).
  */
 function moveScore(move: Move): number {
   const effectivePower = move.power + (move.healPower ?? 0);
   return move.level * 100 + effectivePower;
+}
+
+/** Un move qui fait des dégâts (par opposition à un soin ou un buff). */
+function isOffensive(move: Move): boolean {
+  return move.power > 0;
 }
 
 // --- Scaling des ennemis sur le joueur (rebalance P0) ---
@@ -50,11 +59,21 @@ function moveScore(move: Move): number {
  * joueur, borné par la bande régionale — la région reste le palier de
  * difficulté, mais elle ne peut plus être ni un mur ni un parcours sans
  * aucune résistance.
+ *
+ * Les écarts sont desormais definis par region (`RegionDef.wildLevelOffsets`) :
+ * les premieres regions tirent majoritairement en dessous du niveau du joueur,
+ * les dernieres au-dessus.
  */
-const WILD_LEVEL_OFFSETS: readonly number[] = [-1, 0, 1];
 
 /** Le boss se cale un niveau au-dessus du joueur, dans la bande de la région. */
 const BOSS_LEVEL_OFFSET = 1;
+
+/**
+ * Seuil de « haut de panier » de l'IA : un move est retenu s'il vaut au moins
+ * `80 %` du meilleur move disponible (et super-efficace s'il en existe un).
+ * En dessous, l'ennemi gaspille son tour.
+ */
+const STRONGEST_MOVE_RATIO = 0.8;
 
 export interface BattleControllerDeps {
   engine: BattleEngine;
@@ -215,9 +234,17 @@ export class BattleController {
     const attacking = candidates.filter(m => m.power > 0);
     const effective = attacking.filter(m => this.engine.typeMultiplier(m.type, target.type, m.isPhysical) > 1);
     const damaging = effective.length > 0 ? effective : attacking;
-    const chosen = damaging.length > 0 ? damaging : candidates;
 
-    return chosen[Math.floor(this.random() * chosen.length)];
+    // Puis, à pouvoir égal, le **meilleur** du lot. Tirer uniformément parmi
+    // tous les moves sudois faire dépenser un ennemi de puissance 125 à
+    // « attaquer » avec un move de 35 : le tour était perdu et le combat
+    // s'étirait en 13 rounds au lieu de 6. On garde un tirage aléatoire
+    // dans le haut de panier pour ne pas rendre l'IA parfaitement déterministe.
+    const ranked = damaging.length > 0 ? damaging : candidates;
+    const bestPower = Math.max(...ranked.map(m => m.power));
+    const strongest = ranked.filter(m => m.power >= bestPower * STRONGEST_MOVE_RATIO);
+
+    return strongest[Math.floor(this.random() * strongest.length)];
   }
 
   /**
@@ -368,19 +395,25 @@ export class BattleController {
             logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » !`);
             learnedNewMoves = true;
           } else {
-            // Monstre a 4 attaques : remplacement automatique du move le plus faible si le nouveau est supérieur
-            let lowestIdx = 0;
-            let lowestScore = moveScore(attacker.moves[0]!);
-            for (let i = 1; i < attacker.moves.length; i++) {
-              const score = moveScore(attacker.moves[i]!);
-              if (score < lowestScore) {
-                lowestScore = score;
-                lowestIdx = i;
-              }
+            // Panneau plein : le move nouveau remplace le plus faible **de sa
+            // propre nature**. Un soin n'écrase jamais une attaque, et
+            // réciproquement : sinon le panneau se remplissait de deux soins et
+            // deux attaques faibles entre les niveaux 5 et 9 (les deux plus
+            // fortes attaques disponibles n'y dépassaient pas le score d'un
+            // soin), et les combats s'étiraient sur 20 rounds.
+            const wantOffensive = isOffensive(newMove);
+            const candidates = attacker.moves
+              .map((move, index) => ({ move, index }))
+              .filter(entry => isOffensive(entry.move) === wantOffensive);
+
+            if (candidates.length === 0) continue;
+
+            let lowest = candidates[0]!;
+            for (const entry of candidates) {
+              if (moveScore(entry.move) < moveScore(lowest.move)) lowest = entry;
             }
-            const newScore = moveScore(newMove);
-            if (newScore > lowestScore) {
-              const { replacedMove, success } = attacker.learnMove(newMove, lowestIdx);
+            if (moveScore(newMove) > moveScore(lowest.move)) {
+              const { replacedMove, success } = attacker.learnMove(newMove, lowest.index);
               if (success && replacedMove) {
                 logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » en remplacement de « ${replacedMove.name} » !`);
                 learnedNewMoves = true;
@@ -425,13 +458,15 @@ export class BattleController {
   }
 
   /**
-   * Niveau d'un sauvage : niveau du joueur + écart tiré, borné par la bande
-   * `[minLevel, maxLevel]` de la région. Un joueur dans les clous de la région
-   * croise des adversaires de son niveau ; un joueur sous-élevé n'est plus
-   * facing-checké, un joueur sur-élevé ne rencontre plus des proies.
+   * Niveau d'un sauvage : niveau du joueur + écart tiré dans
+   * `RegionDef.wildLevelOffsets`, borné par la bande `[minLevel, maxLevel]` de la
+   * région. Un joueur dans les clous de la région croise des adversaires de son
+   * niveau ; un joueur sous-élevé n'est plus facing-checké, un joueur sur-élevé
+   * ne rencontre plus des proies.
    */
   private wildLevelFor(player: Monster, region: RegionDef): number {
-    const offset = WILD_LEVEL_OFFSETS[Math.floor(this.random() * WILD_LEVEL_OFFSETS.length)];
+    const offsets = region.wildLevelOffsets;
+    const offset = offsets[Math.floor(this.random() * offsets.length)] ?? 0;
     return Math.min(region.maxLevel, Math.max(region.minLevel, player.level + offset));
   }
 
@@ -458,7 +493,7 @@ export class BattleController {
     const region = REGIONS[run.regionIndex];
     const level = this.wildLevelFor(player, region);
     const type = opts.type ?? region.types[Math.floor(this.random() * region.types.length)];
-    const enemy = this.enemyFactory.createRandomEnemy(level, { type });
+    const enemy = this.enemyFactory.createRandomEnemy(level, { type, statScale: region.threat });
     return { enemyMonster: enemy, logs: [`Un ${enemy.name} sauvage (niv. ${enemy.level}) apparaît !`] };
   }
 
@@ -467,7 +502,12 @@ export class BattleController {
     this.prepareCombat(player, run);
     const region = REGIONS[run.regionIndex];
     const bossLevel = this.bossLevelFor(player, region);
-    const enemy = this.enemyFactory.createBoss(bossLevel, region.bossType, region.bossName);
+    const enemy = this.enemyFactory.createBoss(
+      bossLevel,
+      region.bossType,
+      region.bossName,
+      region.threat,
+    );
     return { enemyMonster: enemy, logs: [`👑 BOSS ! ${enemy.name} (niv. ${enemy.level}) bloque la route !`] };
   }
 

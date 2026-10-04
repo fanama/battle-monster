@@ -16,8 +16,15 @@ export interface MoveProvider {
 
 /** Crée les ennemis (sauvages et boss de région). Impl. : RandomEnemyFactory. */
 export interface EnemyFactory {
-  createRandomEnemy(level: number, opts?: { type?: MonsterType; name?: string }): Monster;
-  createBoss(level: number, type: MonsterType, name: string): Monster;
+  /**
+   * `statScale` module le budget de caractéristiques de l'ennemi (< 1 = plus
+   * faible) : c'est le levier de difficulté d'une région (`RegionDef.threat`).
+   */
+  createRandomEnemy(
+    level: number,
+    opts?: { type?: MonsterType; name?: string; statScale?: number },
+  ): Monster;
+  createBoss(level: number, type: MonsterType, name: string, statScale?: number): Monster;
 }
 
 /** Version du format de sauvegarde — un décalage = sauvegarde invalide. */

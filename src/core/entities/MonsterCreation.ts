@@ -57,10 +57,17 @@ export interface TypeAffinity {
  * Affinités innées par type (+6 points répartis), calquées sur les courbes de
  * progression de `Monster.getStatGrowth` : le type oriente l'archétype, les
  * points de destin permettent de le confirmer ou de le contredire.
+ *
+ * **Invariant d'équilibrage : tout type reçoit au moins +2 Constitution.**
+ * Sans lui, Feu et Électricité tombaient à Constitution 8 au départ, donc à un
+ * modificateur de Constitution **négatif** : leur réserve de PV était la plus
+ * faible du jeu et ils se faisaient démouler avant d'aligner un coup.
+ * L'identité d'un type s'exprime désormais dans *la répartition* de ces 6 points,
+ * jamais dans le fait de n'en recevoir aucun en Constitution.
  */
 export const TYPE_AFFINITIES: Record<MonsterType, TypeAffinity> = {
   fire: {
-    bonus: { strength: 3, speed: 3 },
+    bonus: { strength: 3, constitution: 2, speed: 1 },
     title: 'Frappeur ardent',
     blurb: 'Offensive brutale et initiative élevée, mais peu de réserve de PV.',
   },
@@ -75,7 +82,7 @@ export const TYPE_AFFINITIES: Record<MonsterType, TypeAffinity> = {
     blurb: 'Sorts puissants adossés à une bonne endurance.',
   },
   electric: {
-    bonus: { speed: 4, wisdom: 2 },
+    bonus: { speed: 4, constitution: 2 },
     title: 'Éclair vif',
     blurb: "Frappe toujours en premier et esquive grâce à une CA élevée.",
   },
@@ -85,7 +92,7 @@ export const TYPE_AFFINITIES: Record<MonsterType, TypeAffinity> = {
     blurb: 'Frappe lourde et encaisse, au prix de la vitesse.',
   },
   normal: {
-    bonus: { strength: 2, speed: 2, constitution: 1, wisdom: 1 },
+    bonus: { strength: 2, constitution: 2, speed: 2 },
     title: 'Polyvalent',
     blurb: 'Aucune faiblesse élémentaire : un profil modulable à volonté.',
   },
@@ -163,8 +170,16 @@ export function setDraftType(draft: MonsterDraft, type: MonsterType): MonsterDra
 }
 
 /**
- * Répartition automatique : distribue tous les points restants sur les
- * caractéristiques favorisées par le type (puis les autres si plafonnées).
+ * Répartition automatique : distribue tous les points restants **en tour de
+ * rôle** sur les caractéristiques, par priorité de type.
+ *
+ * Le tour de rôle (et non « tout sur la stat favorite ») est délibéré : en
+ * remplissant la première stat jusqu'au plafond, l'ancien algorithme laissait
+ * Constitution au plancher pour la plupart des types. Or la Constitution
+ * pilote la réserve de PV, donc la **durée** du combat bien plus que les
+ * dégâts : mesuré sur la répartition automatique, un champion Normal finissait
+ * à 67 PV max là où un champion Eau en avait 95. Le type décide désormais de
+ * l'**ordre** des points, pas de leur concentration.
  */
 export function autoAllocate(draft: MonsterDraft): MonsterDraft {
   const affinity = TYPE_AFFINITIES[draft.type].bonus;
@@ -173,11 +188,21 @@ export function autoAllocate(draft: MonsterDraft): MonsterDraft {
   );
 
   let next = draft;
-  let guard = FATE_POINTS_TOTAL * ALLOCATABLE_STATS.length;
-  while (remainingFatePoints(next.allocation) > 0 && guard-- > 0) {
-    const target = priority.find(stat => canIncrement(next, stat));
-    if (!target) break;
-    next = incrementStat(next, target);
+  let cursor = 0;
+  // Une passe = un point par caractéristique (dans l'ordre de priorité).
+  // On recommence tant qu'il reste des points et qu'une stat peut encore monter.
+  for (let pass = 0; pass < FATE_POINTS_TOTAL; pass++) {
+    if (remainingFatePoints(next.allocation) === 0) break;
+    let progressed = false;
+    for (let i = 0; i < priority.length; i++) {
+      const stat = priority[(cursor + i) % priority.length]!;
+      if (canIncrement(next, stat)) {
+        next = incrementStat(next, stat);
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+    cursor = (cursor + 1) % priority.length;
   }
   return next;
 }

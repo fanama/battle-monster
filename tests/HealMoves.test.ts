@@ -37,18 +37,19 @@ describe('Graduation des sorts de soin (healPower)', () => {
     expect(healBonus).toBe(16); // 4 + 12
   });
 
-  test('Les trois soins du dépôt sont désormais distincts et croissants', () => {
+  test('Chaque type dispose d’un soin de même puissance (parité du catalogue)', () => {
+    // Avant : trois soins gradués (0 / 10 / 15) et **aucun** pour le Feu,
+    // l’Électricité et la Roche — trois des six types sans aucune
+    // régénération, alors qu’un combat mal engagé se décide à la
+    // régénération. La graduation se fait désormais par le **niveau** (la
+    // formule D&D contient déjà `(niveau + 1)d4`), pas par le type.
     const repo = new MoveRepository();
-    const meditation = repo.getMovesForMonster({ type: 'normal', level: 10 })
-      .find((m) => m.id === 'normal-heal');
-    const cascade = repo.getMovesForMonster({ type: 'water', level: 10 })
-      .find((m) => m.id === 'water-cascade');
-    const synthese = repo.getMovesForMonster({ type: 'grass', level: 10 })
-      .find((m) => m.id === 'grass-synthesis');
-
-    expect(meditation?.healPower).toBe(0);
-    expect(cascade?.healPower).toBe(10);
-    expect(synthese?.healPower).toBe(15);
+    for (const type of ['normal', 'fire', 'water', 'grass', 'electric', 'rock'] as const) {
+      const heals = repo.getMovesForType(type).filter((m) => m.isHeal);
+      expect(heals.length, `soin manquant pour ${type}`).toBe(1);
+      expect(heals[0]!.healPower, `healPower de ${type}`).toBe(10);
+      expect(heals[0]!.maxCoolDown, `recharge de ${type}`).toBe(3);
+    }
   });
 
   test('Tous les soins du dépôt gardent power: 0 (jamais résolus comme une attaque)', () => {

@@ -12,22 +12,36 @@ export function abilityModifier(stat: number): number {
 /** Rang du monstre (dnd : PNJ / minion / boss) — sert au calcul d'XP. */
 export type MonsterRank = 'normal' | 'boss';
 
-/** D&D hit dice per monster type (max PV = max dice + mod(Constitution)). */
+/**
+ * D&D hit dice par type (PV max = Dé de Vie + mod(Constitution)).
+ *
+ * **Uniforme (d10 pour tous)** : le dé de vie était le multiplicateur caché du
+ * désavantage Constitution. Combiné aux affinités de type, Feu / Électricité /
+ * Normal tombaient à Constitution 8 *et* d8, soit 44 PV max au niveau 7 contre
+ * 65 pour l'Eau : ces trois types se faisaient désosser avant d'aligner un
+ * coup. La différenciation se joue désormais sur la Constitution elle-même
+ * (affinités, croissance), qui est lisible et affichée, et plus sur un
+ * modificateur de PV non documenté.
+ */
 const HIT_DICE: Record<MonsterType, number> = {
-  fire: 8,
+  fire: 10,
   water: 10,
   grass: 10,
-  normal: 8,
-  electric: 8,
+  normal: 10,
+  electric: 10,
   rock: 10,
 };
 
 /**
  * Mise à l'échelle du pool de PV par niveau : `BASE + level × PER_LEVEL`.
  *
- * Recalibré (2.1 + 0.50·lvl) après mesure : les dégâts des moves ne montent
- * pas avec le niveau (un move de puissance 40 tape autant au niv. 5 qu'au
- * niv. 12), alors qu'avec l'ancien 1.8 + 0.85·lvl les PV, eux, explosaient.
+ * Recalibré deux fois après mesure. D'abord 2.1 + 0.50·lvl, parce que les
+ * dégâts des moves ne montaient pas avec le niveau alors que les PV, eux,
+ * explosaient. Puis 5 + 0.50·lvl : une fois `levelPaceFactor` appliqué aux
+ * dégâts — dégâts et PV progressent désormais sur la même courbe — la
+ * réserve restante était trop faible au regard des coups portés : les combats
+ * se résolvient en 2 à 3 rounds. Un duel doit durer assez de tours pour que
+ * statuts, soins et initiative aient le temps de peser.
  *
  * Mesuré sur 400 duels par palier, les deux sens de matchup joués pour
  * annuler l'avantage de type : les combats duraient 7,7 rounds au niv. 5 et
@@ -37,11 +51,45 @@ const HIT_DICE: Record<MonsterType, number> = {
  * plus faciles. Le niveau 1 est volontairement inchangé (2,6 ≈ ancien 2,65) :
  * seule la progression par niveau est adoucie.
  */
-const HP_SCALE_BASE = 2.1;
+const HP_SCALE_BASE = 5;
 const HP_SCALE_PER_LEVEL = 0.5;
+
+/**
+ * Facteur de cadence d'un combat : les **dégâts suivent la même courbe de
+ * progression que les PV**, si bien qu'un round dure le même nombre de tours du
+ * niveau 1 au niveau 13.
+ *
+ * Sans lui, les dégâts d'un move ne dépendaient que de ses dés (constants) et du
+ * modificateur d'attribut (+1 tous les 2 points) : de `2.1 + 0.5·lvl` en PV, la
+ * réserve doublait presque entre le niveau 5 (4.6) et le niveau 13 (8.6) alors
+ * que les dégâts ne gagnaient que 1.23 ×. Conséquence directe : un
+ * ennemi d'un seul niveau au-dessus absorbait ~70 % de PV en plus pour ~3
+ * dégâts de plus — les combats s'allongeaient (4.5 rounds au niv. 5,
+ * 12 au niv. 13) et le moindre décalage de niveau devenait un mur (les boss
+ * des régions 2 et 3 étaient mesurés à 0-10 % de victoire).
+ *
+ * Désormais les deux grandeurs progressent ensemble : un écart de niveau est
+ * un handicap lisible et réversible, pas une exécution.
+ *
+ * La référence est le **niveau 1** : `levelPaceFactor(1) === 1`, donc le
+ * comportement d'un monstre de niveau 1 est exactement celui d'avant ce
+ * rééquilibrage. Tout ce qui est au-dessus simply suit la même courbe que
+ * les PV.
+ */
+export function levelPaceFactor(level: number): number {
+  const pace = (lvl: number) => HP_SCALE_BASE + lvl * HP_SCALE_PER_LEVEL;
+  return pace(level) / pace(1);
+}
 
 /** Nombre maximum d'attaques qu'un monstre peut équiper simultanément. */
 export const MAX_MOVES = 4;
+
+/**
+ * Total de points de caractéristiques gagnés **par niveau**, identique pour
+ * tous les types (invariant de `Monster.getStatGrowth`). Chaque paire de points
+ * vaut +1 modificateur d'attribut : c'est le budget de progression commun.
+ */
+export const STAT_GROWTH_TOTAL = 9;
 
 // --- Plafonds de Classe d'Armure (rebalance P0) ---
 
@@ -79,6 +127,52 @@ export function charismaMagicPercent(charisma: number): number {
 /** Bonus de soin (PV par sort de soin) apporté par un Charisme donné. */
 export function charismaHealBonus(charisma: number): number {
   return Math.max(0, abilityModifier(charisma));
+}
+
+/**
+ * Croissance de stats par type (« archetype »), en **points par niveau** :
+ *
+ *  - Force : toucher et dégâts physiques
+ *  - Savoir : toucher, dégâts magiques et puissance des soins
+ *  - Vitesse : Classe d'Armure (CA)
+ *  - Constitution : PV max
+ *  - Instinct : perception martiale (chances de critique, regard du sprite)
+ *  - Charisme : **croissance nulle par conception** — il ne s'obtient que par
+ *    les reliques (dégâts magiques et soins). Les reliques qui en donnent
+ *    seraient sinon inertes.
+ *
+ * **Deux invariants d'équilibrage :**
+ *
+ * 1. tous les types gagnent exactement {@link STAT_GROWTH_TOTAL} points par
+ *    niveau — chaque paire de points vaut +1 modificateur d'attribut, donc un
+ *    total différent est un avantage caché de ±1 mod par quelques niveaux
+ *    (l'Électricité en gagnait 10 quand la Roche et le Normal s'en
+ *    contenaient de 8) ;
+ * 2. la même fonction sert **au champion et aux ennemis**
+ *    (`RandomEnemyFactory`). Quand l'ennemi avait une croissance plate sur ses
+ *    six caractéristiques, il gagnait de l'Instinct (donc de la plage de
+ *    critique) et du Charisme (donc de l'amplification magique) que le joueur
+ *    n'obtient jamais : à niveau 13 l'ennemi gagnait +34 % de magie et deux
+ *    points de critique de plus par coup, ce qui rendait les derniers paliers
+ *    injouables.
+ */
+export function statGrowthForType(type: MonsterType) {
+  switch (type) {
+    case 'fire':
+      return { strength: 3, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
+    case 'water':
+      return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 1 };
+    case 'grass':
+      return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 1 };
+    case 'normal':
+      return { strength: 2, speed: 2, constitution: 2, wisdom: 2, charisma: 0, instinct: 1 };
+    case 'electric':
+      return { strength: 1, speed: 3, constitution: 2, wisdom: 2, charisma: 0, instinct: 1 };
+    case 'rock':
+      return { strength: 3, speed: 1, constitution: 3, wisdom: 1, charisma: 0, instinct: 1 };
+    default:
+      return { strength: 1, speed: 1, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
+  }
 }
 
 /**
@@ -385,34 +479,8 @@ export class Monster {
     this.currentHp = this.maxHp; // Heal to full on level up
   }
 
-  /**
-   * Croissance de stats par type (« archetype ») :
-   *  - Force : toucher et dégâts physiques
-   *  - Savoir : toucher, dégâts magiques et puissance des soins
-   *  - Vitesse : Classe d'Armure (CA)
-   *  - Constitution : PV max
-   *  - Instinct : perception martiale (chances de critique, regard du sprite)
-   *  - Charisme : **croissance nulle par conception** — il ne s'obtient que par
-   *    les reliques (dégâts magiques et soins). Les reliques qui en donnent
-   *    seraient sinon inertes.
-   */
   private getStatGrowth(type: MonsterType) {
-    switch (type) {
-      case 'fire':
-        return { strength: 3, speed: 3, constitution: 1, wisdom: 1, charisma: 0, instinct: 1 };
-      case 'water':
-        return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 1 };
-      case 'grass':
-        return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 1 };
-      case 'normal':
-        return { strength: 2, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
-      case 'electric':
-        return { strength: 1, speed: 3, constitution: 1, wisdom: 3, charisma: 0, instinct: 2 };
-      case 'rock':
-        return { strength: 3, speed: 1, constitution: 3, wisdom: 0, charisma: 0, instinct: 1 };
-      default:
-        return { strength: 1, speed: 1, constitution: 1, wisdom: 1, charisma: 0, instinct: 1 };
-    }
+    return statGrowthForType(type);
   }
 }
 

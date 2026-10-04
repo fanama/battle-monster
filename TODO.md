@@ -51,7 +51,15 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   - Un boss de région lâche **2 objets distincts** tirés au sort dans le catalogue (`BOSS_LOOT_COUNT`, `BattleController._rollBossLoot`).
   - `fuseDurableItemsIntoMonster` ne retient que les lots `origin === 'boss'` porteurs d'un bonus durable (`statBoost` / `acBonus`) et les fige dans la fiche du champion. **Un objet acheté en boutique n'est jamais persistant.** La fusion se fait sur une *copie* : le monstre du run et l'inventaire restent intacts (pas de double cumul).
 - [x] ✅ **Rejeu d'un champion enregistré au niveau 1** : `Monster.resetLevelTo(1)` (niveau, XP à zéro, seuil recalculé, PV réétendus) appelé depuis `Home.svelte` au lancement d'une nouvelle run avec un champion du Panthéon. Les autres usages de `fromSnapshot` (affichage, reprise de run sauvegardée, import) conservent leur niveau.
-- [x] ✅ **Rééquilibrage de la durée des combats (mesuré)** : l'échelle de PV est passée de `1.8 + 0.85·lvl` à `2.1 + 0.50·lvl` (`HP_SCALE_BASE` / `HP_SCALE_PER_LEVEL`). Les dégâts des moves ne montaient pas avec le niveau alors que les PV explosaient : les combats duraient 25 à 31 % de moins à tous les paliers (niv. 12 : 14,2 → 9,8 rounds) à taux de victoire en miroir conservé (~55 %). Le niveau 1 est inchangé. **Non traité** : la tension elle-même, qui demanderait de retoucher la puissance des moves par palier.
+- [x] ✅ **Rééquilibrage global (mesuré avec `scripts/balanceSim.ts`)** — sept leviers, chacun validé par `BalanceInvariants.test.ts` :
+  1. **Échelle des ennemis** : la croissance `1 + 0.15·(niv−1)` (multiplicative, plate sur les six stats) est remplacée par la **courbe de croissance du champion du même type**. L'ennemi n'emporte plus du Charisme (amplification magique) ni de l'Instinct (plage de critique) que le joueur ne peut pas obtenir.
+  2. **Cadence des dégâts** : `levelPaceFactor` met les dégâts sur la même courbe que les PV — un écart de niveau est redevenu lisible au lieu d'être un mur.
+  3. **Table de types** : passer à un tournoi régulier (2 avantages / 2 faiblesses par type, relations réciproques) ; le triangle Feu > Plante > Eau > Feu est conservé.
+  4. **Catalogue** : même échelle de puissance, un soin, un buff et quatre statuts pour chaque type (les trois types sans soin et la Roche sans statut sont corrigés).
+  5. **Magie vs physique** : le sort passe sur `mod(Savoir)` au lieu de `Savoir × (1 + power/120)`, qui écartait la magie du physique de 60 %.
+  6. **Constitution** : d10 pour tous les types, +2 minimum d'affinité, croissance de stats normalisée (9 points/niveau pour chaque type) et points de destin répartis en tour de rôle.
+  7. **Difficulté** : `threat` et `wildLevelOffsets` par région (ramp croisante), panneau d'ennemis composé des 4 plus fortes capacités, IA qui ne gaspille plus de tour, boss à PV ×1.2.
+  Résultat mesuré : victoire en miroir passée de **3-35 % à 44-72 %**, combats ramenés à 3.5-10 rounds quel que soit le niveau, difficulté croissante de région en région.
 
 ---
 
@@ -79,7 +87,7 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   - Composants et fichiers de template retirés (`src/lib/Counter.svelte`, `src/assets/svelte.svg`, `public/vite.svg`, `bun.lockb`).
   - Fonctions non appelées retirées de `MoveRepositories.ts` (`getMoveById`, `getMoveByName`, `getAllMoves`, `getMovesByType`).
   - Imports, helpers et clés de style morts éliminés (`UI_COLORS`, `lastLayerIndex`, `reachableCols`, `createLocalStorageRunRepository`, `styles.layout.title`, `styles.actionBar.moveWrapper`, `styles.winner`).
-- [x] ✅ **Suite de tests automatisés (`bun test`, runner natif Bun)** — 113 tests sur 14 fichiers, ~200 ms :
+- [x] ✅ **Suite de tests automatisés (`bun test`, runner natif Bun)** — 138 tests sur 15 fichiers, ~250 ms :
   - `BattleEngine.test.ts` — jets d'attaque d20, CA, critique 20 naturel, fumble 1 naturel, dégâts physiques et magiques, absorption par la Constitution de la victime.
   - `RoundInitiative.test.ts` — ordre d'attaque du round (initiative, non-régression après l'introduction de la priorité du soin).
   - `HealPriorityOrder.test.ts` — la règle d'ordre (soin joueur, soin ennemi, les deux, aucun), la sonde de soin sans aléa, et le journal.
@@ -158,6 +166,6 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 - **Animations CSS pures, sans `prefers-reduced-motion`.** Tant que l'item d'accessibilité n'est pas traité, aucune réduction de mouvement n'est proposée.
 - **Conflit attaque / réaction aux dégâts.** Le `feedback` du store est celui de l'**action**, pas des dégâts subis : le monstre qui frappe reçoit aussi `shake`. L'ordre CSS arbitre en faveur de l'animation d'attaque ; le comportement alternatif n'est pas tranché.
 - **Aucune migration des données existantes.** Les champions enregistrés avant la fusion des objets conservent une fiche sans objet persistant, et les runs sauvegardées gardent l'ancienne échelle de PV.
-- **Rééquilibrage non outillé.** Le simulateur de duels utilisé pour mesurer l'équilibrage a été supprimé du dépôt. Les taux de victoire reposent sur des approximations (moves choisis au hasard, IA et joueur simplifiés, reliques et objets ignorés). Le remis en service comme script versionné est une piste ouverte.
-- **Tension des combats inchangée.** Seul le pool de PV a été ajusté : à ~55 % de victoire en miroir, il reste peu de marge pour le joueur. Le levier suivant est la puissance des moves par palier.
+- **Rééquilibrage outillé, mais encore partiel.** `scripts/balanceSim.ts` est revenu dans le dépôt (duels montés avec le vrai moteur et les vraies fabriques). Il ignore encore les reliques, les objets et les consommables, et suppose un champion qui joue de son mieux : les taux de victoire réels en run sont donc **meilleurs** que ceux affichés. Le boss de Rivages d'Abysse (type Eau) tombe aussi à ~58 % de victoire, contre ~80 % pour les trois autres : le contre-type punit fort.
+- **Creux de tension entre les niveaux 7 et 9.** Le taux de victoire en miroir y redescend à 23-38 % contre 56-67 % au niveau 5 et 50-63 % au niveau 13. Cause identifiée : sur ces deux paliers, aucune des 4 capacités du panel ne dépasse la puissance 100. Le levier est de décaler un palier de puissance (ou d'en ajouter un entre les niveaux 7 et 9).
 - **Rejeu d'un champion : réserve de PV réduite.** Le niveau repart à 1 mais les caractéristiques de fin de run sont conservées, donc les PV max (dépendants du niveau) chutent. Rebaser les stats n'est pas techniquement reconstituable : les buffs sont permanents et l'allocation initiale des points de destin n'est pas stockée.

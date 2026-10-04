@@ -92,7 +92,10 @@ describe('Rôle du Charisme', () => {
     expect(attackerNeutral.charismaMagicFactor()).toBe(1);
     expect(attackerCharismatic.charismaMagicFactor()).toBe(1.2);
     expect(rollCharismatic.total).toBeGreaterThan(rollNeutral.total);
-    expect(rollCharismatic.total).toBe(Math.floor(rollNeutral.total * 1.2));
+    // Le Charisme multiplie le jet brut puis le résultat est arrondi à
+    // l'entier : l'écart au +20 % exact est donc au plus d'un point.
+    expect(rollCharismatic.total).toBeGreaterThanOrEqual(Math.floor(rollNeutral.total * 1.2));
+    expect(rollCharismatic.total).toBeLessThanOrEqual(Math.ceil(rollNeutral.total * 1.2));
   });
 
   test('Le Charisme augmente les soins appliqués dans BattleEngine', () => {
