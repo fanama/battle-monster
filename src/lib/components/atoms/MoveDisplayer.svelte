@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Move, MonsterType } from "../../../core/entities/Move";
-  import { TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
+  import { TYPE_LABELS, STAT_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
@@ -109,10 +109,34 @@
 
       {#if move.power > 0}
         <span
+          class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold border-amber-500/40 bg-amber-950/40 text-amber-200"
+          title="Puissance de base du move : taille du dé et bonus de dégâts en combat"
+        >
+          P.{move.power}
+        </span>
+        <span
           class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold border-sky-500/40 bg-sky-950/40 text-sky-200"
           title="Bonus de toucher (inversé à la puissance : les attaques faibles touchent plus souvent)"
         >
           🎯 +{moveAccuracyBonus(move)}
+        </span>
+      {/if}
+
+      {#if move.isHeal && move.healPower}
+        <span
+          class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold border-emerald-500/40 bg-emerald-950/40 text-emerald-200"
+          title="Bonus de soin ajouté au jet (niveau + 1)d4 + modificateurs"
+        >
+          💚 +{move.healPower} PV
+        </span>
+      {/if}
+
+      {#if move.statBoosts}
+        <span
+          class="text-[10px] uppercase tracking-wider border rounded-full px-2 py-0.5 font-bold border-orange-500/40 bg-orange-950/40 text-orange-200"
+          title="Amélioration permanente de {STAT_LABELS[move.statBoosts.stat]} (cumulable, jamais perdue)"
+        >
+          ⬆ +{move.statBoosts.value} {STAT_LABELS[move.statBoosts.stat]}
         </span>
       {/if}
 

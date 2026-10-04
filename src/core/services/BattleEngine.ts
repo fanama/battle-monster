@@ -2,7 +2,10 @@ import type { Monster, MonsterRank } from "../entities/Monster";
 import { abilityModifier, charismaHealBonus } from "../entities/Monster";
 import type { Move, MonsterStat, MonsterType } from "../entities/Move";
 import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
-import { STATUS_CONFIGS, type StatusEffectType } from "../entities/StatusEffect";
+import {
+  STATUS_CONFIGS,
+  type StatusEffectType,
+} from "../entities/StatusEffect";
 import { typeEffectiveness } from "./effectiveness";
 
 export interface BattleLog {
@@ -167,7 +170,10 @@ export class BattleEngine {
     const total = roll + attackMod + bonus;
     const fumble = roll === 1;
     // L'Instinct aiguise les réflexes et la perception martiale (élargit la plage de critique)
-    const instinctCritBonus = Math.max(0, Math.floor(abilityModifier(attacker.instinct) / 2));
+    const instinctCritBonus = Math.max(
+      0,
+      Math.floor(abilityModifier(attacker.instinct) / 2),
+    );
     const effectiveCritRange = Math.max(1, critRange + instinctCritBonus);
     const crit = !fumble && roll >= 21 - effectiveCritRange;
     const hit = !fumble && (crit || roll === 20 || total >= ac);
@@ -203,7 +209,7 @@ export class BattleEngine {
     const factor = 1 + move.power / 120;
     const charmFactor = attacker.charismaMagicFactor();
     const total = attacker.wisdom * factor * charmFactor * (crit ? 2 : 1);
-    const charm = charmFactor > 1 ? ` × Charisme${charmFactor.toFixed(2)}` : '';
+    const charm = charmFactor > 1 ? ` × Charisme${charmFactor.toFixed(2)}` : "";
     return {
       desc: crit
         ? `Savoir ×${(factor * 2).toFixed(2)}${charm} (crit)`
@@ -285,37 +291,41 @@ export class BattleEngine {
    *  - Gel : jet de sauvegarde d20 CON (DD 12) pour briser la glace. Si échec, tour sauté !
    *  - Paralysie : jet de sauvegarde d20 CON (DD 11). Si échec, action interrompue !
    */
-  checkCanAct(actor: Monster): { canAct: boolean; logs: BattleLog[]; skippedDueToStatus?: StatusEffectType } {
+  checkCanAct(actor: Monster): {
+    canAct: boolean;
+    logs: BattleLog[];
+    skippedDueToStatus?: StatusEffectType;
+  } {
     const logs: BattleLog[] = [];
 
     // 1. Contrôle du Gel
-    if (actor.hasStatus('freeze')) {
+    if (actor.hasStatus("freeze")) {
       const roll = this.dice.roll(1, 20);
       const saveMod = abilityModifier(actor.constitution);
       const total = roll + saveMod;
       const dc = 12;
 
       if (roll === 20 || (roll !== 1 && total >= dc)) {
-        actor.removeStatus('freeze');
+        actor.removeStatus("freeze");
         logs.push({
           message: `❄️✨ ${actor.name} réussit son jet de sauvegarde CON [1d20${sign(saveMod)} = ${total} vs DD ${dc}] et brise la glace ! Le gel se dissipe.`,
         });
       } else {
-        const st = actor.getStatus('freeze')!;
+        const st = actor.getStatus("freeze")!;
         st.duration -= 1;
         logs.push({
           message: `❄️❌ ${actor.name} est gelé et ne peut pas agir ! [1d20${sign(saveMod)} = ${total} < DD ${dc}].`,
         });
         if (st.duration <= 0) {
-          actor.removeStatus('freeze');
+          actor.removeStatus("freeze");
           logs.push({ message: `❄️ La couche de glace finit par fondre.` });
         }
-        return { canAct: false, logs, skippedDueToStatus: 'freeze' };
+        return { canAct: false, logs, skippedDueToStatus: "freeze" };
       }
     }
 
     // 2. Contrôle de la Paralysie
-    if (actor.hasStatus('paralysis')) {
+    if (actor.hasStatus("paralysis")) {
       const roll = this.dice.roll(1, 20);
       const saveMod = abilityModifier(actor.constitution);
       const total = roll + saveMod;
@@ -329,7 +339,7 @@ export class BattleEngine {
         logs.push({
           message: `⚡❌ Une décharge nerveuse paralyse ${actor.name} ! [1d20${sign(saveMod)} = ${total} < DD ${dc}] Son action échoue !`,
         });
-        return { canAct: false, logs, skippedDueToStatus: 'paralysis' };
+        return { canAct: false, logs, skippedDueToStatus: "paralysis" };
       }
     }
 
@@ -342,12 +352,16 @@ export class BattleEngine {
    *  - Poison : dégâts progressifs (5 % × toxicité PV max) + jet CON (DD 13) pour purger.
    *  - Paralysie : jet CON (DD 12) pour récupérer sa pleine motricité.
    */
-  processEndOfTurnStatus(monster: Monster): { logs: BattleLog[]; totalDamage: number; fainted: boolean } {
+  processEndOfTurnStatus(monster: Monster): {
+    logs: BattleLog[];
+    totalDamage: number;
+    fainted: boolean;
+  } {
     const logs: BattleLog[] = [];
     let totalDamage = 0;
 
     // 1. Brûlure
-    if (monster.hasStatus('burn')) {
+    if (monster.hasStatus("burn")) {
       const burnDmg = Math.max(1, Math.floor(monster.maxHp * 0.08));
       monster.takeDamage(burnDmg);
       totalDamage += burnDmg;
@@ -363,27 +377,32 @@ export class BattleEngine {
       const saveMod = abilityModifier(monster.constitution);
       const saveTotal = saveRoll + saveMod;
       if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 12)) {
-        monster.removeStatus('burn');
+        monster.removeStatus("burn");
         logs.push({
           message: `🔥✨ ${monster.name} réussit son jet de sauvegarde [1d20${sign(saveMod)} = ${saveTotal} vs DD 12] et éteint les flammes !`,
         });
       } else {
-        const st = monster.getStatus('burn');
+        const st = monster.getStatus("burn");
         if (st) {
           st.duration -= 1;
           if (st.duration <= 0) {
-            monster.removeStatus('burn');
-            logs.push({ message: `🔥 Les flammes autour de ${monster.name} finissent par s'éteindre.` });
+            monster.removeStatus("burn");
+            logs.push({
+              message: `🔥 Les flammes autour de ${monster.name} finissent par s'éteindre.`,
+            });
           }
         }
       }
     }
 
     // 2. Poison (dégâts progressifs)
-    if (monster.hasStatus('poison')) {
-      const st = monster.getStatus('poison')!;
+    if (monster.hasStatus("poison")) {
+      const st = monster.getStatus("poison")!;
       const potency = st.potency ?? 1;
-      const poisonDmg = Math.max(1, Math.floor(monster.maxHp * (0.05 * potency)));
+      const poisonDmg = Math.max(
+        1,
+        Math.floor(monster.maxHp * (0.05 * potency)),
+      );
       monster.takeDamage(poisonDmg);
       totalDamage += poisonDmg;
       logs.push({
@@ -399,36 +418,40 @@ export class BattleEngine {
       const saveMod = abilityModifier(monster.constitution);
       const saveTotal = saveRoll + saveMod;
       if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 13)) {
-        monster.removeStatus('poison');
+        monster.removeStatus("poison");
         logs.push({
           message: `🌿✨ Le système immunitaire de ${monster.name} neutralise le poison [1d20${sign(saveMod)} = ${saveTotal} vs DD 13] !`,
         });
       } else {
         st.duration -= 1;
         if (st.duration <= 0) {
-          monster.removeStatus('poison');
-          logs.push({ message: `🌿 Le poison dans les veines de ${monster.name} s'estompe naturellement.` });
+          monster.removeStatus("poison");
+          logs.push({
+            message: `🌿 Le poison dans les veines de ${monster.name} s'estompe naturellement.`,
+          });
         }
       }
     }
 
     // 3. Paralysie (jet de récupération de fin de tour)
-    if (monster.hasStatus('paralysis')) {
+    if (monster.hasStatus("paralysis")) {
       const saveRoll = this.dice.roll(1, 20);
       const saveMod = abilityModifier(monster.constitution);
       const saveTotal = saveRoll + saveMod;
       if (saveRoll === 20 || (saveRoll !== 1 && saveTotal >= 12)) {
-        monster.removeStatus('paralysis');
+        monster.removeStatus("paralysis");
         logs.push({
           message: `⚡✨ ${monster.name} dissipe la paralysie [1d20${sign(saveMod)} = ${saveTotal} vs DD 12] et retrouve sa pleine motricité !`,
         });
       } else {
-        const st = monster.getStatus('paralysis');
+        const st = monster.getStatus("paralysis");
         if (st) {
           st.duration -= 1;
           if (st.duration <= 0) {
-            monster.removeStatus('paralysis');
-            logs.push({ message: `⚡ Les spasmes électriques de ${monster.name} cessent.` });
+            monster.removeStatus("paralysis");
+            logs.push({
+              message: `⚡ Les spasmes électriques de ${monster.name} cessent.`,
+            });
           }
         }
       }
@@ -439,9 +462,13 @@ export class BattleEngine {
 
   /**
    * Soin (règle sorts D&D) : `(niveau + 1)d4 + mod(Constitution) +
-   * max(0, mod(Savoir)) + max(0, mod(Charisme))`, plafonné aux PV max.
+   * max(0, mod(Savoir)) + max(0, mod(Charisme)) + healPower`, plafonné aux PV max.
+   *
    * Le Charisme s'ajoute au Savoir (rebalance P0) : il rend les reliques
    * « +N Charisme » jouables, et donne un vrai archétype de soigneur.
+   *
+   * `healPower` (et non `power`) gradue les sorts de soin entre eux : ils
+   * gardent `power: 0` afin de ne jamais passer par le jet d'attaque.
    */
   applyHeal(attacker: Monster, move: Move): number {
     const healAmount = Math.max(
@@ -449,7 +476,8 @@ export class BattleEngine {
       this.dice.roll(attacker.level + 1, 4) +
         abilityModifier(attacker.constitution) +
         Math.max(0, abilityModifier(attacker.wisdom)) +
-        charismaHealBonus(attacker.charisma),
+        charismaHealBonus(attacker.charisma) +
+        (move.healPower ?? 0),
     );
     attacker.heal(healAmount);
     return healAmount;
@@ -552,11 +580,7 @@ export class BattleEngine {
           defender.type,
           actualMoveInstance.isPhysical,
         );
-        const base = this.computeFinalDamage(
-          roll.total,
-          multiplier,
-          modifiers,
-        );
+        const base = this.computeFinalDamage(roll.total, multiplier, modifiers);
         // Absorption : si le mod(Constitution) de la victime est positif, il
         // est retiré des dégâts d'attaque (minimum 1 dégât infligé).
         const reduction = constitutionDamageReduction(defender);
@@ -567,9 +591,10 @@ export class BattleEngine {
         const critMark = outcome.crit ? " 💥 CRITIQUE !" : "";
         const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}]`;
         const effective = multiplier !== 1 ? ` (×${multiplier})` : "";
-        const soak = reduction > 0
-          ? ` − ${reduction} (mod CON ${sign(reduction)} de ${defender.name})`
-          : "";
+        const soak =
+          reduction > 0
+            ? ` − ${reduction} (mod CON ${sign(reduction)} de ${defender.name})`
+            : "";
 
         logs.push({
           message:
@@ -593,7 +618,11 @@ export class BattleEngine {
                 message: `🛡️ ${defender.name} réussit son jet de sauvegarde CON [1d20${sign(saveMod)} = ${saveTotal} vs DD ${dc}] et résiste à l'effet ${cfg.name} !`,
               });
             } else {
-              defender.addStatus(statusEffect.type, statusEffect.duration ?? 3, 1);
+              defender.addStatus(
+                statusEffect.type,
+                statusEffect.duration ?? 3,
+                1,
+              );
               logs.push({
                 message: `${cfg.icon} Échec du jet de sauvegarde [1d20${sign(saveMod)} = ${saveTotal} < DD ${dc}] ! ${defender.name} subit l'effet ${cfg.name} (${statusEffect.duration ?? 3} tours) !`,
               });
@@ -610,7 +639,7 @@ export class BattleEngine {
       }
     }
 
-    // 5. Healing (self, D&D potion rule): 2d4 + mod(Constitution)
+    // 5. Soin sur soi-même — jamais de jet d'attaque ni de fumble possible.
     if (actualMoveInstance.isHeal && !isFumble) {
       const healAmount = this.applyHeal(attacker, actualMoveInstance);
       feedback = { kind: "heal", damage: healAmount, isCrit: false };

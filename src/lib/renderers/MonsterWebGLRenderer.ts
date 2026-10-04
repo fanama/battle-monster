@@ -643,158 +643,160 @@ export class MonsterWebGLRenderer {
     const mesh: MeshBuilder = { positions: [], normals: [], colors: [] };
     const p = ELEMENT_COLORS[this.options.type] || ELEMENT_COLORS.normal;
 
-    // 1. Torse / Buste (Ellipsoïde principal)
-    addSphere(mesh, 0, -0.18, 0, 0.46, 0.42, 0.40, p.body);
+    // Silhouette humanoïde debout : cou marqué, torse plus large que profond,
+    // hanches, jambes et bras distincts. Le volume total reste dans
+    // y ∈ [-0.90 ; +0.90] pour tenir dans le champ de la caméra (FOV 42°,
+    // distance 2.55) sans que les pieds ou la tête soient coupés.
+    // 1. Bassin / Hanches (base de la silhouette debout)
+    addSphere(mesh, 0, -0.30, 0, 0.26, 0.18, 0.19, p.body);
 
-    // 2. Ventre clair (Belly Patch en 3D en saillie avant)
-    addSphere(mesh, 0, -0.18, 0.22, 0.34, 0.36, 0.24, p.belly);
+    // 2. Torse (plus large que profond, comme un buste humain)
+    addSphere(mesh, 0, -0.02, 0, 0.32, 0.34, 0.21, p.body);
 
-    // 3. Tête (Grande tête sphérique de type Pokémon)
-    addSphere(mesh, 0, 0.44, 0.0, 0.48, 0.46, 0.44, p.body);
+    // 3. Ventre clair (Belly Patch en 3D en saillie avant)
+    addSphere(mesh, 0, -0.06, 0.14, 0.22, 0.24, 0.13, p.belly);
 
-    // 4. Museau / Petit nez doux (Bouton central mignon)
-    addSphere(mesh, 0, 0.38, 0.44, 0.05, 0.04, 0.04, [0.25, 0.15, 0.18]);
+    // 4. Cou (distingue la tête du torse : c'est ce volume qui donne la pose debout)
+    addCylinder(mesh, 0, 0.26, 0, 0, 0.36, 0, 0.10, p.body);
 
-    // 5. Yeux Anime 3D (Grands yeux expressifs bien saillants et visibles sous tous les angles)
+    // 5. Tête (réduite par rapport au corps : rapport tête/corps plus humain)
+    addSphere(mesh, 0, 0.56, 0.0, 0.30, 0.32, 0.28, p.body);
+
+    // 6. Nez (bouton central, sur le bas de la face)
+    addSphere(mesh, 0, 0.50, 0.26, 0.045, 0.038, 0.04, [0.25, 0.15, 0.18]);
+
+    // 7. Yeux Anime 3D (réaccusés sur la tête réduite)
     // --- ŒIL GAUCHE ---
     // Sclérotique (Blanc de l'œil)
-    addSphere(mesh, -0.16, 0.49, 0.40, 0.14, 0.17, 0.12, [1.0, 1.0, 1.0]);
+    addSphere(mesh, -0.11, 0.60, 0.24, 0.105, 0.125, 0.09, [1.0, 1.0, 1.0]);
     // Iris coloré
-    addSphere(mesh, -0.16, 0.49, 0.45, 0.10, 0.14, 0.08, p.eye);
+    addSphere(mesh, -0.11, 0.60, 0.28, 0.075, 0.105, 0.06, p.eye);
     // Pupille sombre profonde
-    addSphere(mesh, -0.16, 0.49, 0.48, 0.06, 0.09, 0.06, [0.06, 0.06, 0.08]);
+    addSphere(mesh, -0.11, 0.60, 0.30, 0.045, 0.065, 0.045, [0.06, 0.06, 0.08]);
     // Reflet spéculaire principal éclatant
-    addSphere(mesh, -0.13, 0.54, 0.51, 0.045, 0.06, 0.04, [1.0, 1.0, 1.0]);
+    addSphere(mesh, -0.09, 0.645, 0.325, 0.035, 0.045, 0.03, [1.0, 1.0, 1.0]);
     // Reflet secondaire
-    addSphere(mesh, -0.18, 0.44, 0.50, 0.025, 0.035, 0.03, [1.0, 1.0, 1.0]);
+    addSphere(mesh, -0.125, 0.565, 0.315, 0.02, 0.028, 0.022, [1.0, 1.0, 1.0]);
 
     // --- ŒIL DROIT ---
     // Sclérotique (Blanc de l'œil)
-    addSphere(mesh, 0.16, 0.49, 0.40, 0.14, 0.17, 0.12, [1.0, 1.0, 1.0]);
+    addSphere(mesh, 0.11, 0.60, 0.24, 0.105, 0.125, 0.09, [1.0, 1.0, 1.0]);
     // Iris coloré
-    addSphere(mesh, 0.16, 0.49, 0.45, 0.10, 0.14, 0.08, p.eye);
+    addSphere(mesh, 0.11, 0.60, 0.28, 0.075, 0.105, 0.06, p.eye);
     // Pupille sombre profonde
-    addSphere(mesh, 0.16, 0.49, 0.48, 0.06, 0.09, 0.06, [0.06, 0.06, 0.08]);
+    addSphere(mesh, 0.11, 0.60, 0.30, 0.045, 0.065, 0.045, [0.06, 0.06, 0.08]);
     // Reflet spéculaire principal éclatant
-    addSphere(mesh, 0.13, 0.54, 0.51, 0.045, 0.06, 0.04, [1.0, 1.0, 1.0]);
+    addSphere(mesh, 0.09, 0.645, 0.325, 0.035, 0.045, 0.03, [1.0, 1.0, 1.0]);
     // Reflet secondaire
-    addSphere(mesh, 0.18, 0.44, 0.50, 0.025, 0.035, 0.03, [1.0, 1.0, 1.0]);
+    addSphere(mesh, 0.125, 0.565, 0.315, 0.02, 0.028, 0.022, [1.0, 1.0, 1.0]);
 
-    // 6. Joues mignonnes (Cheek Pouches)
+    // 8. Joues mignonnes (Cheek Pouches)
     if (this.options.type === "electric") {
-      addSphere(mesh, -0.32, 0.36, 0.34, 0.10, 0.10, 0.08, [0.95, 0.15, 0.2]);
-      addSphere(mesh, 0.32, 0.36, 0.34, 0.10, 0.10, 0.08, [0.95, 0.15, 0.2]);
+      addSphere(mesh, -0.22, 0.50, 0.21, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2]);
+      addSphere(mesh, 0.22, 0.50, 0.21, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2]);
     } else {
-      addSphere(mesh, -0.30, 0.36, 0.34, 0.08, 0.06, 0.06, [1.0, 0.45, 0.55]);
-      addSphere(mesh, 0.30, 0.36, 0.34, 0.08, 0.06, 0.06, [1.0, 0.45, 0.55]);
+      addSphere(mesh, -0.21, 0.50, 0.21, 0.06, 0.05, 0.045, [1.0, 0.45, 0.55]);
+      addSphere(mesh, 0.21, 0.50, 0.21, 0.06, 0.05, 0.045, [1.0, 0.45, 0.55]);
     }
 
-    // 7. Pattes (Paws)
-    addSphere(mesh, -0.28, -0.54, 0.12, 0.14, 0.16, 0.18, p.body);
-    addSphere(mesh, 0.28, -0.54, 0.12, 0.14, 0.16, 0.18, p.body);
+    // 9. Épaules (articulations deltoïdiennes) — marque la ligne d'épaule,
+    // qui manquait : le bras semblait sortir du flanc du torse.
+    addSphere(mesh, -0.28, 0.16, 0, 0.11, 0.115, 0.105, p.body);
+    addSphere(mesh, 0.28, 0.16, 0, 0.11, 0.115, 0.105, p.body);
 
-    // 8. Bras (Arms)
-    addSphere(mesh, -0.42, -0.08, 0.2, 0.12, 0.12, 0.16, p.body);
-    addSphere(mesh, 0.42, -0.08, 0.2, 0.12, 0.12, 0.16, p.body);
+    // 10. Bras : deux cylindres par membre (bras puis avant-bras), main au bout.
+    // Bras (épaule → coude)
+    addCylinder(mesh, -0.29, 0.13, 0, -0.33, -0.12, 0.02, 0.078, p.body);
+    addCylinder(mesh, 0.29, 0.13, 0, 0.33, -0.12, 0.02, 0.078, p.body);
+    // Coude
+    addSphere(mesh, -0.33, -0.13, 0.02, 0.078, 0.078, 0.075, p.body);
+    addSphere(mesh, 0.33, -0.13, 0.02, 0.078, 0.078, 0.075, p.body);
+    // Avant-bras (coude → poignet)
+    addCylinder(mesh, -0.33, -0.15, 0.02, -0.35, -0.34, 0.04, 0.066, p.body);
+    addCylinder(mesh, 0.33, -0.15, 0.02, 0.35, -0.34, 0.04, 0.066, p.body);
+    // Mains
+    addSphere(mesh, -0.35, -0.39, 0.05, 0.082, 0.082, 0.072, p.body);
+    addSphere(mesh, 0.35, -0.39, 0.05, 0.082, 0.082, 0.072, p.body);
 
-    // 9. Appendices élémentaires 3D (Cornes, Oreilles, Ailes, Queue)
+    // 11. Hanches (articulations) puis jambes en deux cylindres (cuisse,
+    // tibia) : les membres restent entièrement cylindriques, seul le pied
+    // est un volume aplati pour porter le poids sur le sol.
+    addSphere(mesh, -0.13, -0.34, 0, 0.105, 0.105, 0.10, p.body);
+    addSphere(mesh, 0.13, -0.34, 0, 0.105, 0.105, 0.10, p.body);
+    // Cuisse (hanche → genou)
+    addCylinder(mesh, -0.13, -0.36, 0, -0.145, -0.54, 0.005, 0.098, p.body);
+    addCylinder(mesh, 0.13, -0.36, 0, 0.145, -0.54, 0.005, 0.098, p.body);
+    // Genou
+    addSphere(mesh, -0.145, -0.55, 0.005, 0.09, 0.085, 0.085, p.body);
+    addSphere(mesh, 0.145, -0.55, 0.005, 0.09, 0.085, 0.085, p.body);
+    // Tibia (genou → cheville)
+    addCylinder(mesh, -0.145, -0.57, 0.005, -0.15, -0.72, 0.01, 0.082, p.body);
+    addCylinder(mesh, 0.145, -0.57, 0.005, 0.15, -0.72, 0.01, 0.082, p.body);
+    // Pieds (orientés vers l'avant)
+    addSphere(mesh, -0.15, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
+    addSphere(mesh, 0.15, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
+
+    // 12. Appendices élémentaires 3D (Cornes, Oreilles, Ailes, Queue)
+    // Réancrés sur la silhouette humanoïde : base des appendices de tête sur
+    // le crâne (y ≈ 0.80), appendices dorsaux sur le dos du torse (z ≈ -0.20)
+    // et queues sur l'arrière du bassin (z ≈ -0.18).
     if (this.options.type === "fire") {
       // Cornes de dragon
-      addCone(mesh, -0.25, 0.8, -0.05, -0.45, 1.15, -0.25, 0.1, p.accent);
-      addCone(mesh, 0.25, 0.8, -0.05, 0.45, 1.15, -0.25, 0.1, p.accent);
-      // Ailes de dragon 3D
-      addCone(
-        mesh,
-        -0.3,
-        0.1,
-        -0.3,
-        -0.85,
-        0.65,
-        -0.45,
-        0.12,
-        [0.0, 0.75, 0.65],
-      );
-      addCone(mesh, 0.3, 0.1, -0.3, 0.85, 0.65, -0.45, 0.12, [0.0, 0.75, 0.65]);
+      addCone(mesh, -0.20, 0.80, -0.02, -0.34, 1.08, -0.18, 0.1, p.accent);
+      addCone(mesh, 0.20, 0.80, -0.02, 0.34, 1.08, -0.18, 0.1, p.accent);
+      // Ailes de dragon 3D (décollent du dos, sous les épaules)
+      addCone(mesh, -0.22, 0.12, -0.18, -0.66, 0.54, -0.40, 0.12, [0.0, 0.75, 0.65]);
+      addCone(mesh, 0.22, 0.12, -0.18, 0.66, 0.54, -0.40, 0.12, [0.0, 0.75, 0.65]);
       // Queue avec flamme
-      addCylinder(mesh, 0, -0.3, -0.25, 0, -0.15, -0.65, 0.09, p.body);
-      addSphere(mesh, 0, -0.1, -0.72, 0.15, 0.18, 0.15, p.accent);
-      addSphere(mesh, 0, -0.08, -0.72, 0.09, 0.11, 0.09, [1.0, 0.95, 0.5]);
+      addCylinder(mesh, 0, -0.30, -0.18, 0, -0.16, -0.58, 0.08, p.body);
+      addSphere(mesh, 0, -0.10, -0.64, 0.14, 0.17, 0.14, p.accent);
+      addSphere(mesh, 0, -0.08, -0.64, 0.085, 0.105, 0.085, [1.0, 0.95, 0.5]);
     } else if (this.options.type === "water") {
-      // Nageoires / Ouïes latérales
-      addCone(mesh, -0.42, 0.45, 0, -0.82, 0.52, -0.1, 0.1, p.accent);
-      addCone(mesh, 0.42, 0.45, 0, 0.82, 0.52, -0.1, 0.1, p.accent);
+      // Nageoires / Ouïes latérales (de part et d'autre de la tête)
+      addCone(mesh, -0.26, 0.54, -0.02, -0.52, 0.60, -0.08, 0.1, p.accent);
+      addCone(mesh, 0.26, 0.54, -0.02, 0.52, 0.60, -0.08, 0.1, p.accent);
       // Nageoire caudale
-      addCylinder(mesh, 0, -0.3, -0.25, 0, -0.15, -0.65, 0.08, p.body);
-      addCone(mesh, 0, -0.15, -0.65, -0.25, -0.05, -0.85, 0.09, p.accent);
-      addCone(mesh, 0, -0.15, -0.65, 0.25, -0.05, -0.85, 0.09, p.accent);
+      addCylinder(mesh, 0, -0.30, -0.18, 0, -0.16, -0.58, 0.07, p.body);
+      addCone(mesh, 0, -0.16, -0.58, -0.23, -0.06, -0.76, 0.09, p.accent);
+      addCone(mesh, 0, -0.16, -0.58, 0.23, -0.06, -0.76, 0.09, p.accent);
     } else if (this.options.type === "grass") {
-      // Bulbe / Fleur sur le dos
-      addSphere(mesh, 0, 0.05, -0.38, 0.28, 0.28, 0.26, p.accent);
-      addSphere(mesh, 0, 0.2, -0.38, 0.14, 0.14, 0.14, [1.0, 0.9, 0.95]);
+      // Bulbe / Fleur dans le dos
+      addSphere(mesh, 0, 0.10, -0.22, 0.21, 0.23, 0.20, p.accent);
+      addSphere(mesh, 0, 0.20, -0.24, 0.11, 0.11, 0.11, [1.0, 0.9, 0.95]);
       // Feuille sur la tête
-      addCone(mesh, 0, 0.85, 0, 0, 1.25, -0.15, 0.12, p.accent);
+      addCone(mesh, 0, 0.84, 0, 0, 1.12, -0.12, 0.12, p.accent);
     } else if (this.options.type === "electric") {
-      // Grandes oreilles pointues de Pikachu
-      addCone(mesh, -0.28, 0.82, 0, -0.52, 1.35, -0.08, 0.1, p.body);
-      addCone(
-        mesh,
-        -0.42,
-        1.15,
-        -0.05,
-        -0.52,
-        1.35,
-        -0.08,
-        0.08,
-        [0.12, 0.12, 0.12],
-      ); // Bout noir
-      addCone(mesh, 0.28, 0.82, 0, 0.52, 1.35, -0.08, 0.1, p.body);
-      addCone(
-        mesh,
-        0.42,
-        1.15,
-        -0.05,
-        0.52,
-        1.35,
-        -0.08,
-        0.08,
-        [0.12, 0.12, 0.12],
-      ); // Bout noir
+      // Grandes oreilles pointues
+      addCone(mesh, -0.20, 0.80, 0, -0.36, 1.14, -0.06, 0.1, p.body);
+      addCone(mesh, -0.30, 1.00, -0.05, -0.36, 1.14, -0.06, 0.08, [0.12, 0.12, 0.12]); // Bout noir
+      addCone(mesh, 0.20, 0.80, 0, 0.36, 1.14, -0.06, 0.1, p.body);
+      addCone(mesh, 0.30, 1.00, -0.05, 0.36, 1.14, -0.06, 0.08, [0.12, 0.12, 0.12]); // Bout noir
       // Queue en éclair
-      addCylinder(mesh, 0, -0.35, -0.25, 0.2, -0.15, -0.55, 0.07, p.body);
-      addCone(mesh, 0.2, -0.15, -0.55, 0.35, 0.3, -0.7, 0.12, p.body);
+      addCylinder(mesh, 0, -0.34, -0.18, 0.18, -0.14, -0.50, 0.07, p.body);
+      addCone(mesh, 0.18, -0.14, -0.50, 0.31, 0.26, -0.64, 0.11, p.body);
     } else if (this.options.type === "rock") {
       // Cornes de roc et cristaux
-      addCone(mesh, -0.25, 0.8, 0, -0.4, 1.15, -0.1, 0.12, p.accent);
-      addCone(mesh, 0.25, 0.8, 0, 0.4, 1.15, -0.1, 0.12, p.accent);
+      addCone(mesh, -0.19, 0.80, 0, -0.31, 1.08, -0.08, 0.12, p.accent);
+      addCone(mesh, 0.19, 0.80, 0, 0.31, 1.08, -0.08, 0.12, p.accent);
       // Plaques dorsales
-      addCone(mesh, 0, 0.05, -0.38, 0, 0.35, -0.55, 0.15, p.accent);
+      addCone(mesh, 0, 0.12, -0.20, 0, 0.40, -0.38, 0.14, p.accent);
     } else {
-      // Normal (Évoli) : Grandes oreilles de renard
-      addCone(mesh, -0.28, 0.8, 0, -0.55, 1.25, -0.05, 0.12, p.body);
-      addCone(mesh, 0.28, 0.8, 0, 0.55, 1.25, -0.05, 0.12, p.body);
-      // Collerette duveteuse
-      addSphere(mesh, 0, 0.15, 0.2, 0.35, 0.18, 0.22, p.belly);
-      // Queue touffue
-      addSphere(mesh, 0, -0.25, -0.5, 0.25, 0.3, 0.25, p.body);
-      addSphere(mesh, 0, -0.1, -0.62, 0.14, 0.16, 0.14, p.belly);
+      // Normal : Grandes oreilles pointues
+      addCone(mesh, -0.20, 0.80, 0, -0.38, 1.12, -0.04, 0.12, p.body);
+      addCone(mesh, 0.20, 0.80, 0, 0.38, 1.12, -0.04, 0.12, p.body);
+      // Collerette duveteuse (à la base du cou)
+      addSphere(mesh, 0, 0.22, 0.10, 0.26, 0.13, 0.18, p.belly);
+      // Queue touffue (arrivée à l'arrière du bassin)
+      addSphere(mesh, 0, -0.30, -0.44, 0.21, 0.26, 0.21, p.body);
+      addSphere(mesh, 0, -0.16, -0.56, 0.12, 0.14, 0.12, p.belly);
     }
 
-    // Couronne dorée pour les Boss
+    // Couronne dorée pour les Boss (posée sur le crâne, y ≈ 0.88)
     if (this.options.isBoss) {
-      addCylinder(mesh, 0, 0.92, 0.05, 0, 0.98, 0.05, 0.26, [1.0, 0.85, 0.0]);
-      addCone(
-        mesh,
-        -0.2,
-        0.98,
-        0.05,
-        -0.22,
-        1.18,
-        0.05,
-        0.06,
-        [1.0, 0.85, 0.0],
-      );
-      addCone(mesh, 0, 0.98, 0.15, 0, 1.25, 0.15, 0.07, [1.0, 0.85, 0.0]);
-      addCone(mesh, 0.2, 0.98, 0.05, 0.22, 1.18, 0.05, 0.06, [1.0, 0.85, 0.0]);
+      addCylinder(mesh, 0, 0.86, 0.04, 0, 0.92, 0.04, 0.22, [1.0, 0.85, 0.0]);
+      addCone(mesh, -0.17, 0.92, 0.04, -0.19, 1.10, 0.04, 0.06, [1.0, 0.85, 0.0]);
+      addCone(mesh, 0, 0.92, 0.13, 0, 1.16, 0.13, 0.07, [1.0, 0.85, 0.0]);
+      addCone(mesh, 0.17, 0.92, 0.04, 0.19, 1.10, 0.04, 0.06, [1.0, 0.85, 0.0]);
     }
 
     const gl = this.gl;
@@ -872,8 +874,12 @@ export class MonsterWebGLRenderer {
     gl.frontFace(gl.CCW);
 
     let mvMat = mat4Identity();
-    // Distance caméra et centrage
-    mat4Translate(mvMat, mvMat, 0, -0.05 + bounce, -2.55);
+    // Distance caméra et centrage.
+    // La silhouette humanoïde est plus haute que l'ancien blob (pieds à
+    // y = -0.85, crâne à y = 0.88) : la caméra est reculée à 2.70 et
+    // recentrée sur y = 0 pour que le crâne ne soit pas rogné en haut,
+    // y compris au pic de l'animation de respiration (± 2.5 % + flottement).
+    mat4Translate(mvMat, mvMat, 0, bounce, -2.70);
     mat4RotateX(mvMat, mvMat, rotX);
     mat4RotateY(mvMat, mvMat, rotY);
     mat4Scale(mvMat, mvMat, breathe, breathY, breathe);

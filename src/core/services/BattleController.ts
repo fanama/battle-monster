@@ -22,6 +22,21 @@ const RELIC_SCORE_BONUS = 15;
 const WILD_GOLD_BASE = 8; // or gagné par combat sauvage : base + niveau ennemi
 const BOSS_GOLD = 60; // or gagné en battant le boss de région
 
+/**
+ * Score de valeur d'un move pour l'arbitrage « quel move remplacer ? » lors
+ * d'un level-up (4 emplacements max). Le niveau de déblocage pèse ×100 pour
+ * qu'un move plus récent remplace toujours un move plus ancien, puis la
+ * puissance départage à niveau égal.
+ *
+ * Les soins doivent compter via `healPower` : avec `power: 0`, ils avaient le
+ * score le plus bas de l'arsenal et étaient donc **toujours** le premier move
+ * écrasé au level-up — le soin était appris puis perdu à chaque montée.
+ */
+function moveScore(move: Move): number {
+  const effectivePower = move.power + (move.healPower ?? 0);
+  return move.level * 100 + effectivePower;
+}
+
 // --- Scaling des ennemis sur le joueur (rebalance P0) ---
 
 /**
@@ -272,15 +287,15 @@ export class BattleController {
           } else {
             // Monstre a 4 attaques : remplacement automatique du move le plus faible si le nouveau est supérieur
             let lowestIdx = 0;
-            let lowestScore = attacker.moves[0].level * 100 + attacker.moves[0].power;
+            let lowestScore = moveScore(attacker.moves[0]!);
             for (let i = 1; i < attacker.moves.length; i++) {
-              const score = attacker.moves[i].level * 100 + attacker.moves[i].power;
+              const score = moveScore(attacker.moves[i]!);
               if (score < lowestScore) {
                 lowestScore = score;
                 lowestIdx = i;
               }
             }
-            const newScore = newMove.level * 100 + newMove.power;
+            const newScore = moveScore(newMove);
             if (newScore > lowestScore) {
               const { replacedMove, success } = attacker.learnMove(newMove, lowestIdx);
               if (success && replacedMove) {

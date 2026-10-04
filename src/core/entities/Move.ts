@@ -48,8 +48,19 @@ export interface Move {
   level: number;
   coolDown?: number;
   maxCoolDown?: number;
-  // Les capacités de soin suivent la règle D&D : (niveau + 1)d4 + mod(Constitution) + mod(Savoir)
+  /**
+   * Capacité de soin (sur soi-même). Le jet suit la règle D&D :
+   * `(niveau + 1)d4 + mod(CON) + max(0, mod(SAV)) + max(0, mod(CHA))`, **plus**
+   * `healPower`. Jamais soumis au jet d'attaque : un move de soin garde
+   * `power: 0` pour ne pas déclencher la branche de dégâts de `executeTurn`.
+   */
   isHeal?: boolean;
+  /**
+   * Gradation des soins, en PV (`BattleEngine.applyHeal`). C'est ce champ —
+   * et non `power` — qui distingue les sorts de soin entre eux : `power`
+   * reste 0 pour qu'un soin ne soit jamais résolu comme une attaque.
+   */
+  healPower?: number;
   statBoosts?: StatBoost;
   statusEffect?: MoveStatusEffect;
 }

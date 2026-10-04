@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Move } from "../../../core/entities/Move";
   import type { Monster } from "../../../core/entities/Monster";
-  import { TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
+  import { TYPE_LABELS, STAT_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { MAX_MOVES } from "../../../core/entities/Monster";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
@@ -171,11 +171,11 @@
                         </span>
                       {:else if isHeal}
                         <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold">
-                          💚 Soin
+                          💚 Soin{equippedMove.healPower ? ` +${equippedMove.healPower} PV` : ''}
                         </span>
                       {:else if isBuff}
                         <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 font-bold">
-                          ⬆ Buff
+                          ⬆ +{equippedMove.statBoosts?.value} {STAT_LABELS[equippedMove.statBoosts!.stat]}
                         </span>
                       {/if}
 
@@ -283,16 +283,15 @@
                         <span class="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300">
                           🎯 +{accBonus}
                         </span>
+                      {/if}{:else if isHeal}
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold">
+                          💚 Soin{move.healPower ? ` +${move.healPower} PV` : ''}
+                        </span>
+                      {:else if isBuff}
+                        <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 font-bold">
+                          ⬆ +{move.statBoosts?.value} {STAT_LABELS[move.statBoosts!.stat]}
+                        </span>
                       {/if}
-                    {:else if isHeal}
-                      <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold">
-                        💚 Soin
-                      </span>
-                    {:else if isBuff}
-                      <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 font-bold">
-                        ⬆ +{move.statBoosts?.value} {move.statBoosts?.stat}
-                      </span>
-                    {/if}
 
                     {#if move.maxCoolDown && move.maxCoolDown > 0}
                       <span class="px-1.5 py-0.5 rounded bg-sky-950 text-sky-300">
