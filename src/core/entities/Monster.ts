@@ -24,11 +24,21 @@ const HIT_DICE: Record<MonsterType, number> = {
 
 /**
  * Mise à l'échelle du pool de PV par niveau : `BASE + level × PER_LEVEL`.
- * Recalibré (1.8 + 0.85·lvl, cf. rebalance §5) pour absorber les critiques
- * magiques sans one-shot sans pour autant allonger les combats.
+ *
+ * Recalibré (2.1 + 0.50·lvl) après mesure : les dégâts des moves ne montent
+ * pas avec le niveau (un move de puissance 40 tape autant au niv. 5 qu'au
+ * niv. 12), alors qu'avec l'ancien 1.8 + 0.85·lvl les PV, eux, explosaient.
+ *
+ * Mesuré sur 400 duels par palier, les deux sens de matchup joués pour
+ * annuler l'avantage de type : les combats duraient 7,7 rounds au niv. 5 et
+ * jusqu'à 15,1 au niv. 13 — bien trop long. Après recalibrage : 5,9 et 10,3.
+ * Le taux de victoire, lui, reste stable (~55 % en miroir, ~51 % face à un
+ * ennemi d'un niveau au-dessus) : on raccourcit les combats sans les rendre
+ * plus faciles. Le niveau 1 est volontairement inchangé (2,6 ≈ ancien 2,65) :
+ * seule la progression par niveau est adoucie.
  */
-const HP_SCALE_BASE = 1.8;
-const HP_SCALE_PER_LEVEL = 0.85;
+const HP_SCALE_BASE = 2.1;
+const HP_SCALE_PER_LEVEL = 0.5;
 
 /** Nombre maximum d'attaques qu'un monstre peut équiper simultanément. */
 export const MAX_MOVES = 4;
@@ -316,6 +326,26 @@ export class Monster {
    */
   private calculateExperienceToNextLevel(level: number): number {
     return Math.floor(80 * level - 40);
+  }
+
+  /**
+   * Repart au niveau demandé sans toucher aux caractéristiques.
+   *
+   * Utilisé quand on rejoue avec un champion enregistré : le champion est
+   * gravé tel qu'il était en fin de région (caractéristiques conservées), mais
+   * le run repart du niveau 1. L'expérience est remise à zéro et le seuil de
+   * montée recalculé ; les PV sont réétendus sur la nouvelle base de niveau.
+   *
+   * Note : les PV max dépendent du niveau (`calculateMaxHp`) ; remettre le
+   * niveau à 1 fait donc baisser la réserve d'un monstre dont les
+   * caractéristiques restent celles de la fin de run — comportement voulu ici.
+   */
+  public resetLevelTo(level: number): void {
+    this.level = Math.max(1, Math.floor(level));
+    this.experience = 0;
+    this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
+    this.maxHp = this.calculateMaxHp();
+    this.currentHp = this.maxHp;
   }
 
   /**

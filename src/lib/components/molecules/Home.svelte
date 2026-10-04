@@ -29,7 +29,10 @@
 
   function startWithChampion(champion: SavedChampion) {
     const monster = MonsterIO.fromSnapshot(champion.snapshot);
-    monster.currentHp = monster.maxHp;
+    // Le champion est gravé tel qu'il était en fin de région, mais le run
+    // repart du niveau 1 : on remet le niveau à zéro (caractéristiques
+    // conservées) avant d'entrer en arène.
+    monster.resetLevelTo(1);
     monster.armorBonus = 0;
     monster.moves.forEach(m => (m.coolDown = 0));
     onStartRun(monster);

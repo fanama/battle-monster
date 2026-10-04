@@ -1,9 +1,10 @@
 import type { Monster } from '../entities/Monster';
-import { abilityModifier, MAX_MOVES } from '../entities/Monster';
+import { abilityModifier, MAX_MOVES, MonsterIO } from '../entities/Monster';
 import type { RunState } from '../entities/BattleState';
 import type { Move, MonsterType } from '../entities/Move';
 import { STATUS_CONFIGS } from '../entities/StatusEffect';
-import type { ConsumableItem } from '../entities/Consumable';
+import type { ConsumableItem, ItemOrigin } from '../entities/Consumable';
+import { CONSUMABLE_CATALOG } from '../entities/Consumable';
 import { REGIONS, type RegionDef } from '../entities/Region';
 import {
   rollRelicOffers,
@@ -20,6 +21,8 @@ const WILD_SCORE_MULTIPLIER = 15;
 const BOSS_SCORE_BONUS = 150;
 const RELIC_SCORE_BONUS = 15;
 const WILD_GOLD_BASE = 8; // or gagné par combat sauvage : base + niveau ennemi
+/** Nombre d'objets laissés par le boss à sa défaite (seuls persistants). */
+const BOSS_LOOT_COUNT = 2;
 const BOSS_GOLD = 60; // or gagné en battant le boss de région
 
 /**
@@ -100,18 +103,38 @@ export interface PlayTurnResult {
 export interface BeginRoundOptions {
   player: Monster;
   enemy: Monster;
+  /**
+   * Le joueur a-t-il choisi un sort de soin pour ce tour ? Si oui, son tour
+   * est résolu **avant** toute attaque, même si l'initiative est adverse.
+   */
+  playerCastsHeal?: boolean;
+  /**
+   * L'ennemi dispose-t-il d'un soin utilisable (hors recharge et pas à PV
+   * pleins) ? Onde : l'IA choisit son move au moment d'agir, on ne peut donc
+   * pas connaître son intention à l'avance — mais son **capacité** à soigner,
+   * si. Utilisé via {@link BattleController.hasUsableHeal}, qui ne consomme
+   * aucun hasard.
+   */
+  enemyCanHeal?: boolean;
 }
 
 /**
- * Plan d'ordre d'action d'un round : les deux camps agissent **dans l'ordre
- * des jets d'initiative**, le second tour n'étant exécuté qu'après le
- * premier (le store enchaîne animations et PV dans cet ordre).
+ * Plan d'ordre d'action d'un round.
+ *
+ * Règle de résolution : **un soin passe toujours avant une attaque.**
+ * L'initiative `d20 + mod(Vitesse)` départage tous les autres cas.
+ *
+ * - un seul camp soigne → il passe en premier ;
+ * - les deux camps soignent, ou aucun → l'initiative tranche ;
+ * - un camp est neutralisé (gel, paralysie) → l'autre joue en premier.
  */
 export interface RoundPlan {
-  /** Le joueur agit en premier (initiative d20 + mod(Vitesse)). */
+  /** Le joueur agit en premier. */
   playerFirst: boolean;
   playerInitiative: number;
   enemyInitiative: number;
+  /** Le soin a primé sur l'initiative (informatif, pour le journal). */
+  healFirst: boolean;
   /** Log d'initiative (affiché en tête du round dans le journal). */
   logs: string[];
 }
@@ -157,8 +180,19 @@ export class BattleController {
    *  - toujours hors recharge (fallback sur tout si tout est en recharge) ;
    *  - n'utilise pas de soin quand les PV sont pleins ;
    *  - privilégie les moves **super-efficaces** contre la cible (table de types).
+   *
+   * @param preferHeal force un soin lorsqu'il est utilisable. Réservé à la
+   * règle d'ordre « le soin passe avant l'attaque » : si l'ennemi a été placé
+   * en premier **parce qu'il pouvait soigner**, il doit effectivement soigner,
+   * sinon la règle n'aurait donné que le bonus d'initiative. Hors de ce cas,
+   * l'IA reste libre (et choisit en connaissance des dégâts reçus).
    */
-  selectEnemyMove(moves: Move[], actor: Monster, target: Monster): Move {
+  selectEnemyMove(
+    moves: Move[],
+    actor: Monster,
+    target: Monster,
+    preferHeal = false,
+  ): Move {
     let pool = moves.filter(m => (m.coolDown ?? 0) === 0);
     if (pool.length === 0) {
       // Si tout est en recharge, on prend celui avec le cooldown minimal
@@ -171,6 +205,12 @@ export class BattleController {
     const usable = pool.filter(m => !(atFullHp && m.isHeal));
     const candidates = usable.length > 0 ? usable : pool;
 
+    // La règle d'ordre impose ici le soin (cf. docblock).
+    if (preferHeal) {
+      const heals = candidates.filter(m => m.isHeal);
+      if (heals.length > 0) return heals[Math.floor(this.random() * heals.length)];
+    }
+
     // Préfère les moves qui tapent fort sur la cible (multiplicateur > 1)
     const attacking = candidates.filter(m => m.power > 0);
     const effective = attacking.filter(m => this.engine.typeMultiplier(m.type, target.type, m.isPhysical) > 1);
@@ -180,30 +220,73 @@ export class BattleController {
     return chosen[Math.floor(this.random() * chosen.length)];
   }
 
+  /**
+   * Le monstre dispose-t-il d'un soin **utilisable maintenant** ?
+   *
+   * Sonde **sans consommer de hasard** : l'appelant peut donc l'interroger
+   * avant que l'IA ne choisisse son move, et l'IA continue de choisir en
+   * connaissance de cause (après avoir subi les dégâts) — c'est ce choix
+   * qui est conservé, seul l'ordre de résolution change.
+   *
+   * Un soin en recharge, ou inutile à PV pleins, ne compte pas.
+   */
+  hasUsableHeal(actor: Monster): boolean {
+    if (actor.currentHp >= actor.maxHp) return false;
+    return actor.moves.some(m => m.isHeal && (m.coolDown ?? 0) === 0);
+  }
+
   // --- Tour & round de combat ---
 
   /**
-   * Résout **l'ordre d'action** d'un round : initiative `1d20 + mod(Vitesse)`
-   * (règle D&D, −4 si paralysie) pour chaque camp. Les tours eux-mêmes sont
-   * ensuite exécutés un à un dans cet ordre via `playTurn` — le second n'a
-   * lieu que si la cible du premier est toujours debout (riposte annulée en
-   * cas de K.O.).
+   * Résout **l'ordre d'action** d'un round.
+   *
+   * Priorité de résolution :
+   *  1. **le soin passe avant toute attaque** (règle du jeu) ;
+   *  2. sinon l'initiative `1d20 + mod(Vitesse)` (règle D&D, −4 si
+   *     paralysie) départage.
+   *
+   * L'état de gel/paralysie n'est **pas** évalué ici : le jet de sauvegarde
+   * de `checkCanAct` consomme des dés et mute les statuts, il appartient donc
+   * au tour lui-même (`playTurn`). Un camp neutralisé perd simplement son tour
+   * quand il vient, et l'autre enchaîne — comportement antérieur conservé.
+   *
+   * Les tours sont ensuite exécutés un à un dans cet ordre via `playTurn` —
+   * le second n'a lieu que si la cible du premier est toujours debout
+   * (riposte annulée en cas de K.O.).
    */
   beginRound(opts: BeginRoundOptions): RoundPlan {
-    const { player, enemy } = opts;
+    const { player, enemy, playerCastsHeal = false, enemyCanHeal = false } = opts;
 
     const playerPara = player.hasStatus('paralysis') ? -4 : 0;
     const enemyPara = enemy.hasStatus('paralysis') ? -4 : 0;
     const playerInitiative = this.dice.roll(1, 20) + abilityModifier(player.speed) + playerPara;
     const enemyInitiative = this.dice.roll(1, 20) + abilityModifier(enemy.speed) + enemyPara;
-    const playerFirst = playerInitiative >= enemyInitiative;
+    const byInitiative = playerInitiative >= enemyInitiative;
     const playerTag = playerPara ? ' (⚡ -4)' : '';
     const enemyTag = enemyPara ? ' (⚡ -4)' : '';
-    const logs = [
-      `⚡ ${player.name} ${playerInitiative}${playerTag} vs ${enemy.name} ${enemyInitiative}${enemyTag} → ${playerFirst ? player.name : enemy.name} agit en premier.`,
-    ];
 
-    return { playerFirst, playerInitiative, enemyInitiative, logs };
+    let playerFirst: boolean;
+    let healFirst = false;
+    if (playerCastsHeal !== enemyCanHeal) {
+      // Exactement un des deux camps soigne : le soin passe en premier.
+      playerFirst = playerCastsHeal;
+      healFirst = true;
+    } else {
+      // Les deux soignent, ou aucun : l'initiative tranche.
+      playerFirst = byInitiative;
+    }
+
+    const leader = playerFirst ? player.name : enemy.name;
+    const initiativeLeader = byInitiative ? player.name : enemy.name;
+    const logs = [
+      `⚡ ${player.name} ${playerInitiative}${playerTag} vs ${enemy.name} ${enemyInitiative}${enemyTag} → ${initiativeLeader} en tête à l'initiative.`,
+    ];
+    if (healFirst) {
+      logs.push(`💚 Un soin passe avant l'attaque : ${leader} soigne en premier, malgré l'initiative.`);
+    }
+    logs.push(`➜ ${leader} agit en premier.`);
+
+    return { playerFirst, playerInitiative, enemyInitiative, healFirst, logs };
   }
 
   /**
@@ -389,16 +472,23 @@ export class BattleController {
   }
 
   /** Ajoute un objet consommable à la sacoche du joueur. */
-  addConsumableToInventory(run: RunState, item: ConsumableItem, quantity = 1): RunState {
+  addConsumableToInventory(
+    run: RunState,
+    item: ConsumableItem,
+    quantity = 1,
+    origin: ItemOrigin = 'shop',
+  ): RunState {
     const inventory = [...(run.inventory ?? [])];
     const existingIndex = inventory.findIndex(slot => slot.item.id === item.id);
     if (existingIndex !== -1) {
       inventory[existingIndex] = {
         ...inventory[existingIndex],
         quantity: inventory[existingIndex].quantity + quantity,
+        // Le butin de boss l'emporte sur l'origine boutique du même objet.
+        origin: inventory[existingIndex].origin === 'boss' ? 'boss' : origin,
       };
     } else {
-      inventory.push({ item, quantity });
+      inventory.push({ item, quantity, origin });
     }
     return { ...run, inventory };
   }
@@ -485,6 +575,47 @@ export class BattleController {
     return { run: nextRun, logs, feedback };
   }
 
+  /**
+   * Fige dans le monstre les objets à effet **durable** de l'inventaire.
+   *
+   * Utilisé à la fin d'une région pour la fiche du champion : les bonus de CA
+   * et de caractéristiques deviennent des traits permanents du monstre
+   * enregistré. **Seuls les objets laissés par le boss** (`origin === 'boss'`)
+   * sont concernés : ce sont les seuls à persister d'une partie à l'autre.
+   * L'inventaire du run n'est **pas** touché — le monstre fusionné est une
+   * copie, ce qui évite de cumuler deux fois le même objet (une fois dans la
+   * fiche du champion, une fois si l'objet est utilisé ensuite).
+   *
+   * Les potions de soin, d'énergie et anti-statut n'ont pas d'effet durable :
+   * elles sont ignorées et restent dans l'inventaire.
+   *
+   * @returns un nouveau monstre, ou le même si rien n'est à fusionner.
+   */
+  fuseDurableItemsIntoMonster(monster: Monster, run: RunState): Monster {
+    const slots = run.inventory ?? [];
+    // Seuls les lots laissés par le boss survivent d'une partie à l'autre.
+    const durable = slots.filter(
+      slot => (slot.origin ?? 'shop') === 'boss' && (slot.item.statBoost || slot.item.acBonus),
+    );
+    if (durable.length === 0) return monster;
+
+    // Copie indépendante : le monstre du run n'est pas modifié.
+    const fused = MonsterIO.fromSnapshot(MonsterIO.toSnapshot(monster));
+
+    for (const slot of durable) {
+      const times = Math.max(0, slot.quantity);
+      for (let i = 0; i < times; i++) {
+        if (slot.item.statBoost) {
+          fused.boostStat(slot.item.statBoost.stat, slot.item.statBoost.value);
+        }
+        if (slot.item.acBonus) {
+          fused.armorBonus += slot.item.acBonus;
+        }
+      }
+    }
+    return fused;
+  }
+
   /** Applique une relique au monstre (stats permanentes + armure). */
   applyRelic(monster: Monster, relic: Relic): void {
     const { stat, acBonus } = relic.effect;
@@ -509,10 +640,21 @@ export class BattleController {
     };
   }
 
+    /** Tire `count` objets distincts du catalogue (butin de boss). */
+  private _rollBossLoot(count: number): ConsumableItem[] {
+    const pool = [...CONSUMABLE_CATALOG];
+    const loot: ConsumableItem[] = [];
+    for (let i = 0; i < count && pool.length > 0; i++) {
+      const index = Math.floor(this.random() * pool.length);
+      loot.push(...pool.splice(index, 1));
+    }
+    return loot;
+  }
+
   /** Récompenses de victoire : score, or, soins, phase suivante (relique / région / victoire). */
   handlePlayerVictory(input: VictoryInput): VictoryResult {
     const { player, enemy, run: currentRun, isBossFight } = input;
-    const run: RunState = { ...currentRun };
+    let run: RunState = { ...currentRun };
     const region = REGIONS[run.regionIndex];
     const logs: string[] = [];
 
@@ -524,6 +666,15 @@ export class BattleController {
       player.currentHp = player.maxHp; // Full heal after a boss
       logs.push(`💰 +${BOSS_GOLD} or (boss).`);
       logs.push(`⚔️ ${region.name} conquise !`);
+
+      // Butin du boss : 2 objets tirés au sort dans le catalogue. Marqués
+      // `boss`, ce sont les seuls objets qui survivent d'une partie à l'autre
+      // (fusionnés dans la fiche du champion en fin de région).
+      const loot = this._rollBossLoot(BOSS_LOOT_COUNT);
+      for (const item of loot) {
+        run = this.addConsumableToInventory(run, item, 1, 'boss');
+        logs.push(`🎁 Le boss laisse ${item.name}.`);
+      }
 
       if (run.regionIndex >= REGIONS.length - 1) {
         run.phase = 'victory';

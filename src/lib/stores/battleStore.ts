@@ -301,12 +301,21 @@ export class BattleStore {
       const enemy = state.enemyMonster;
       const move = player.moves[moveIndex];
 
-      // 1. Jet d'initiative (1d20 + mod(Vitesse)) : il décide de l'ordre.
-      const round = this.controller.beginRound({ player, enemy });
+      // 1. Ordre de résolution du round : un soin passe avant une attaque,
+      //    l'initiative départage les autres cas. Le joueur a déjà choisi son
+      //    move ; côté ennemi on se contente de sonder s'il *peut* soigner
+      //    (sonde sans aléa : l'IA garde le choix de son move au moment
+      //    d'agir, donc en connaissance des dégâts reçus).
+      const round = this.controller.beginRound({
+        player,
+        enemy,
+        playerCastsHeal: !!move.isHeal,
+        enemyCanHeal: this.controller.hasUsableHeal(enemy),
+      });
 
       // 2. Les deux camps agissent STRICTEMENT dans cet ordre : le tour du
       //    second n'est exécuté (et muté) qu'après l'animation du premier,
-      //    afin que PV, logs et feedback suivent réellement l'initiative.
+      //    afin que PV, logs et feedback suivent réellement l'ordre affiché.
       //    Le tour suivant est annulé si le premier a mis la cible K.O.
       const playerTurnOpts = (): PlayTurnOptions => ({
         attacker: player,
@@ -322,7 +331,15 @@ export class BattleStore {
         attacker: enemy,
         defender: player,
         // L'IA choisit sa riposte au moment où elle agit (après les dégâts reçus).
-        move: this.controller.selectEnemyMove(enemy.moves, enemy, player),
+        // Exception : si la règle d'ordre l'a placé en premier *parce qu'il
+        // pouvait soigner*, il doit effectivement soigner — sinon il n'aurait
+        // gagné que le bonus d'initiative.
+        move: this.controller.selectEnemyMove(
+          enemy.moves,
+          enemy,
+          player,
+          round.healFirst && !move.isHeal,
+        ),
         attackerSide: "enemy",
       });
 
@@ -737,8 +754,15 @@ export class BattleStore {
 
     if (isBoss && state.playerMonster) {
       const region = REGIONS[state.run.regionIndex];
-      this.championRepository.saveChampion(
+      // Fin de région : les objets à effet durable sont fusionnés dans le
+      // monstre enregistré (copie indépendante — l'inventaire du run reste
+      // intact, on ne peut donc pas récupérer deux fois le même bonus).
+      const championMonster = this.controller.fuseDurableItemsIntoMonster(
         state.playerMonster,
+        state.run,
+      );
+      this.championRepository.saveChampion(
+        championMonster,
         state.run.regionIndex,
         region.name,
       );
@@ -746,6 +770,14 @@ export class BattleStore {
       result.logs.push(
         `🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`,
       );
+      const fusedCount = (state.run.inventory ?? [])
+        .filter(slot => slot.item.statBoost || slot.item.acBonus)
+        .reduce((sum, slot) => sum + slot.quantity, 0);
+      if (fusedCount > 0) {
+        result.logs.push(
+          `💎 ${fusedCount} objet(s) à effet durable fusionné(s) dans la fiche du champion.`,
+        );
+      }
     }
 
     return { ...state, run: result.run, logs: [...state.logs, ...result.logs] };

@@ -24,9 +24,17 @@ export interface ConsumableItem {
   acBonus?: number;
 }
 
+/** Provenance d'un objet : seul le butin de boss survit d'une partie à l'autre. */
+export type ItemOrigin = 'shop' | 'boss';
+
 export interface InventorySlot {
   item: ConsumableItem;
   quantity: number;
+  /**
+   * Origine de ce lot. Absent = traité comme `shop`.
+   * Seuls les lots `boss` sont fusionnés dans la fiche du champion.
+   */
+  origin?: ItemOrigin;
 }
 
 export const CONSUMABLE_CATALOG: ConsumableItem[] = [

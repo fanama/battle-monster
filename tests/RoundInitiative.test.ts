@@ -49,7 +49,10 @@ describe("Ordre d'attaque du round (jets d'initiative)", () => {
     expect(plan.playerInitiative).toBe(15 + 2); // 1d20 + mod(VIT 14)
     expect(plan.enemyInitiative).toBe(8 + 0);
     expect(plan.playerFirst).toBe(true);
-    expect(plan.logs[0]).toContain('Héro agit en premier');
+    expect(plan.healFirst).toBe(false);
+    // Le journal sépare le jet d'initiative de l'ordre effectif retenu.
+    expect(plan.logs[0]).toContain('Héro en tête à l');
+    expect(plan.logs[plan.logs.length - 1]).toContain('Héro agit en premier');
   });
 
   test("Le plan de round suit l'ordre des jets d'initiative (ennemi d'abord)", () => {
@@ -59,7 +62,9 @@ describe("Ordre d'attaque du round (jets d'initiative)", () => {
     expect(plan.playerInitiative).toBe(3 + 2);
     expect(plan.enemyInitiative).toBe(18 + 0);
     expect(plan.playerFirst).toBe(false);
-    expect(plan.logs[0]).toContain('Sloub agit en premier');
+    expect(plan.healFirst).toBe(false);
+    expect(plan.logs[0]).toContain('Sloub en tête à l');
+    expect(plan.logs[plan.logs.length - 1]).toContain('Sloub agit en premier');
   });
 
   test('La riposte est annulée : si le premier acteur met la cible K.O., le second tour ne se joue pas', () => {

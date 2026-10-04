@@ -1,6 +1,6 @@
 # TODO — Monster Battle D&D 5e Roguelike
 
-Dernière mise à jour : Septembre 2026.
+Dernière mise à jour : Octobre 2026.
 Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests / ♿ Accessibilité
 
 ---
@@ -27,7 +27,7 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 - [x] ✅ **Régulation du scaling des boss** : adoucissement du niveau des boss (`maxLevel + 1` au lieu de `maxLevel + 2`) dans `BattleController.ts` pour éviter les pics de difficulté excessifs en Citadelle Céleste.
 - [x] ✅ **Rôle mécanique pour SAG (Sagesse/Instinct) & Savoir** :
   - *Instinct (SAG)* : perception martiale élargissant la plage de coups critiques (`effectiveCritRange`), échelle visuelle du regard SVG.
-  - *Savoir (INT)* : bonus direct sur les soins (`(niveau + 1)d4 + mod(CON) + mod(Savoir)`), scaling des attaques magiques.
+  - *Savoir (INT)* : bonus direct sur les soins (cf. section 2 — graduation `healPower`), scaling des attaques magiques.
 - [x] ✅ **Choix de relique post-Boss** : offrir une relique rare après la victoire sur un boss de région avant d'avancer vers la région suivante.
 - [x] ✅ **Effets de statut élémentaires (d20)** :
   - 🔥 Brûlure : dégâts à chaque tour (8 % PV max), jet de sauvegarde CON (DD 12).
@@ -42,10 +42,30 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   - Enregistrement automatique des créatures après chaque victoire de boss régional (`LocalStorageChampionRepository`).
   - Onglet Panthéon complet sur l'écran d'accueil avec rejouabilité directe.
   - Exportation / Téléchargement et Importation de fichiers `.json` standardisés.
+- [x] ✅ **Le soin passe toujours avant l'attaque** (ordre de résolution du round, `BattleController.beginRound`) : si exactement un des deux camps soigne, son tour est joué en premier, quel que soit le jet d'initiative. L'initiative ne départage que les cas homogènes (les deux soignent, ou aucun). Un camp gelé/paralysé perd son tour quand il vient, sans bloquer l'autre.
+  - *Cohérence de la règle* : l'IA ennemie choisit son move **après** avoir subi les dégâts. `hasUsableHeal` sonde donc sa **capacité** à soigner *sans consommer d'aléa* (l'ordre est donc connu avant que l'IA ne choisisse), et `selectEnemyMove(…, preferHeal)` force le soin lorsque c'est précisément cette capacité qui lui a valu la priorité — sinon la règle n'aurait accordé que le bonus d'initiative.
+  - *Journal* : le jet d'initiative et l'ordre effectif retenu sont désormais deux lignes distinctes (« X en tête à l'initiative » puis « ➜ Y agit en premier »), avec une ligne explicite quand le soin prime.
+- [x] ✅ **Graduation des sorts de soin (`healPower`)** : les capacités curatives portent un champ `healPower` dédié (0 / 10 / 15) au lieu de surcharger `power`. Elles gardent `power: 0` et ne passent donc jamais par le jet d'attaque. La formule D&D est `(niveau + 1)d4 + mod(CON) + max(0, mod(Savoir)) + max(0, mod(Charisme)) + healPower` (`BattleEngine.applyHeal`).
+- [x] ✅ **Butin de boss & persistance des objets** :
+  - `InventorySlot.origin` distingue la provenance `'shop'` / `'boss'`.
+  - Un boss de région lâche **2 objets distincts** tirés au sort dans le catalogue (`BOSS_LOOT_COUNT`, `BattleController._rollBossLoot`).
+  - `fuseDurableItemsIntoMonster` ne retient que les lots `origin === 'boss'` porteurs d'un bonus durable (`statBoost` / `acBonus`) et les fige dans la fiche du champion. **Un objet acheté en boutique n'est jamais persistant.** La fusion se fait sur une *copie* : le monstre du run et l'inventaire restent intacts (pas de double cumul).
+- [x] ✅ **Rejeu d'un champion enregistré au niveau 1** : `Monster.resetLevelTo(1)` (niveau, XP à zéro, seuil recalculé, PV réétendus) appelé depuis `Home.svelte` au lancement d'une nouvelle run avec un champion du Panthéon. Les autres usages de `fromSnapshot` (affichage, reprise de run sauvegardée, import) conservent leur niveau.
+- [x] ✅ **Rééquilibrage de la durée des combats (mesuré)** : l'échelle de PV est passée de `1.8 + 0.85·lvl` à `2.1 + 0.50·lvl` (`HP_SCALE_BASE` / `HP_SCALE_PER_LEVEL`). Les dégâts des moves ne montaient pas avec le niveau alors que les PV explosaient : les combats duraient 25 à 31 % de moins à tous les paliers (niv. 12 : 14,2 → 9,8 rounds) à taux de victoire en miroir conservé (~55 %). Le niveau 1 est inchangé. **Non traité** : la tension elle-même, qui demanderait de retoucher la puissance des moves par palier.
 
 ---
 
 ### 3. UX, Polish & Accessibilité (P2)
+- [x] ✅ **Effets affichés sur les boutons de sélection d'attaques** (`MoveDisplayer.svelte`, `MoveManagerModal.svelte`) : nature du move, puissance `P.N`, précision `🎯 +N`, soin `💚 +N PV`, buff `⬆ +N Stat`, efficacité `⚔ Super eff. / 🛡 Peu eff.` et statut élémentaire (icône, nom, chance %) — ce dernier avec une infobulle décrivant l'effet et le DD de sauvegarde.
+- [x] ✅ **Arène en vue Street Fighter** : la carte du monstre a quitté le champ de bataille (`styles.layout.arena` n'est plus utilisée qu'à un seul endroit). HUD de combattant (`FighterHud.svelte`) ancré aux deux coins opposés en haut de l'arène, horizon et lignes de sol, ombre portée et alignement au sol. La hauteur du sprite est verrouillée par un test pour empêcher un rognage des pieds (`overflow-hidden`).
+- [x] ✅ **Monstres 3D humanoïdes en garde de combat** (`MonsterWebGLRenderer.ts`) : maillage procédural en **cylindres** pour les membres et en sphères pour les articulations, avec épaules, torse, crâne et visage. Posture de boxeur : poings remontés devant la face, coudes écartés du buste, jambes à l'assise élargie. Les bornes du maillage sont testées pour ne jamais déborder du cadre.
+- [x] ✅ **Trois animations d'attaque distinctes + animations de fin de combat** (`MonsterDisplayer.svelte`) :
+  - *Physique* : armement en arrière puis charge franche vers l'adversaire.
+  - *À distance* : recul de préparation puis projection modérée (le coup part sans contact).
+  - *Soin / Buff* : **aucun déplacement horizontal** — élévation et illumination, monstre ancré au sol.
+  - Chaque famille existe en version joueur et ennemi, strictement miroir. L'ordre des règles CSS est significatif : les animations d'attaque sont déclarées **après** `.shake` pour ne pas être masquées par la réaction aux dégâts sur un coup réussi.
+  - *Victoire* : rebond avec amplification et illumination progressive. *Défaite* : affaissement, rotation, désaturation et effacement. Bandeau VICTOIRE / DÉFAITE en surimpression.
+- [x] ✅ **Attente avant l'écran suivant** : `ROUND_END_DELAY` (1400 ms, `battleStore.ts`) — le vainqueur est écrit dans l'état immédiatement pour que l'animation se joue, mais les récompenses, la relique, la fin de run et la permadeath sont appliquées après le délai, via `_scheduleRoundEnd` (idempotent, annulé par `_clearTimers`). Les quatre chemins de coup fatal y passent, verrouillé par un test de garde.
 - [ ] **Accessibilité lecteur d'écran & ARIA** : ajouter `aria-live="polite"` sur le journal de combat (`Logs.svelte`) et focus trap sur les modales.
 - [ ] **Support `prefers-reduced-motion`** : désactiver ou atténuer les secousses de caméra (shake) et animations d'attaque pour les utilisateurs sensibles.
 - [ ] **Unification de la langue (100 % FR)** : harmoniser les derniers termes anglophones résiduels.
@@ -59,10 +79,22 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   - Composants et fichiers de template retirés (`src/lib/Counter.svelte`, `src/assets/svelte.svg`, `public/vite.svg`, `bun.lockb`).
   - Fonctions non appelées retirées de `MoveRepositories.ts` (`getMoveById`, `getMoveByName`, `getAllMoves`, `getMovesByType`).
   - Imports, helpers et clés de style morts éliminés (`UI_COLORS`, `lastLayerIndex`, `reachableCols`, `createLocalStorageRunRepository`, `styles.layout.title`, `styles.actionBar.moveWrapper`, `styles.winner`).
-- [ ] **Suite de tests automatisés (Vitest / Bun test)** :
-  - Tests unitaires de `BattleEngine` (jets d'attaque d20, calculs CA, critiques 20 nat, fumbles 1 nat, dégâts physiques et magiques, initiative).
-  - Tests de persistance `LocalStorageRunRepository` et roundtrip `MonsterIO`.
-  - Tests de génération de carte déterministe `RegionMap`.
+- [x] ✅ **Suite de tests automatisés (`bun test`, runner natif Bun)** — 113 tests sur 14 fichiers, ~200 ms :
+  - `BattleEngine.test.ts` — jets d'attaque d20, CA, critique 20 naturel, fumble 1 naturel, dégâts physiques et magiques, absorption par la Constitution de la victime.
+  - `RoundInitiative.test.ts` — ordre d'attaque du round (initiative, non-régression après l'introduction de la priorité du soin).
+  - `HealPriorityOrder.test.ts` — la règle d'ordre (soin joueur, soin ennemi, les deux, aucun), la sonde de soin sans aléa, et le journal.
+  - `HealPriorityStore.test.ts` — la règle est **réellement appliquée par le store** : le soin du joueur se résout dans la frame du clic ; l'ennemi placé en priorité pour soigner le fait ; un ennemi gelé désigné premier ne bloque pas le round.
+  - `EnemyScaling.test.ts` — scaling des ennemis sur le joueur (sauvages et boss).
+  - `MonsterACAndCharisma.test.ts` — plafonnement de la CA, rôle mécanique du Charisme.
+  - `HealMoves.test.ts` — graduation des sorts de soin (`healPower`) et non-régression (un soin n'inflige pas de dégâts).
+  - `MoveButtonEffects.test.ts` — effets affichés dans les deux surfaces de sélection + présence réelle des effets dans le catalogue.
+  - `ArenaStageLayout.test.ts` — mise en scène Street Fighter (variantes, encadrement, hauteur du sprite, ombre, alignement, HUD, horizon).
+  - `AttackAnimations.test.ts` — routage des trois familles, miroir joueur/ennemi, animations de victoire/défaite, ordre CSS attaque > shake.
+  - `RoundEndDelay.test.ts` — report de la fin de round et des quatre chemins de coup fatal (assertions déterministes sur la programmation, pas d'attente sur l'horloge murale).
+  - `ChampionReplayLevel.test.ts` — rejouer un champion le remet au niveau 1.
+  - `ChampionItemFusion.test.ts` — fusion des objets durables du boss, isolation du monstre du run, non-persistance des objets de boutique.
+  - `MonsterSilhouette.test.ts` — silhouette humanoïde réellement construite, épaules et membres cylindriques, posture de garde.
+  - *Restant* : roundtrip `MonsterIO`, persistance `LocalStorageRunRepository`, génération de carte `RegionMap`.
 - [ ] **Typage strict TypeScript** : activer `noUnusedLocals` et `noUncheckedIndexedAccess` dans `tsconfig.app.json`.
 
 ---
@@ -107,3 +139,25 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
 - [x] ✅ **Panthéon des Champions & Export/Import JSON** : enregistrement automatique des monstres victorieux de boss, stockage LocalStorage, téléchargement `.json` depuis le Panthéon et import direct de monstres.
 - [x] ✅ **Sauvegarde automatique LocalStorage** : persistance de l'état de la run après chaque nœud ou combat.
 - [x] ✅ **Rendu visuel procédural SVG** : sprites personnalisés par élément avec expressions réactives (dégâts, fatigue, joie) et ornements de boss.
+  - *Remplacé en octobre 2026* par le maillage 3D WebGL (voir section « 3D, Arène & Animations » ci-dessous) : `SpriteDisplayer.svelte` héberge désormais un `<canvas>` et est monté partout où le monstre est affiché (arène, fiche du champion, Panthéon de l'accueil). Le SVG procédural des monstres n'est plus utilisé nulle part.
+
+---
+
+### 🎮 3D, Arène & Animations (2026-10)
+- [x] ✅ **Monstres en 3D (WebGL / three.js)** (`src/lib/renderers/MonsterWebGLRenderer.ts`, monté par `SpriteDisplayer.svelte`) : maillage procédural construit par primitives — **cylindres** pour tous les membres (bras, avant-bras, cuisses, tibias, cou, épaules), **sphères** pour les articulations et le crâne. Dépendance ajoutée : `three` + `@types/three`.
+- [x] ✅ **Apparence humanoïde** : épaule → coude → poignet en chaîne, torse, pelvis, cou, tête avec yeux / sourcils / iris.
+- [x] ✅ **Garde de combat** : poings remontés à hauteur du menton, coudes écartés du torse, avant-bras remontant vers l'intérieur, jambes à l'assise élargie.
+- [x] ✅ **Arène Street Fighter** : carte retirée du champ de bataille, HUD de combattant (`FighterHud.svelte`), décor de sol (horizon, lignes de sol, ombre portée), alignement au sol des deux camps.
+- [x] ✅ **Trois familles d'animation d'attaque** + **victoire / défaite**, et report de fin de round (détails en section 3).
+
+---
+
+## ⚠️ Limites connues (à traiter)
+
+- **Rendu jamais validé à l'écran.** L'environnement de développement ne peut pas exécuter le rendu Svelte (`svelte/compiler` indisponible) ni contrôler visuellement le canvas WebGL. Les tests valident la **géométrie construite**, le **markup** et les **règles CSS**, pas l'image. Durées, amplitudes, courbes d'accélération et angles de garde restent des choix de conception à ajuster avec `bun run dev`.
+- **Animations CSS pures, sans `prefers-reduced-motion`.** Tant que l'item d'accessibilité n'est pas traité, aucune réduction de mouvement n'est proposée.
+- **Conflit attaque / réaction aux dégâts.** Le `feedback` du store est celui de l'**action**, pas des dégâts subis : le monstre qui frappe reçoit aussi `shake`. L'ordre CSS arbitre en faveur de l'animation d'attaque ; le comportement alternatif n'est pas tranché.
+- **Aucune migration des données existantes.** Les champions enregistrés avant la fusion des objets conservent une fiche sans objet persistant, et les runs sauvegardées gardent l'ancienne échelle de PV.
+- **Rééquilibrage non outillé.** Le simulateur de duels utilisé pour mesurer l'équilibrage a été supprimé du dépôt. Les taux de victoire reposent sur des approximations (moves choisis au hasard, IA et joueur simplifiés, reliques et objets ignorés). Le remis en service comme script versionné est une piste ouverte.
+- **Tension des combats inchangée.** Seul le pool de PV a été ajusté : à ~55 % de victoire en miroir, il reste peu de marge pour le joueur. Le levier suivant est la puissance des moves par palier.
+- **Rejeu d'un champion : réserve de PV réduite.** Le niveau repart à 1 mais les caractéristiques de fin de run sont conservées, donc les PV max (dépendants du niveau) chutent. Rebaser les stats n'est pas techniquement reconstituable : les buffs sont permanents et l'allocation initiale des points de destin n'est pas stockée.
