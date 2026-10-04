@@ -2,14 +2,26 @@ export const styles = {
   layout: {
     // Chrome de l'arène : fond + couleur de bordure viennent de REGION_COLORS
     // (composé dans App.svelte selon la région courante).
+    //
+    // Vue « Street Fighter » : l'arène est une scène. Le décor (ciel + sol en
+    // perspective) est posé en `absolute inset-0` par l'arène elle-même, et
+    // les combattants sont alignés sur une même ligne de sol (`items-end`),
+    // face à face, à la même échelle.
     arena: `
       border-2 md:border-4 rounded-xl
-      relative
-      min-h-[270px] xs:min-h-[300px] sm:min-h-[340px] md:min-h-[420px]
+      relative overflow-hidden
+      min-h-[300px] xs:min-h-[330px] sm:min-h-[370px] md:min-h-[440px]
       mb-3 md:mb-4
-      flex justify-between items-end
-      p-2 sm:p-4 md:px-8 md:pb-6
-      shadow-xl overflow-x-clip gap-2
+      flex flex-col
+      shadow-xl
+    `,
+    // Rangée basse : les deux combattants, ancrés au sol.
+    arenaStage: `
+      relative z-20 flex-1 min-h-0
+      flex items-end justify-between
+      gap-2 px-3 sm:px-6 md:px-10
+      pb-4 sm:pb-6 md:pb-8
+      pt-16 sm:pt-20
     `,
   },
   actionBar: {

@@ -3,6 +3,7 @@
   import MonsterDisplayer from "./lib/components/molecules/MonsterDisplayer.svelte";
   import Logs from "./lib/components/molecules/Logs.svelte";
   import MoveDisplayer from "./lib/components/atoms/MoveDisplayer.svelte";
+  import FighterHud from "./lib/components/atoms/FighterHud.svelte";
   import RunHud from "./lib/components/atoms/RunHud.svelte";
   import RunTabs from "./lib/components/atoms/RunTabs.svelte";
   import RelicList from "./lib/components/atoms/RelicList.svelte";
@@ -104,6 +105,17 @@
   function openCodex(tab: 'rules' | 'elements' | 'regions' = 'rules') {
     codexTab = tab;
     isCodexOpen = true;
+  }
+
+  /**
+   * Issue du round pour un côté de l’arène : le vainqueur célèbre, le perdant
+   * s’affaisse. Tant qu'aucun vainqueur n’est désigné, rien n’est joué.
+   */
+  function outcomeFor(isPlayer: boolean): 'victory' | 'defeat' | null {
+    const winner = $battleStore.winner;
+    if (!winner) return null;
+    const didWin = (isPlayer && winner === 'player') || (!isPlayer && winner === 'enemy');
+    return didWin ? 'victory' : 'defeat';
   }
 </script>
 
@@ -242,18 +254,33 @@
         <div class="flex-1 min-h-0 flex flex-col">
           <div class="flex-1 min-h-0 scroll-panel px-2 sm:px-3 pt-1 pb-2">
             <div class="{styles.layout.arena} {regionColors.border}" style={arenaStyle}>
-              <span
-                class="absolute top-2 left-2 z-10 font-mono font-bold uppercase tracking-widest
-                  text-[10px] text-sky-300 border border-sky-400/40 bg-sky-950/60 rounded px-1.5 py-0.5"
-              >
-                Vous
-              </span>
-              <span
-                class="absolute top-2 right-2 z-10 font-mono font-bold uppercase tracking-widest
-                  text-[10px] text-rose-300 border border-rose-500/40 bg-rose-950/60 rounded px-1.5 py-0.5"
-              >
-                Ennemi
-              </span>
+              <!-- SCÈNE (vue Street Fighter) : horizon + sol en perspective -->
+              <div class="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
+                <div
+                  class="absolute inset-x-0 top-0 h-[38%]"
+                  style="background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)"
+                ></div>
+                <div
+                  class="absolute inset-x-0 bottom-0 h-[62%]"
+                  style="background: linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.82) 100%)"
+                ></div>
+                <!-- Ligne d'horizon -->
+                <div
+                  class="absolute inset-x-0"
+                  style="bottom: 62%; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 50%, rgba(255,255,255,0) 100%)"
+                ></div>
+                <!-- Lignes de sol en perspective -->
+                <div
+                  class="absolute inset-0"
+                  style="background-image: repeating-linear-gradient(to bottom, rgba(255,255,255,0.05) 0 1px, transparent 1px 9%); background-size: 100% 38%"
+                ></div>
+              </div>
+
+              <!-- HUD façon Street Fighter : barres de vie ancrées en haut -->
+              <div class="absolute inset-x-0 top-0 z-30 flex justify-between gap-2 px-2 sm:px-4 pt-2 pointer-events-none">
+                <FighterHud monster={$battleStore.playerMonster} isPlayer={true} />
+                <FighterHud monster={$battleStore.enemyMonster} isPlayer={false} />
+              </div>
 
               {#if $battleStore.isBossFight}
                 <div
@@ -267,22 +294,48 @@
               {/if}
 
               {#if $battleStore.enemyMonster}
-                <MonsterDisplayer
-                  monster={$battleStore.playerMonster}
-                  isPlayer={true}
-                  isAttacking={$battleStore.isAttacking}
-                  lastMove={$battleStore.playerLastMove}
-                  feedback={$battleStore.playerFeedback}
-                />
-                <MonsterDisplayer
-                  monster={$battleStore.enemyMonster}
-                  isPlayer={false}
-                  isAttacking={$battleStore.isEnemyAttacking}
-                  lastMove={$battleStore.enemyLastMove}
-                  feedback={$battleStore.enemyFeedback}
-                />
+                <!-- Combattants alignés sur la même ligne de sol, face à face -->
+                <div class={styles.layout.arenaStage}>
+                  <MonsterDisplayer
+                    monster={$battleStore.playerMonster}
+                    isPlayer={true}
+                    variant="stage"
+                    outcome={outcomeFor(true)}
+                    isAttacking={$battleStore.isAttacking}
+                    lastMove={$battleStore.playerLastMove}
+                    feedback={$battleStore.playerFeedback}
+                  />
+                  <MonsterDisplayer
+                    monster={$battleStore.enemyMonster}
+                    isPlayer={false}
+                    variant="stage"
+                    outcome={outcomeFor(false)}
+                    isAttacking={$battleStore.isEnemyAttacking}
+                    lastMove={$battleStore.enemyLastMove}
+                    feedback={$battleStore.enemyFeedback}
+                  />
+
+                  <!-- Bandeau de fin de round : reste affiché pendant
+                       ROUND_END_DELAY, le temps que l'animation se joue. -->
+                  {#if $battleStore.winner}
+                    <div
+                      class="absolute inset-0 z-40 flex items-center justify-center
+                        bg-black/25 backdrop-blur-[1px] pointer-events-none"
+                    >
+                      <p
+                        class="font-serif font-black uppercase tracking-[0.25em]
+                          text-4xl sm:text-6xl animate-pulse drop-shadow-lg
+                          {$battleStore.winner === 'player'
+                            ? 'text-amber-300 [text-shadow:0_0_24px_rgba(251,191,36,0.7)]'
+                            : 'text-rose-400 [text-shadow:0_0_24px_rgba(244,63,94,0.7)]'}"
+                      >
+                        {$battleStore.winner === 'player' ? 'Victoire' : 'Défaite'}
+                      </p>
+                    </div>
+                  {/if}
+                </div>
               {:else if phase !== 'relic' && phase !== 'regionClear'}
-                <div class="w-full flex flex-col items-center justify-center gap-3 text-center py-6">
+                <div class="w-full flex-1 flex flex-col items-center justify-center gap-3 text-center py-6">
                   <span class="text-4xl">🗺️</span>
                   <p class="text-stone-400 font-mono text-xs">
                     Aucune rencontre en cours — choisissez votre prochaine destination.

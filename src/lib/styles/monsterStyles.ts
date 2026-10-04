@@ -10,6 +10,22 @@ export const monsterStyles = {
     `,
     player: "border-sky-400 shadow-lg shadow-sky-400/20",
     enemy: "border-rose-500 shadow-lg shadow-rose-500/20",
+    // Vue « scène de combat » (style Street Fighter) : plus aucun encadrement,
+    // ni fond, ni bordure — le monstre est un combattant posé sur le sol.
+    stage: `
+      flex flex-col items-center justify-end
+      w-[44%] max-w-[200px] xs:max-w-[240px] sm:max-w-[280px] md:max-w-[320px]
+      shrink-0 min-w-0
+      transition-all duration-300
+    `,
+  },
+  // Ombres portées : ancrage au sol de la scène.
+  stageShadow: {
+    base: `
+      w-[58%] h-3 rounded-[50%]
+      bg-black/55 blur-[3px]
+      translate-y-1
+    `,
   },
   spriteSection: {
     wrapper: `

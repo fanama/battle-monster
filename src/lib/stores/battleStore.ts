@@ -1,20 +1,48 @@
-import { writable, type Writable } from 'svelte/store';
-import type { BattleState, RunState } from '../../core/entities/BattleState';
-import { Monster } from '../../core/entities/Monster';
-import { MonsterIO } from '../../core/entities/Monster';
-import type { Move } from '../../core/entities/Move';
-import type { Relic, ShopItem } from '../../core/entities/Relic';
-import { relicDamagePercent, relicLifestealPercent, relicMaxCritRange, relicExperiencePercent, rollShopStock, RELIC_CATALOG } from '../../core/entities/Relic';
-import { STARTER_INVENTORY } from '../../core/entities/Consumable';
-import { REGIONS } from '../../core/entities/Region';
-import { generateRegionMap, areLinked, nodeAtCol } from '../../core/entities/RegionMap';
-import type { BattleController, PlayTurnOptions, PlayTurnResult } from '../../core/services/BattleController';
-import { SAVE_VERSION, type RunSave, type SaveRepository, type ChampionRepository, type SavedChampion } from '../../core/services/ports';
+import { writable, type Writable } from "svelte/store";
+import type { BattleState, RunState } from "../../core/entities/BattleState";
+import { Monster } from "../../core/entities/Monster";
+import { MonsterIO } from "../../core/entities/Monster";
+import type { Move } from "../../core/entities/Move";
+import type { Relic, ShopItem } from "../../core/entities/Relic";
+import {
+  relicDamagePercent,
+  relicLifestealPercent,
+  relicMaxCritRange,
+  relicExperiencePercent,
+  rollShopStock,
+  RELIC_CATALOG,
+} from "../../core/entities/Relic";
+import { STARTER_INVENTORY } from "../../core/entities/Consumable";
+import { REGIONS } from "../../core/entities/Region";
+import {
+  generateRegionMap,
+  areLinked,
+  nodeAtCol,
+} from "../../core/entities/RegionMap";
+import type {
+  BattleController,
+  PlayTurnOptions,
+  PlayTurnResult,
+} from "../../core/services/BattleController";
+import {
+  SAVE_VERSION,
+  type RunSave,
+  type SaveRepository,
+  type ChampionRepository,
+  type SavedChampion,
+} from "../../core/services/ports";
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
 const ENEMY_TURN_DELAY = 1200;
 const ANIMATION_END_DELAY = 550;
 const FEEDBACK_CLEAR_DELAY = 1250;
+/**
+ * Temps laissé à l'animation de victoire/défaite avant d'afficher l'écran
+ * suivant (relique, région conquise ou fin de run). Pendant ce délai le
+ * vainqueur est déjà dans l'état — le monstre qui gagne joue son animation —
+ * mais `run.phase` n'a pas encore changé.
+ */
+const ROUND_END_DELAY = 1400;
 
 /**
  * Store Svelte du combat — volontairement **mince**.
@@ -34,7 +62,12 @@ export class BattleStore {
   private readonly championRepository: ChampionRepository;
 
   /** Timers de nettoyage des feedbacks flottants (un par camp). */
-  private readonly feedbackTimers: Partial<Record<'playerFeedback' | 'enemyFeedback', ReturnType<typeof setTimeout>>> = {};
+  private readonly feedbackTimers: Partial<
+    Record<"playerFeedback" | "enemyFeedback", ReturnType<typeof setTimeout>>
+  > = {};
+
+  /** Évite d'empiler deux fins de round programmées (cf. `_scheduleRoundEnd`). */
+  private roundEndScheduled = false;
 
   /** Tous les `setTimeout` de round / animation — annulés au (re)start d'un run. */
   private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -54,7 +87,7 @@ export class BattleStore {
   constructor(
     controller: BattleController,
     saveRepository: SaveRepository,
-    championRepository: ChampionRepository
+    championRepository: ChampionRepository,
   ) {
     this.controller = controller;
     this.saveRepository = saveRepository;
@@ -71,7 +104,7 @@ export class BattleStore {
     return {
       playerMonster: null,
       enemyMonster: null,
-      logs: ['Choisissez votre monstre pour commencer.'],
+      logs: ["Choisissez votre monstre pour commencer."],
       isPlayerTurn: true,
       winner: null,
       isAttacking: false,
@@ -88,7 +121,7 @@ export class BattleStore {
   /** État de run vierge (menu titre / début de partie). */
   private _newRunState(): RunState {
     return {
-      phase: 'starter',
+      phase: "starter",
       regionIndex: 0,
       map: null,
       mapLayer: 0,
@@ -99,7 +132,7 @@ export class BattleStore {
       relics: [],
       score: 0,
       relicOffers: null,
-      inventory: STARTER_INVENTORY.map(slot => ({
+      inventory: STARTER_INVENTORY.map((slot) => ({
         item: { ...slot.item },
         quantity: slot.quantity,
       })),
@@ -114,7 +147,7 @@ export class BattleStore {
     const region = REGIONS[regionIndex];
     return {
       ...base,
-      phase: 'map',
+      phase: "map",
       regionIndex,
       map: generateRegionMap(region.mapLayers, undefined, region.types),
       mapLayer: 0,
@@ -140,7 +173,7 @@ export class BattleStore {
       run,
       logs: [
         `— ${region.name} — ${region.description}`,
-        '🗺️ Choisissez votre destination à travers la carte.',
+        "🗺️ Choisissez votre destination à travers la carte.",
       ],
     };
     this.store.set(state);
@@ -169,31 +202,41 @@ export class BattleStore {
     const run: RunState = {
       ...save.run,
       path: save.run.path ?? [],
-      inventory: save.run.inventory ?? STARTER_INVENTORY.map(slot => ({
-        item: { ...slot.item },
-        quantity: slot.quantity,
-      })),
-      shopStock: save.run.shopStock && save.run.shopStock.some(i => i.kind === 'consumable')
-        ? save.run.shopStock
-        : save.run.phase === 'shop'
-          ? rollShopStock(RELIC_CATALOG.length)
-          : save.run.shopStock,
+      inventory:
+        save.run.inventory ??
+        STARTER_INVENTORY.map((slot) => ({
+          item: { ...slot.item },
+          quantity: slot.quantity,
+        })),
+      shopStock:
+        save.run.shopStock &&
+        save.run.shopStock.some((i) => i.kind === "consumable")
+          ? save.run.shopStock
+          : save.run.phase === "shop"
+            ? rollShopStock(RELIC_CATALOG.length)
+            : save.run.shopStock,
     };
 
     let enemyMonster: Monster | null = null;
     let isBoss = run.bossBattle;
     let spawnLogs: string[] = [];
-    if (run.phase === 'encounter') {
+    if (run.phase === "encounter") {
       if (save.enemyMonster) {
         // Restauration exacte et déterministe de l'ennemi sauvegardé
         enemyMonster = MonsterIO.fromSnapshot(save.enemyMonster);
-        spawnLogs = [`${enemyMonster.name} (${isBoss ? 'Boss' : 'Niv. ' + enemyMonster.level}) vous fait face.`];
+        spawnLogs = [
+          `${enemyMonster.name} (${isBoss ? "Boss" : "Niv. " + enemyMonster.level}) vous fait face.`,
+        ];
       } else {
         // Fallback si ancien format de sauvegarde
-        const chosen = run.map ? nodeAtCol(run.map, run.mapLayer, run.path[run.path.length - 1] ?? 0) : undefined;
+        const chosen = run.map
+          ? nodeAtCol(run.map, run.mapLayer, run.path[run.path.length - 1] ?? 0)
+          : undefined;
         const spawned = isBoss
           ? this.controller.enterBossCombat(player, run)
-          : this.controller.enterWildCombat(player, run, { type: chosen?.enemyType });
+          : this.controller.enterWildCombat(player, run, {
+              type: chosen?.enemyType,
+            });
         enemyMonster = spawned.enemyMonster;
         spawnLogs = spawned.logs;
       }
@@ -206,7 +249,7 @@ export class BattleStore {
       isBossFight: isBoss,
       run,
       isPlayerTurn: true,
-      logs: ['— Sauvegarde restaurée —', ...spawnLogs],
+      logs: ["— Sauvegarde restaurée —", ...spawnLogs],
     });
     return true;
   };
@@ -243,8 +286,16 @@ export class BattleStore {
   // --- Battle actions ---
 
   public attack = (moveIndex: number) => {
-    this.store.update(state => {
-      if (!state.isPlayerTurn || state.winner || state.isAttacking || state.isEnemyAttacking || !state.playerMonster || !state.enemyMonster) return state;
+    this.store.update((state) => {
+      if (
+        !state.isPlayerTurn ||
+        state.winner ||
+        state.isAttacking ||
+        state.isEnemyAttacking ||
+        !state.playerMonster ||
+        !state.enemyMonster
+      )
+        return state;
 
       const player = state.playerMonster;
       const enemy = state.enemyMonster;
@@ -261,7 +312,7 @@ export class BattleStore {
         attacker: player,
         defender: enemy,
         move,
-        attackerSide: 'player',
+        attackerSide: "player",
         damagePercent: relicDamagePercent(state.run.relics),
         lifestealPercent: relicLifestealPercent(state.run.relics),
         critRange: relicMaxCritRange(state.run.relics),
@@ -272,7 +323,7 @@ export class BattleStore {
         defender: player,
         // L'IA choisit sa riposte au moment où elle agit (après les dégâts reçus).
         move: this.controller.selectEnemyMove(enemy.moves, enemy, player),
-        attackerSide: 'enemy',
+        attackerSide: "enemy",
       });
 
       if (round.playerFirst) {
@@ -289,11 +340,20 @@ export class BattleStore {
           winner: followUp ? null : first.winner,
         };
         s = this._attachFeedback(s, first);
-        if (!followUp) s = this._applyRoundWinner(s);
-        this._endAnimLater('isAttacking');
+        if (followUp) {
+          s = this._applyRoundWinner(s);
+        } else {
+          // Coup fatal du premier frappeur : on diffère l'écran suivant.
+          this._scheduleRoundEnd(s.winner!);
+        }
+        this._endAnimLater("isAttacking");
         if (followUp) this._enemyLater(enemyTurnOpts);
         if (first.leveledUp) {
-          this._later(() => this.openMoveModal(true), (followUp ? ENEMY_TURN_DELAY : 0) + ANIMATION_END_DELAY + 300);
+          const wait = followUp ? 0 : ROUND_END_DELAY;
+          this._later(
+            () => this.openMoveModal(true),
+            wait + ANIMATION_END_DELAY + 300,
+          );
         }
         return s;
       }
@@ -311,8 +371,12 @@ export class BattleStore {
         winner: followUp ? null : first.winner,
       };
       s = this._attachFeedback(s, first);
-      if (!followUp) s = this._applyRoundWinner(s);
-      this._endAnimLater('isEnemyAttacking');
+      if (followUp) {
+        s = this._applyRoundWinner(s);
+      } else {
+        this._scheduleRoundEnd(s.winner!);
+      }
+      this._endAnimLater("isEnemyAttacking");
       if (followUp) this._playerLater(playerTurnOpts);
       return s;
     });
@@ -322,9 +386,10 @@ export class BattleStore {
 
   /** Choisit un nœud de la carte (combat / soin / boutique). */
   public chooseNode = (col: number) => {
-    this.store.update(state => {
+    this.store.update((state) => {
       const run = state.run;
-      if (run.phase !== 'map' || run.map == null || !state.playerMonster) return state;
+      if (run.phase !== "map" || run.map == null || !state.playerMonster)
+        return state;
       // Les couches sont mélangées : on retombe sur le nœud par son id de
       // colonne (et non par sa position dans le tableau), sinon un clic sur un
       // combat pourrait ouvrir une boutique d'un nœud voisin et vice-versa.
@@ -333,20 +398,25 @@ export class BattleStore {
 
       // Accessibilité : depuis le dernier nœud choisi, seules les colonnes
       // voisines (±1) sont reliées à la couche courante.
-      const prevCol = run.path.length > 0 ? run.path[run.path.length - 1]! : null;
+      const prevCol =
+        run.path.length > 0 ? run.path[run.path.length - 1]! : null;
       if (prevCol != null && !areLinked(prevCol, col)) return state;
 
       const path = [...run.path, col];
 
-      if (node.site === 'combat') {
-        const { enemyMonster, logs } = this.controller.enterWildCombat(state.playerMonster, run, { type: node.enemyType });
+      if (node.site === "combat") {
+        const { enemyMonster, logs } = this.controller.enterWildCombat(
+          state.playerMonster,
+          run,
+          { type: node.enemyType },
+        );
         const next: BattleState = {
           ...state,
           enemyMonster,
           isBossFight: false,
           winner: null,
           isPlayerTurn: true,
-          run: { ...run, phase: 'encounter', path },
+          run: { ...run, phase: "encounter", path },
           logs: [...state.logs, ...logs],
           playerLastMove: null,
           enemyLastMove: null,
@@ -357,13 +427,14 @@ export class BattleStore {
         return next;
       }
 
-      if (node.site === 'heal') {
+      if (node.site === "heal") {
         const player = state.playerMonster;
         const heal = Math.floor(player.maxHp * 0.35);
         const restored = player.heal(heal);
-        const logMsg = restored > 0
-          ? `🩹 Vous vous reposez : +${restored} PV.`
-          : `🩹 Vous vous reposez (PV déjà au maximum).`;
+        const logMsg =
+          restored > 0
+            ? `🩹 Vous vous reposez : +${restored} PV.`
+            : `🩹 Vous vous reposez (PV déjà au maximum).`;
         return this._advanceMap({
           ...state,
           run: { ...run, path },
@@ -375,8 +446,8 @@ export class BattleStore {
       const shopStock = rollShopStock(RELIC_CATALOG.length);
       const next: BattleState = {
         ...state,
-        run: { ...run, phase: 'shop', shopStock, path },
-        logs: [...state.logs, '🛒 La boutique s’ouvre : dépensez votre or.'],
+        run: { ...run, phase: "shop", shopStock, path },
+        logs: [...state.logs, "🛒 La boutique s’ouvre : dépensez votre or."],
       };
       this._persistState(next);
       return next;
@@ -385,31 +456,41 @@ export class BattleStore {
 
   /** Achète un article de la boutique (si assez d'or et pas déjà acheté). */
   public buyShopItem = (item: ShopItem) => {
-    this.store.update(state => {
+    this.store.update((state) => {
       const run = state.run;
-      if (run.phase !== 'shop' || !state.playerMonster || !run.shopStock) return state;
+      if (run.phase !== "shop" || !state.playerMonster || !run.shopStock)
+        return state;
       if (item.bought || run.gold < item.price) return state;
 
       const player = state.playerMonster;
       let logs = state.logs;
       let nextRun = run;
 
-      if (item.kind === 'heal') {
+      if (item.kind === "heal") {
         const healed = player.maxHp - player.currentHp;
         if (healed <= 0) return state; // PV pleins : pas d'achat ni d'or perdu.
         player.heal(healed);
         logs = [...logs, `🏨 ${item.label} : +${healed} PV.`];
-      } else if (item.kind === 'consumable' && item.consumable) {
-        nextRun = this.controller.addConsumableToInventory(nextRun, item.consumable);
-        logs = [...logs, `🎒 ${item.icon} ${item.label} ajouté à votre sacoche.`];
+      } else if (item.kind === "consumable" && item.consumable) {
+        nextRun = this.controller.addConsumableToInventory(
+          nextRun,
+          item.consumable,
+        );
+        logs = [
+          ...logs,
+          `🎒 ${item.icon} ${item.label} ajouté à votre sacoche.`,
+        ];
       } else if (item.relic) {
         this.controller.applyRelic(player, item.relic);
-        nextRun = this.controller.grantRelic({ ...run, phase: 'shop' }, item.relic);
+        nextRun = this.controller.grantRelic(
+          { ...run, phase: "shop" },
+          item.relic,
+        );
         logs = [...logs, `✨ ${item.icon} ${item.label} achetée.`];
       }
 
       nextRun = { ...nextRun, gold: nextRun.gold - item.price };
-      if (item.kind !== 'consumable') {
+      if (item.kind !== "consumable") {
         item.bought = true;
       }
       const next: BattleState = { ...state, run: nextRun, logs };
@@ -424,16 +505,25 @@ export class BattleStore {
    */
   public useConsumable = (itemId: string): boolean => {
     let success = false;
-    this.store.update(state => {
+    this.store.update((state) => {
       if (!state.playerMonster) return state;
       // Pendant un combat, utilisable uniquement si c'est le tour du joueur et pas d'animation en cours
-      if (state.run.phase === 'encounter') {
-        if (!state.isPlayerTurn || state.isAttacking || state.isEnemyAttacking || state.winner) {
+      if (state.run.phase === "encounter") {
+        if (
+          !state.isPlayerTurn ||
+          state.isAttacking ||
+          state.isEnemyAttacking ||
+          state.winner
+        ) {
           return state;
         }
       }
 
-      const res = this.controller.useConsumable(state.playerMonster, state.run, itemId);
+      const res = this.controller.useConsumable(
+        state.playerMonster,
+        state.run,
+        itemId,
+      );
       if (!res) return state;
 
       success = true;
@@ -441,13 +531,17 @@ export class BattleStore {
         ...state,
         run: res.run,
         logs: [...state.logs, ...res.logs],
-        playerFeedback: res.feedback.kind !== 'none' ? res.feedback : state.playerFeedback,
+        playerFeedback:
+          res.feedback.kind !== "none" ? res.feedback : state.playerFeedback,
       };
 
-      if (res.feedback.kind !== 'none') {
-        const key = 'playerFeedback';
+      if (res.feedback.kind !== "none") {
+        const key = "playerFeedback";
         if (this.feedbackTimers[key]) clearTimeout(this.feedbackTimers[key]!);
-        this.feedbackTimers[key] = setTimeout(() => this._clearFeedbackField(key), FEEDBACK_CLEAR_DELAY);
+        this.feedbackTimers[key] = setTimeout(
+          () => this._clearFeedbackField(key),
+          FEEDBACK_CLEAR_DELAY,
+        );
       }
 
       this._persistState(next);
@@ -458,9 +552,9 @@ export class BattleStore {
 
   /** Quitte la boutique : progression sur la carte (couche suivante ou boss). */
   public leaveShop = () => {
-    this.store.update(state => {
-      if (state.run.phase !== 'shop') return state;
-      const run: RunState = { ...state.run, phase: 'map', shopStock: null };
+    this.store.update((state) => {
+      if (state.run.phase !== "shop") return state;
+      const run: RunState = { ...state.run, phase: "map", shopStock: null };
       return this._advanceMap({ ...state, run });
     });
   };
@@ -468,14 +562,14 @@ export class BattleStore {
   // --- Roguelike transition actions ---
 
   public pickRelic = (relic: Relic) => {
-    this.store.update(state => {
-      if (state.run.phase !== 'relic' || !state.playerMonster) return state;
+    this.store.update((state) => {
+      if (state.run.phase !== "relic" || !state.playerMonster) return state;
       const player = state.playerMonster;
 
       this.controller.applyRelic(player, relic);
       const run = this.controller.grantRelic(
-        { ...state.run, phase: 'relic', relicOffers: null },
-        relic
+        { ...state.run, phase: "relic", relicOffers: null },
+        relic,
       );
 
       const s0: BattleState = {
@@ -484,7 +578,10 @@ export class BattleStore {
         enemyMonster: null,
         winner: null,
         isPlayerTurn: true,
-        logs: [...state.logs, `✨ ${relic.icon} ${relic.name} : ${relic.description}`],
+        logs: [
+          ...state.logs,
+          `✨ ${relic.icon} ${relic.name} : ${relic.description}`,
+        ],
         playerLastMove: null,
         enemyLastMove: null,
         playerFeedback: null,
@@ -495,16 +592,16 @@ export class BattleStore {
   };
 
   public skipRelic = () => {
-    this.store.update(state => {
-      if (state.run.phase !== 'relic' || !state.playerMonster) return state;
-      const run: RunState = { ...state.run, phase: 'relic', relicOffers: null };
+    this.store.update((state) => {
+      if (state.run.phase !== "relic" || !state.playerMonster) return state;
+      const run: RunState = { ...state.run, phase: "relic", relicOffers: null };
       const s0: BattleState = {
         ...state,
         run,
         enemyMonster: null,
         winner: null,
         isPlayerTurn: true,
-        logs: [...state.logs, 'Vous passez votre chemin.'],
+        logs: [...state.logs, "Vous passez votre chemin."],
         playerLastMove: null,
         enemyLastMove: null,
         playerFeedback: null,
@@ -524,7 +621,7 @@ export class BattleStore {
       if (state.run.regionIndex >= REGIONS.length - 1) {
         const next: BattleState = {
           ...state,
-          run: { ...state.run, phase: 'victory', bossBattle: false },
+          run: { ...state.run, phase: "victory", bossBattle: false },
           isBossFight: false,
         };
         this._persistState(next);
@@ -532,18 +629,19 @@ export class BattleStore {
       }
       const next: BattleState = {
         ...state,
-        run: { ...state.run, phase: 'regionClear', bossBattle: false },
+        run: { ...state.run, phase: "regionClear", bossBattle: false },
         isBossFight: false,
       };
       this._persistState(next);
       return next;
     }
     return this._advanceMap(state);
-  };
+  }
 
   public advanceRegion = () => {
-    this.store.update(state => {
-      if (state.run.phase !== 'regionClear' || !state.playerMonster) return state;
+    this.store.update((state) => {
+      if (state.run.phase !== "regionClear" || !state.playerMonster)
+        return state;
 
       const player = state.playerMonster;
       player.currentHp = player.maxHp; // Full heal before the new region
@@ -561,7 +659,7 @@ export class BattleStore {
         logs: [
           ...state.logs,
           `— ${region.name} — ${region.description}`,
-          '🗺️ Choisissez votre destination à travers la carte.',
+          "🗺️ Choisissez votre destination à travers la carte.",
         ],
         playerLastMove: null,
         enemyLastMove: null,
@@ -587,7 +685,7 @@ export class BattleStore {
     if (run.map.layers[nextLayer]) {
       const next: BattleState = {
         ...state,
-        run: { ...run, mapLayer: nextLayer, phase: 'map' },
+        run: { ...run, mapLayer: nextLayer, phase: "map" },
         enemyMonster: null,
         isBossFight: false,
         winner: null,
@@ -601,14 +699,22 @@ export class BattleStore {
       return next;
     }
 
-    const { enemyMonster, logs } = this.controller.enterBossCombat(state.playerMonster, run);
+    const { enemyMonster, logs } = this.controller.enterBossCombat(
+      state.playerMonster,
+      run,
+    );
     const next: BattleState = {
       ...state,
       enemyMonster,
       isBossFight: true,
       winner: null,
       isPlayerTurn: true,
-      run: { ...run, mapLayer: nextLayer, phase: 'encounter', bossBattle: true },
+      run: {
+        ...run,
+        mapLayer: nextLayer,
+        phase: "encounter",
+        bossBattle: true,
+      },
       logs: [...state.logs, ...logs],
       playerLastMove: null,
       enemyLastMove: null,
@@ -634,27 +740,50 @@ export class BattleStore {
       this.championRepository.saveChampion(
         state.playerMonster,
         state.run.regionIndex,
-        region.name
+        region.name,
       );
       this.savedChampions.set(this.championRepository.list());
-      result.logs.push(`🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`);
+      result.logs.push(
+        `🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`,
+      );
     }
 
     return { ...state, run: result.run, logs: [...state.logs, ...result.logs] };
   }
 
+  /**
+   * Programme la fin de round (récompenses, relique, région conquise, ou
+   * permadeath) **après** `ROUND_END_DELAY`, le temps que l'animation de
+   * victoire ou de défaite se joue. Sans ce délai, l'écran suivant s'affichait
+   * dans la même frame que le coup fatal.
+   *
+   * Idempotent : un second round ne peut pas empiler deux programmations.
+   */
+  private _scheduleRoundEnd(winner: "player" | "enemy"): void {
+    if (this.roundEndScheduled) return;
+    this.roundEndScheduled = true;
+    this._later(() => {
+      this.store.update((state) => {
+        // Le round a pu être relancé entre-temps : on ne forge rien.
+        if (state.winner !== winner) return state;
+        this.roundEndScheduled = false;
+        return this._applyRoundWinner(state);
+      });
+    }, ROUND_END_DELAY);
+  }
+
   /** Termine la partie selon le vainqueur du round (une seule application). */
   private _applyRoundWinner(state: BattleState): BattleState {
-    if (state.winner === 'player') {
+    if (state.winner === "player") {
       const s = this._onPlayerWin(state);
       // Victoire → persiste (relique / région conquise) ou efface (Champion).
       this._persistState(s);
       return s;
     }
-    if (state.winner === 'enemy') {
+    if (state.winner === "enemy") {
       // Permadeath : la sauvegarde du run est supprimée.
       this._clearSaved();
-      return { ...state, run: { ...state.run, phase: 'runover' } };
+      return { ...state, run: { ...state.run, phase: "runover" } };
     }
     return state;
   }
@@ -667,7 +796,7 @@ export class BattleStore {
    */
   private _enemyLater(makeOpts: () => PlayTurnOptions): void {
     this._later(() => {
-      this.store.update(state => {
+      this.store.update((state) => {
         if (state.winner) return state;
         const action = this.controller.playTurn(makeOpts());
         let s: BattleState = {
@@ -678,8 +807,14 @@ export class BattleStore {
           winner: action.winner,
         };
         s = this._attachFeedback(s, action);
-        s = this._applyRoundWinner(s);
-        this._endAnimLater('isEnemyAttacking');
+        if (s.winner) {
+          // Le coup fatal : on laisse l'animation de victoire/défaite se jouer
+          // avant de basculer sur l'écran suivant.
+          this._scheduleRoundEnd(s.winner);
+        } else {
+          s = this._applyRoundWinner(s);
+        }
+        this._endAnimLater("isEnemyAttacking");
         return { ...s, isPlayerTurn: s.winner == null };
       });
     }, ENEMY_TURN_DELAY);
@@ -692,10 +827,12 @@ export class BattleStore {
   private _playerLater(makeOpts: () => PlayTurnOptions): void {
     this._later(() => {
       let leveledUp = false;
-      this.store.update(state => {
+      let roundWinner: "player" | "enemy" | null = null;
+      this.store.update((state) => {
         if (state.winner) return state;
         const action = this.controller.playTurn(makeOpts());
         leveledUp = action.leveledUp;
+        roundWinner = action.winner;
         let s: BattleState = {
           ...state,
           isAttacking: true,
@@ -704,31 +841,50 @@ export class BattleStore {
           winner: action.winner,
         };
         s = this._attachFeedback(s, action);
-        s = this._applyRoundWinner(s);
-        this._endAnimLater('isAttacking');
+        if (s.winner) {
+          this._scheduleRoundEnd(s.winner);
+        } else {
+          s = this._applyRoundWinner(s);
+        }
+        this._endAnimLater("isAttacking");
         return { ...s, isPlayerTurn: s.winner == null };
       });
       if (leveledUp) {
-        this._later(() => this.openMoveModal(true), ANIMATION_END_DELAY + 300);
+        // Si le coup a été fatal, la fenêtre de niveau s'ouvre après
+        // l'animation de fin de round, pas dessus.
+        const wait = roundWinner ? ROUND_END_DELAY : 0;
+        this._later(
+          () => this.openMoveModal(true),
+          wait + ANIMATION_END_DELAY + 300,
+        );
       }
     }, ENEMY_TURN_DELAY);
   }
 
   /** Pose le feedback d'un tour sur le bon monstre + programme son nettoyage. */
-  private _attachFeedback(state: BattleState, action: PlayTurnResult): BattleState {
-    const key = action.feedbackTarget === state.playerMonster ? 'playerFeedback' : 'enemyFeedback';
+  private _attachFeedback(
+    state: BattleState,
+    action: PlayTurnResult,
+  ): BattleState {
+    const key =
+      action.feedbackTarget === state.playerMonster
+        ? "playerFeedback"
+        : "enemyFeedback";
     if (this.feedbackTimers[key]) clearTimeout(this.feedbackTimers[key]!);
-    this.feedbackTimers[key] = setTimeout(() => this._clearFeedbackField(key), FEEDBACK_CLEAR_DELAY);
+    this.feedbackTimers[key] = setTimeout(
+      () => this._clearFeedbackField(key),
+      FEEDBACK_CLEAR_DELAY,
+    );
     return { ...state, [key]: action.feedback };
   }
 
-  private _clearFeedbackField = (key: 'playerFeedback' | 'enemyFeedback') => {
-    this.store.update(s => ({ ...s, [key]: null }));
+  private _clearFeedbackField = (key: "playerFeedback" | "enemyFeedback") => {
+    this.store.update((s) => ({ ...s, [key]: null }));
   };
 
-  private _endAnimLater(flag: 'isAttacking' | 'isEnemyAttacking'): void {
+  private _endAnimLater(flag: "isAttacking" | "isEnemyAttacking"): void {
     this._later(() => {
-      this.store.update(s => ({ ...s, [flag]: false }));
+      this.store.update((s) => ({ ...s, [flag]: false }));
     }, ANIMATION_END_DELAY);
   }
 
@@ -752,7 +908,11 @@ export class BattleStore {
     this.savedChampions.set(this.championRepository.list());
   };
 
-  public saveImportedChampion = (monster: Monster, regionIndex = 0, regionName = 'Importé'): void => {
+  public saveImportedChampion = (
+    monster: Monster,
+    regionIndex = 0,
+    regionName = "Importé",
+  ): void => {
     this.championRepository.saveChampion(monster, regionIndex, regionName);
     this.savedChampions.set(this.championRepository.list());
   };
@@ -771,7 +931,7 @@ export class BattleStore {
 
   public getAvailableMoves = (): Move[] => {
     let currentMonster: Monster | null = null;
-    const unsub = this.store.subscribe(s => {
+    const unsub = this.store.subscribe((s) => {
       currentMonster = s.playerMonster;
     });
     unsub();
@@ -780,7 +940,7 @@ export class BattleStore {
   };
 
   public setPlayerMoves = (newMoves: Move[]): void => {
-    this.store.update(state => {
+    this.store.update((state) => {
       if (!state.playerMonster) return state;
       state.playerMonster.setMoves(newMoves);
       this._persistState(state);
@@ -791,9 +951,10 @@ export class BattleStore {
 
   /** Annule tous les timers en vol (round, animations, feedback) — newRun/load/startRun. */
   private _clearTimers(): void {
-    this.pendingTimers.forEach(timer => clearTimeout(timer));
+    this.pendingTimers.forEach((timer) => clearTimeout(timer));
     this.pendingTimers.clear();
-    for (const key of ['playerFeedback', 'enemyFeedback'] as const) {
+    this.roundEndScheduled = false;
+    for (const key of ["playerFeedback", "enemyFeedback"] as const) {
       if (this.feedbackTimers[key]) {
         clearTimeout(this.feedbackTimers[key]!);
         this.feedbackTimers[key] = undefined;
@@ -807,7 +968,11 @@ export class BattleStore {
   private _persistState(state: BattleState): void {
     if (!state.playerMonster) return;
 
-    if (state.run.phase === 'starter' || state.run.phase === 'runover' || state.run.phase === 'victory') {
+    if (
+      state.run.phase === "starter" ||
+      state.run.phase === "runover" ||
+      state.run.phase === "victory"
+    ) {
       this._clearSaved();
       return;
     }
@@ -816,7 +981,9 @@ export class BattleStore {
       version: SAVE_VERSION,
       savedAt: Date.now(),
       playerMonster: MonsterIO.toSnapshot(state.playerMonster),
-      enemyMonster: state.enemyMonster ? MonsterIO.toSnapshot(state.enemyMonster) : undefined,
+      enemyMonster: state.enemyMonster
+        ? MonsterIO.toSnapshot(state.enemyMonster)
+        : undefined,
       run: state.run,
     };
     this.saveRepository.save(save);
@@ -832,7 +999,7 @@ export class BattleStore {
 export function createBattleStore(
   controller: BattleController,
   saveRepository: SaveRepository,
-  championRepository: ChampionRepository
+  championRepository: ChampionRepository,
 ): BattleStore {
   return new BattleStore(controller, saveRepository, championRepository);
 }

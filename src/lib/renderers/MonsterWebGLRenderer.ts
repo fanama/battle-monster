@@ -705,36 +705,39 @@ export class MonsterWebGLRenderer {
     addSphere(mesh, 0.28, 0.16, 0, 0.11, 0.115, 0.105, p.body);
 
     // 10. Bras : deux cylindres par membre (bras puis avant-bras), main au bout.
-    // Bras (épaule → coude)
-    addCylinder(mesh, -0.29, 0.13, 0, -0.33, -0.12, 0.02, 0.078, p.body);
-    addCylinder(mesh, 0.29, 0.13, 0, 0.33, -0.12, 0.02, 0.078, p.body);
-    // Coude
-    addSphere(mesh, -0.33, -0.13, 0.02, 0.078, 0.078, 0.075, p.body);
-    addSphere(mesh, 0.33, -0.13, 0.02, 0.078, 0.078, 0.075, p.body);
-    // Avant-bras (coude → poignet)
-    addCylinder(mesh, -0.33, -0.15, 0.02, -0.35, -0.34, 0.04, 0.066, p.body);
-    addCylinder(mesh, 0.33, -0.15, 0.02, 0.35, -0.34, 0.04, 0.066, p.body);
-    // Mains
-    addSphere(mesh, -0.35, -0.39, 0.05, 0.082, 0.082, 0.072, p.body);
-    addSphere(mesh, 0.35, -0.39, 0.05, 0.082, 0.082, 0.072, p.body);
+    // POSITION DE COMBAT : le bras descend en s'écartant du corps, puis
+    // l'avant-bras remonte vers l'intérieur — poings remontés à hauteur du
+    // menton (garde de boxeur), coudes pliés et écartés du torse.
+    // Bras (épaule → coude, vers le bas et l'extérieur)
+    addCylinder(mesh, -0.29, 0.12, 0.02, -0.42, -0.06, 0.06, 0.078, p.body);
+    addCylinder(mesh, 0.29, 0.12, 0.02, 0.42, -0.06, 0.06, 0.078, p.body);
+    // Coude (pli de l'avant-bras)
+    addSphere(mesh, -0.42, -0.06, 0.06, 0.078, 0.078, 0.075, p.body);
+    addSphere(mesh, 0.42, -0.06, 0.06, 0.078, 0.078, 0.075, p.body);
+    // Avant-bras (coude → poignet : remonte vers l'avant et l'intérieur)
+    addCylinder(mesh, -0.41, -0.03, 0.06, -0.28, 0.16, 0.12, 0.066, p.body);
+    addCylinder(mesh, 0.41, -0.03, 0.06, 0.28, 0.16, 0.12, 0.066, p.body);
+    // Poings relevés devant la face
+    addSphere(mesh, -0.26, 0.20, 0.13, 0.085, 0.085, 0.08, p.body);
+    addSphere(mesh, 0.26, 0.20, 0.13, 0.085, 0.085, 0.08, p.body);
 
     // 11. Hanches (articulations) puis jambes en deux cylindres (cuisse,
     // tibia) : les membres restent entièrement cylindriques, seul le pied
     // est un volume aplati pour porter le poids sur le sol.
     addSphere(mesh, -0.13, -0.34, 0, 0.105, 0.105, 0.10, p.body);
     addSphere(mesh, 0.13, -0.34, 0, 0.105, 0.105, 0.10, p.body);
-    // Cuisse (hanche → genou)
-    addCylinder(mesh, -0.13, -0.36, 0, -0.145, -0.54, 0.005, 0.098, p.body);
-    addCylinder(mesh, 0.13, -0.36, 0, 0.145, -0.54, 0.005, 0.098, p.body);
-    // Genou
-    addSphere(mesh, -0.145, -0.55, 0.005, 0.09, 0.085, 0.085, p.body);
-    addSphere(mesh, 0.145, -0.55, 0.005, 0.09, 0.085, 0.085, p.body);
+    // Cuisse (hanche → genou : s'écarte pour élargir l'assise)
+    addCylinder(mesh, -0.13, -0.36, 0, -0.25, -0.53, 0.02, 0.098, p.body);
+    addCylinder(mesh, 0.13, -0.36, 0, 0.25, -0.53, 0.02, 0.098, p.body);
+    // Genou (garde fléchie)
+    addSphere(mesh, -0.25, -0.54, 0.02, 0.09, 0.085, 0.085, p.body);
+    addSphere(mesh, 0.25, -0.54, 0.02, 0.09, 0.085, 0.085, p.body);
     // Tibia (genou → cheville)
-    addCylinder(mesh, -0.145, -0.57, 0.005, -0.15, -0.72, 0.01, 0.082, p.body);
-    addCylinder(mesh, 0.145, -0.57, 0.005, 0.15, -0.72, 0.01, 0.082, p.body);
+    addCylinder(mesh, -0.25, -0.56, 0.02, -0.28, -0.72, 0.01, 0.082, p.body);
+    addCylinder(mesh, 0.25, -0.56, 0.02, 0.28, -0.72, 0.01, 0.082, p.body);
     // Pieds (orientés vers l'avant)
-    addSphere(mesh, -0.15, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
-    addSphere(mesh, 0.15, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
+    addSphere(mesh, -0.28, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
+    addSphere(mesh, 0.28, -0.78, 0.07, 0.115, 0.07, 0.16, p.body);
 
     // 12. Appendices élémentaires 3D (Cornes, Oreilles, Ailes, Queue)
     // Réancrés sur la silhouette humanoïde : base des appendices de tête sur

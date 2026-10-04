@@ -15,6 +15,13 @@
   export let isAttacking: boolean = false;
   export let lastMove: Move | null = null;
   export let feedback: CombatFeedback | null = null;
+  // `card` : panneau encadré (fiche de monstre). `stage` : combattant posé sur
+  // la scène de combat, sans cadre — les barres de vie sont dans le HUD.
+  export let variant: "card" | "stage" = "card";
+  // Issue du round : déclenche la célébration ou le malaise du monstre.
+  // Pendant ce temps, l'écran suivant n'est pas encore affiché (voir
+  // `ROUND_END_DELAY` dans battleStore).
+  export let outcome: "victory" | "defeat" | null = null;
 
   // Panneau de stats complet (joueur) — repliable.
   let showStats = false;
@@ -40,19 +47,37 @@
 
   $: isHit = feedback && (feedback.kind === 'damage' || feedback.kind === 'fumble' || feedback.kind === 'miss');
   $: isDamageTaken = feedback && feedback.kind === 'damage';
-  $: isUtilityMove = lastMove && lastMove.power === 0;
+  /**
+   * Famille d'animation du coup en cours : détermine lequel des trois jeux
+   * d'animations est joué :
+   *  - `melee`   : attaque physique — charge au corps à corps vers l'adversaire
+   *  - `ranged`  : attaque magique à distance — recul de préparation puis
+   *                 projection du bras (le coup part sans contact)
+   *  - `utility` : soin ou buff — canalisation sur place, sans déplacement
+   */
+  $: attackKind = !isAttacking || !lastMove
+    ? null
+    : lastMove.power === 0
+      ? 'utility'
+      : lastMove.isPhysical
+        ? 'melee'
+        : 'ranged';
   $: moveType = lastMove?.type ?? monster?.type ?? 'normal';
 </script>
 
 <div
-  class:attack-player={isAttacking && isPlayer && !isUtilityMove}
-  class:attack-enemy={isAttacking && !isPlayer && !isUtilityMove}
-  class:jump-animation={isAttacking && isUtilityMove}
+  class:attack-melee-player={attackKind === 'melee' && isPlayer}
+  class:attack-melee-enemy={attackKind === 'melee' && !isPlayer}
+  class:attack-ranged-player={attackKind === 'ranged' && isPlayer}
+  class:attack-ranged-enemy={attackKind === 'ranged' && !isPlayer}
+  class:attack-utility={attackKind === 'utility'}
+  class:outcome-victory={outcome === 'victory'}
+  class:outcome-defeat={outcome === 'defeat'}
   class:shake={!!isDamageTaken}
   class:shake-crit={!!(isHit && feedback?.isCrit)}
   class="
-    {monsterStyles.container.base}
-    {isPlayer ? monsterStyles.container.player : monsterStyles.container.enemy}
+    {variant === 'stage' ? monsterStyles.container.stage : monsterStyles.container.base}
+    {variant === 'card' ? (isPlayer ? monsterStyles.container.player : monsterStyles.container.enemy) : ''}
     relative
   "
 >
@@ -101,13 +126,38 @@
     {/if}
 
     <!-- Bandeau dégradé coloré selon le type -->
-    <div class="h-1 md:h-1.5 w-full {tc.gradient}"></div>
+    {#if variant === 'card'}
+      <div class="h-1 md:h-1.5 w-full {tc.gradient}"></div>
+    {/if}
 
-    <div class={monsterStyles.spriteSection.wrapper} style="background: {tc.ambient}">
-      <div class={monsterStyles.spriteSection.overlay}></div>
+    <!-- Scène : sprite transparent (le décor est fourni par l'arène) -->
+    <div
+      class={variant === 'stage'
+        ? 'relative w-full h-40 xs:h-52 sm:h-60 md:h-72 flex items-end justify-center overflow-visible'
+        : monsterStyles.spriteSection.wrapper}
+      style={variant === 'card' ? `background: ${tc.ambient}` : ''}
+    >
+      {#if variant === 'card'}
+        <div class={monsterStyles.spriteSection.overlay}></div>
+      {/if}
       <SpriteDisplayer {monster} {isPlayer} />
     </div>
 
+    <!-- Ombre portée : ancre le combattant sur le sol de la scène -->
+    {#if variant === 'stage'}
+      <div class="{monsterStyles.stageShadow.base} mt-0.5"></div>
+      <div
+        class="mt-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider
+          {isPlayer
+            ? 'border-sky-500/50 bg-sky-950/80 text-sky-200'
+            : 'border-rose-500/50 bg-rose-950/80 text-rose-200'}"
+      >
+        {monster.name}
+        <span class="opacity-70">· Niv. {monster.level}</span>
+      </div>
+    {/if}
+
+    {#if variant === 'card'}
     <div
       class="{monsterStyles.nameTag.wrapper_base} {isPlayer
         ? monsterStyles.nameTag.wrapper_player
@@ -235,6 +285,7 @@
         {/if}
       {/if}
     </div>
+    {/if}
   {:else}
     <div
       class="flex h-full items-center justify-center text-stone-500 opacity-50"
@@ -245,66 +296,6 @@
 </div>
 
 <style>
-  /* --- Attaques physiques & magiques (Lunge vers l'adversaire) --- */
-  /* Le joueur (à gauche) se projette vers la droite */
-  .attack-player {
-    animation: attack-lunge-player 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
-    z-index: 25;
-  }
-
-  /* L'ennemi (à droite) se projette vers la gauche */
-  .attack-enemy {
-    animation: attack-lunge-enemy 0.38s cubic-bezier(0.34, 1.3, 0.64, 1);
-    z-index: 25;
-  }
-
-  /* --- Capacité de soutien / soin / buff (Saut vertical) --- */
-  .jump-animation {
-    animation: hop-up 0.42s ease-in-out;
-  }
-
-  @keyframes attack-lunge-player {
-    0% {
-      transform: translateX(0);
-    }
-    35% {
-      transform: translateX(clamp(24px, 36%, 65px)) scale(1.08);
-    }
-    70% {
-      transform: translateX(-4%);
-    }
-    100% {
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes attack-lunge-enemy {
-    0% {
-      transform: translateX(0);
-    }
-    35% {
-      transform: translateX(clamp(-65px, -36%, -24px)) scale(1.08);
-    }
-    70% {
-      transform: translateX(4%);
-    }
-    100% {
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes hop-up {
-    0% {
-      transform: translateY(0);
-    }
-    40% {
-      transform: translateY(-28px) scale(1.08);
-    }
-    100% {
-      transform: translateY(0);
-    }
-  }
-
   @keyframes attack-pulse {
     0%, 100% { transform: translateY(0) scale(1); }
     50% { transform: translateY(-4px) scale(1.05); }
@@ -337,6 +328,122 @@
     20% { transform: translate(-10px, 5px) scale(1.08); }
     45% { transform: translate(9px, -5px) scale(1.05); }
     70% { transform: translate(-5px, 2px) scale(1.02); }
+  }
+  /* Les animations d’attaque sont déclarées APRÈS `.shake` : à spécificité
+     égale, la dernière règle CSS gagne. Un monstre qui frappe reçoit aussi un
+     feedback « damage » (donc la classe .shake) : sans cet ordre, la réaction
+     aux dégâts masquerait l’animation d’attaque sur tous les coups réussis. */
+  /* =========================================================================
+     TROIS ANIMATIONS D'ATTAQUE
+     1. Physique  — charge au corps à corps, on fonce sur l'adversaire
+     2. À distance — recul de préparation puis projection (le bras part)
+     3. Soin/Buff  — canalisation sur place, sans déplacement
+     Chaque famille est déclinée en version « joueur » et « ennemi » (miroir).
+     ========================================================================= */
+
+  /* --- 1. ATTAQUE PHYSIQUE (corps à corps) --- */
+  .attack-melee-player {
+    animation: melee-player 0.36s cubic-bezier(0.3, 1.2, 0.5, 1);
+    z-index: 25;
+  }
+
+  .attack-melee-enemy {
+    animation: melee-enemy 0.36s cubic-bezier(0.3, 1.2, 0.5, 1);
+    z-index: 25;
+  }
+
+  /* Petit-armement en arrière, puis charge franche vers l'avant. */
+  @keyframes melee-player {
+    0% { transform: translateX(0) scale(1); }
+    18% { transform: translateX(-7px) scale(0.97); }
+    46% { transform: translateX(clamp(26px, 38%, 70px)) scale(1.1); }
+    72% { transform: translateX(-3px) scale(1); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  @keyframes melee-enemy {
+    0% { transform: translateX(0) scale(1); }
+    18% { transform: translateX(7px) scale(0.97); }
+    46% { transform: translateX(clamp(-70px, -38%, -26px)) scale(1.1); }
+    72% { transform: translateX(3px) scale(1); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  /* --- 2. ATTAQUE À DISTANCE (magique) --- */
+  .attack-ranged-player {
+    animation: ranged-player 0.46s ease-out;
+    z-index: 24;
+  }
+
+  .attack-ranged-enemy {
+    animation: ranged-enemy 0.46s ease-out;
+    z-index: 24;
+  }
+
+  /* On recule pour armer, puis on se redresse vers l'avant : le coup part sans contact. */
+  @keyframes ranged-player {
+    0% { transform: translateX(0) scale(1); }
+    26% { transform: translateX(-15px) scale(0.93); }
+    55% { transform: translateX(clamp(9px, 15%, 26px)) scale(1.05); }
+    78% { transform: translateX(-2px) scale(1); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  @keyframes ranged-enemy {
+    0% { transform: translateX(0) scale(1); }
+    26% { transform: translateX(15px) scale(0.93); }
+    55% { transform: translateX(clamp(-26px, -15%, -9px)) scale(1.05); }
+    78% { transform: translateX(2px) scale(1); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  /* --- 3. SOIN / BUFF (canalisation) --- */
+  /* Pas de déplacement : le monstre reste ancré et « charge » l'effet. */
+  .attack-utility {
+    animation: channel-utility 0.6s ease-in-out;
+    z-index: 23;
+  }
+
+  @keyframes channel-utility {
+    0% { transform: translateY(0) scale(1); filter: brightness(1); }
+    38% { transform: translateY(-11px) scale(1.05); filter: brightness(1.22); }
+    68% { transform: translateY(-4px) scale(1.01); filter: brightness(1.08); }
+    100% { transform: translateY(0) scale(1); filter: brightness(1); }
+  }
+
+
+  /* =========================================================================
+     FIN DE ROUND : VICTOIRE / DÉFAITE
+     Déclarées après les animations d’attaque et après `.shake` : un monstre
+     qui frappe le coup fatal reçoit encore la classe `.shake`, et cette
+     dernière ne doit pas masquer la célébration.
+     ========================================================================= */
+  /* Le vainqueur rebondit et s’illumine. */
+  .outcome-victory {
+    animation: celebrate-victory 1.5s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+    z-index: 26;
+  }
+
+  @keyframes celebrate-victory {
+    0% { transform: translateY(0) scale(1); filter: brightness(1); }
+    18% { transform: translateY(4px) scale(0.94); }
+    40% { transform: translateY(-26px) scale(1.1); filter: brightness(1.35); }
+    58% { transform: translateY(0) scale(0.98); filter: brightness(1.05); }
+    72% { transform: translateY(-10px) scale(1.04); filter: brightness(1.18); }
+    100% { transform: translateY(0) scale(1); filter: brightness(1); }
+  }
+
+  /* Le perdant s’affaisse, bascule et s’efface. */
+  .outcome-defeat {
+    animation: slump-defeat 1.8s ease-out both;
+    z-index: 22;
+  }
+
+  @keyframes slump-defeat {
+    0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; filter: grayscale(0); }
+    22% { transform: translateY(6px) rotate(0deg) scale(0.97); opacity: 1; }
+    55% { transform: translateY(10px) rotate(-7deg) scale(0.92); opacity: 0.75; filter: grayscale(0.7); }
+    100% { transform: translateY(14px) rotate(-11deg) scale(0.88); opacity: 0.4; filter: grayscale(1); }
   }
 
   /* --- Flash lumineux sur la cible frappée --- */

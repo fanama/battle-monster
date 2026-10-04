@@ -181,10 +181,10 @@ describe('Épaules et membres cylindriques', () => {
 
   test('chaque bras est fait de deux cylindres (bras + avant-bras)', () => {
     const upper = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *0\.13, *0, *-?[\d.]+, *-0\.12/g,
+      /addCylinder\(mesh, *-?[\d.]+, *0\.12, *0\.02, *-?[\d.]+, *-0\.06/g,
     );
     const fore = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.15, *0\.02, *-?[\d.]+, *-0\.34/g,
+      /addCylinder\(mesh, *-?[\d.]+, *-0\.03, *0\.06, *-?[\d.]+, *0\.16/g,
     );
     expect(upper, 'bras supérieur').toHaveLength(2);
     expect(fore, 'avant-bras').toHaveLength(2);
@@ -192,19 +192,47 @@ describe('Épaules et membres cylindriques', () => {
 
   test('chaque jambe est faite de deux cylindres (cuisse + tibia)', () => {
     const thigh = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.36, *0, *-?[\d.]+, *-0\.54/g,
+      /addCylinder\(mesh, *-?[\d.]+, *-0\.36, *0, *-?[\d.]+, *-0\.53/g,
     );
     const shin = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.57, *0\.005, *-?[\d.]+, *-0\.72/g,
+      /addCylinder\(mesh, *-?[\d.]+, *-0\.56, *0\.02, *-?[\d.]+, *-0\.72/g,
     );
     expect(thigh, 'cuisse').toHaveLength(2);
     expect(shin, 'tibia').toHaveLength(2);
   });
 
+  test('les poings sont remontés en garde, pas pendants le long du corps', () => {
+    // Poings à y = 0.20 : au niveau du menton (bas du crâne à 0.24), donc
+    // nettement au-dessus de la taille et des hanches (y = -0.34).
+    const fists = BODY_SRC.match(
+      /addSphere\(mesh, *-?[\d.]+, *0\.20, *0\.13, *0\.085/g,
+    );
+    expect(fists).toHaveLength(2);
+    expect(0.2).toBeGreaterThan(-0.34);
+  });
+
+  test('les coudes sont pliés : avant-bras remontant vers le haut', () => {
+    // L’avant-bras part du coude (y = -0.03) vers le poignet (y = 0.16) :
+    // il monte, ce qui characterizes la garde.
+    const m = /addCylinder\(mesh, *-?[\d.]+, *(-0\.03), *0\.06, *-?[\d.]+, *(0\.16)/.exec(
+      BODY_SRC,
+    );
+    expect(m).not.toBeNull();
+    expect(Number(m![2])).toBeGreaterThan(Number(m![1]));
+  });
+
+  test('les jambes sont écartées : assise de combat élargie', () => {
+    const knee = /addSphere\(mesh, *(-?[\d.]+), *-0\.54/.exec(BODY_SRC);
+    const hip = /addSphere\(mesh, *(-?[\d.]+), *-0\.34, *0,/.exec(BODY_SRC);
+    expect(knee).not.toBeNull();
+    // Le genou est plus écarté que la hanche : l'assise est élargie.
+    expect(Math.abs(Number(knee![1]))).toBeGreaterThan(Math.abs(Number(hip![1])));
+  });
+
   test('aucun segment de membre n’est construit avec une sphère', () => {
     // Seules les articulations (épaule, coude, genou, main, pied) sont des
     // sphères ; les segments entre elles doivent être des cylindres.
-    for (const forbidden of ['0.29, 0.13', '-0.33, -0.12', '0.13, -0.36']) {
+    for (const forbidden of ['0.29, 0.12', '-0.42, -0.06', '0.13, -0.36']) {
       const sphere = new RegExp(
         `addSphere\\(mesh, *-?[\\d.]+, *${forbidden.replace(/[.\-]/g, '\\$&')}`,
       );
