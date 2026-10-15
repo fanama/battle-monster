@@ -5,10 +5,13 @@
   import { monsterStyles } from "../../styles/monsterStyles";
   import type { Move } from "../../../core/entities/Move";
   import { TYPE_LABELS, STAT_LABELS } from "../../../core/entities/Move";
-  import { abilityModifier } from "../../../core/entities/Monster";
+  import {
+    abilityModifier,
+  } from "../../../core/entities/Monster";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import type { CombatFeedback } from "../../../core/services/BattleEngine";
+  import type { StageAction } from "../../renderers/MonsterWebGLRenderer";
 
   export let monster: Monster | null | undefined;
   export let isPlayer: boolean;
@@ -63,6 +66,61 @@
         ? 'melee'
         : 'ranged';
   $: moveType = lastMove?.type ?? monster?.type ?? 'normal';
+
+  /**
+   * Projectile élémentaire (attaque à distance) : couleur hex du type, amenée
+   * via le CSS custom property `--proj`. Le cœur de l'orbe la reflète et la
+   * traînée la lit par `currentColor` (le parent porte `style="color: …"`).
+   */
+  const PROJECTILE_HEX: Record<string, string> = {
+    fire: '#f97316',
+    water: '#38bdf8',
+    grass: '#4ade80',
+    electric: '#facc15',
+    rock: '#d6d3d1',
+    normal: '#e7e5e4',
+  };
+  $: projectileColor = PROJECTILE_HEX[moveType] ?? PROJECTILE_HEX.normal!;
+
+  /**
+   * Action articulée 3D (squelette) : même source de vérité que les familles
+   * CSS ci-dessus — le CSS translate le corps entier (charge), le rig 3D
+   * anime les bras/buste/jambes autour des pivots.
+   *
+   * Priorité : attaque en cours > réaction au coup subi (blocage réactive,
+   * amplitudé selon la CA et le critique) > issue du round (victoire/défaite)
+   * > garde + idle.
+   */
+  $: stageAction = variant === 'stage' ? computeStageAction() : null;
+
+  function computeStageAction(): StageAction | null {
+    if (isAttacking && lastMove) {
+      if (!attackKind) return null;
+      const kind: StageAction['kind'] =
+        attackKind === 'utility' ? 'channel'
+        : attackKind === 'melee' ? 'melee'
+        : 'ranged';
+      return { kind, intensity: 1 + (feedback?.isCrit ? 0.25 : 0) };
+    }
+
+    // Réaction au coup subi : garde réactive avec tremblement modulé par la
+    // CA (plus la cible est « blindée », plus le blocage tient) et le statut
+    // de critique reçu.
+    if (feedback && feedback.kind === 'damage' && monster) {
+      const acRatio = Math.min(1, Math.max(0, (monster.getAC() - 8) / 16));
+      return {
+        kind: 'block',
+        intensity: 0.55 + acRatio * 0.45 + (feedback.isCrit ? 0.3 : 0),
+      };
+    }
+
+    // Issue du round : la pose anime les bras pendant que le CSS s'occupe
+    // du bandeau et de l'échelle du monstre.
+    if (outcome === 'victory') return { kind: 'victory' };
+    if (outcome === 'defeat') return { kind: 'defeat' };
+
+    return null;
+  }
 </script>
 
 <div
@@ -130,18 +188,42 @@
       <div class="h-1 md:h-1.5 w-full {tc.gradient}"></div>
     {/if}
 
-    <!-- Scène : sprite transparent (le décor est fourni par l'arène) -->
-    <div
-      class={variant === 'stage'
-        ? 'relative w-full h-40 xs:h-52 sm:h-60 md:h-72 flex items-end justify-center overflow-visible'
-        : monsterStyles.spriteSection.wrapper}
-      style={variant === 'card' ? `background: ${tc.ambient}` : ''}
-    >
-      {#if variant === 'card'}
-        <div class={monsterStyles.spriteSection.overlay}></div>
-      {/if}
-      <SpriteDisplayer {monster} {isPlayer} />
-    </div>
+  <!-- Scène : sprite transparent (le décor est fourni par l'arène) -->
+  <div
+    class={variant === 'stage'
+      ? 'relative w-full h-40 xs:h-52 sm:h-60 md:h-72 flex items-end justify-center overflow-visible'
+      : monsterStyles.spriteSection.wrapper}
+    style={variant === 'card' ? `background: ${tc.ambient}` : ''}
+  >
+    {#if variant === 'card'}
+      <div class={monsterStyles.spriteSection.overlay}></div>
+    {/if}
+    <!-- PROJECTILE : attaque à distance — l'orbe traverse l'arène du corps du
+         lanceur vers la zone adverse (voir keyframes projectile-*). -->
+    {#if variant === 'stage' && attackKind === 'ranged' && isAttacking}
+      <div
+        class="projectile-fx absolute z-[45] pointer-events-none h-3 w-3 "
+        class:projectile-fx-player={isPlayer}
+        class:projectile-fx-enemy={!isPlayer}
+        style="color: {projectileColor};"
+        aria-hidden="true"
+      >
+        <!-- Halo : lueur du type -->
+        <div
+          class="absolute -inset-3 rounded-full opacity-70"
+          style="background: radial-gradient(circle, {projectileColor}55 0%, transparent 70%);"
+        ></div>
+        <!-- Traînée : queue lumineuse inversée par camp -->
+        <div class="projectile-tail absolute top-1/2 h-[3px] w-12 -translate-y-1/2 rounded-full"></div>
+        <!-- Cœur incandescent -->
+        <div
+          class="absolute inset-[1px] rounded-full"
+          style="background: {projectileColor}; box-shadow: 0 0 10px 2px {projectileColor}cc, inset 0 0 3px 1px rgba(255,255,255,0.9);"
+        ></div>
+      </div>
+    {/if}
+    <SpriteDisplayer {monster} {isPlayer} {stageAction} />
+  </div>
 
     <!-- Ombre portée : ancre le combattant sur le sol de la scène -->
     {#if variant === 'stage'}
@@ -224,14 +306,16 @@
               {monster.experience} / {monster.experienceToNextLevel}
             </span>
           </div>
-          <div class="w-full bg-stone-700 rounded-full h-1.5 shadow-inner overflow-hidden">
+          <div class="w-full bg-stone-700 rounded-full h-2 shadow-inner overflow-hidden relative">
             <div
-              class="h-1.5 rounded-full bg-gradient-to-r from-sky-600 to-cyan-400"
+              class="h-2 rounded-full bg-gradient-to-r from-sky-600 to-cyan-400 transition-[width] duration-700 ease-out relative"
               style="width: {Math.min(
                 100,
                 (monster.experience / monster.experienceToNextLevel) * 100,
               )}%"
-            ></div>
+            >
+              <span class="absolute inset-x-1 top-[1px] h-[35%] rounded-full bg-white/30" aria-hidden="true"></span>
+            </div>
           </div>
         </div>
       {/if}
@@ -341,22 +425,27 @@
      Chaque famille est déclinée en version « joueur » et « ennemi » (miroir).
      ========================================================================= */
 
+  /* Durées étirées pour le beat lisible (attaque 3D ~620-900 ms) : le CSS
+     translate le corps entier, le rig 3D anime les bras/buste/jambes. */
   /* --- 1. ATTAQUE PHYSIQUE (corps à corps) --- */
   .attack-melee-player {
-    animation: melee-player 0.36s cubic-bezier(0.3, 1.2, 0.5, 1);
+    animation: melee-player 0.62s cubic-bezier(0.3, 1.2, 0.5, 1);
     z-index: 25;
   }
 
   .attack-melee-enemy {
-    animation: melee-enemy 0.36s cubic-bezier(0.3, 1.2, 0.5, 1);
+    animation: melee-enemy 0.62s cubic-bezier(0.3, 1.2, 0.5, 1);
     z-index: 25;
   }
 
-  /* Petit-armement en arrière, puis charge franche vers l'avant. */
+  /* Petit-armement en arrière, puis charge franche : au sommet de la charge
+     le corps est propulsé à ~46 % de son conteneur, soit jusqu'au contact de
+     l'adversaire (les deux camps chargent symétriquement, les corps se
+     croisent au port). Le recul réarme ensuite la garde. */
   @keyframes melee-player {
     0% { transform: translateX(0) scale(1); }
     18% { transform: translateX(-7px) scale(0.97); }
-    46% { transform: translateX(clamp(26px, 38%, 70px)) scale(1.1); }
+    46% { transform: translateX(clamp(38px, 46%, 84px)) scale(1.08); }
     72% { transform: translateX(-3px) scale(1); }
     100% { transform: translateX(0) scale(1); }
   }
@@ -364,23 +453,24 @@
   @keyframes melee-enemy {
     0% { transform: translateX(0) scale(1); }
     18% { transform: translateX(7px) scale(0.97); }
-    46% { transform: translateX(clamp(-70px, -38%, -26px)) scale(1.1); }
+    46% { transform: translateX(clamp(-84px, -46%, -38px)) scale(1.08); }
     72% { transform: translateX(3px) scale(1); }
     100% { transform: translateX(0) scale(1); }
   }
 
   /* --- 2. ATTAQUE À DISTANCE (magique) --- */
+  /* On recule pour armer, puis on se redresse vers l'avant : le coup part
+     sans contact, PORTÉ PAR LE PROJECTILE (voir `.projectile-fx-*` ci-dessous,
+     déclenché en même temps que la classe ranged). */
   .attack-ranged-player {
-    animation: ranged-player 0.46s ease-out;
+    animation: ranged-player 0.72s ease-out;
     z-index: 24;
   }
 
   .attack-ranged-enemy {
-    animation: ranged-enemy 0.46s ease-out;
+    animation: ranged-enemy 0.72s ease-out;
     z-index: 24;
   }
-
-  /* On recule pour armer, puis on se redresse vers l'avant : le coup part sans contact. */
   @keyframes ranged-player {
     0% { transform: translateX(0) scale(1); }
     26% { transform: translateX(-15px) scale(0.93); }
@@ -397,10 +487,52 @@
     100% { transform: translateX(0) scale(1); }
   }
 
+  /* --- Projectile élémentaire (attaque à distance) ---
+     Un orbe de la couleur du type part du corps du lanceur, passe au-dessus de
+     la scène (petite courbe) et atteint la zone de l'adversaire (115 % de son
+     propre conteneur : il franchit le gap central). Chronométré sur
+     l'animation ranged (0.72 s total : 0.28 s d'armement, puis vol de 0.44 s,
+     l'impact coïncide avec la fin de la frappe). À l'atterrissage, le
+     hit-flash / VFX d'impact du défenseur (déjà codés) prennent le relais. */
+  .projectile-fx-player {
+    animation: projectile-player 0.44s cubic-bezier(0.25, 0.6, 0.4, 1) 0.28s both;
+  }
+
+  .projectile-fx-enemy {
+    animation: projectile-enemy 0.44s cubic-bezier(0.25, 0.6, 0.4, 1) 0.28s both;
+  }
+
+  @keyframes projectile-player {
+    0% { left: 40%; top: 38%; opacity: 0; transform: scale(0.5); }
+    14% { opacity: 1; transform: scale(1); }
+    52% { top: 26%; }
+    86% { opacity: 0.95; }
+    100% { left: 115%; top: 40%; opacity: 0; transform: scale(1.2); }
+  }
+
+  @keyframes projectile-enemy {
+    0% { right: 40%; top: 38%; opacity: 0; transform: scale(0.5); }
+    14% { opacity: 1; transform: scale(1); }
+    52% { top: 26%; }
+    86% { opacity: 0.95; }
+    100% { right: 115%; top: 40%; opacity: 0; transform: scale(1.2); }
+  }
+
+  /* Traînée du projectile : derrière (côté opposé à la direction de vol). */
+  .projectile-fx-player .projectile-tail {
+    right: 96%;
+    background: linear-gradient(90deg, transparent, currentColor 70%);
+  }
+
+  .projectile-fx-enemy .projectile-tail {
+    left: 96%;
+    background: linear-gradient(270deg, transparent, currentColor 70%);
+  }
+
   /* --- 3. SOIN / BUFF (canalisation) --- */
   /* Pas de déplacement : le monstre reste ancré et « charge » l'effet. */
   .attack-utility {
-    animation: channel-utility 0.6s ease-in-out;
+    animation: channel-utility 0.9s ease-in-out;
     z-index: 23;
   }
 

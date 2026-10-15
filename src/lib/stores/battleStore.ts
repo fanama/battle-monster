@@ -13,6 +13,12 @@ import {
   RELIC_CATALOG,
 } from "../../core/entities/Relic";
 import { STARTER_INVENTORY } from "../../core/entities/Consumable";
+import {
+  EQUIPMENT_SLOTS,
+  dedupeEquipmentBag,
+  type Equipment,
+  type EquipmentSlot,
+} from "../../core/entities/Equipment";
 import { REGIONS } from "../../core/entities/Region";
 import {
   generateRegionMap,
@@ -31,10 +37,14 @@ import {
   type ChampionRepository,
   type SavedChampion,
 } from "../../core/services/ports";
+import { playSound } from "../audio/gameAudio";
+import { fireCelebration } from "./juiceStore";
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
-const ENEMY_TURN_DELAY = 1200;
-const ANIMATION_END_DELAY = 550;
+// Étirés pour la lisibilité des animations 3D articulées (attaque ~620-750 ms
+// avec armement + impact, canalisation ~900 ms).
+const ENEMY_TURN_DELAY = 1250;
+const ANIMATION_END_DELAY = 950;
 const FEEDBACK_CLEAR_DELAY = 1250;
 /**
  * Temps laissé à l'animation de victoire/défaite avant d'afficher l'écran
@@ -136,6 +146,9 @@ export class BattleStore {
         item: { ...slot.item },
         quantity: slot.quantity,
       })),
+      /** Roguelike choisi : l'équipement est effacé — chaque run se ré-équipe. */
+      equipmentBag: [],
+      equipOffers: null,
     };
   }
 
@@ -155,6 +168,7 @@ export class BattleStore {
       shopStock: null,
       bossBattle: false,
       relicOffers: null,
+      equipOffers: null,
     };
   }
 
@@ -164,6 +178,12 @@ export class BattleStore {
     this._clearTimers();
     const run = this._startNewRegion(0, this._newRunState());
     const region = REGIONS[0];
+
+    // Roguelike choisi : chaque run se ré-équipe. Si le champion part d'une
+    // fiche sauvegardée avec des pièces portées, celles-ci sont déséquipées
+    // (les stats des pièces lui restent gravées via la sauvegarde du
+    // panthéon, pas doubled : unequip inverse exactement l'effet de pose).
+    for (const slot of EQUIPMENT_SLOTS) monster.unequip(slot);
 
     const state: BattleState = {
       ...this._getInitialState(),
@@ -208,12 +228,33 @@ export class BattleStore {
           item: { ...slot.item },
           quantity: slot.quantity,
         })),
+      // Sacoche d'équipements (capacités signature) : restaure le bag DÉ-DU-PÉ
+      // (une pièce = un exemplaire) — d'anciennes sauvegardes (recouvrement
+      // drop/offre) pouvaient contenir des ids dupliqués, mortels pour un
+      // `each` keyé à l'affichage. Les pièces portées vivent déjà dans le
+      // champ `equipped` du monstre, restauré par `MonsterIO.fromSnapshot`.
+      equipmentBag: dedupeEquipmentBag(save.run.equipmentBag ?? []),
+      // Offres d'équipement : dé-du-plées elles aussi (même clé `each` de
+      // l'écran de butin) — une sauvegarde ancienne pouvait les dupliquer.
+      equipOffers: save.run.equipOffers
+        ? dedupeEquipmentBag(save.run.equipOffers)
+        : null,
       shopStock:
         save.run.shopStock &&
         save.run.shopStock.some((i) => i.kind === "consumable")
           ? save.run.shopStock
           : save.run.phase === "shop"
-            ? rollShopStock(RELIC_CATALOG.length)
+            ? rollShopStock(
+                RELIC_CATALOG.length,
+                undefined,
+                save.run.regionIndex,
+                2,
+                (save.run.relics ?? []).map((r) => r.id),
+                [
+                  ...dedupeEquipmentBag(save.run.equipmentBag ?? []).map((p) => p.id),
+                  ...player.getEquippedList().map((p) => p.id),
+                ],
+              )
             : save.run.shopStock,
     };
 
@@ -322,10 +363,18 @@ export class BattleStore {
         defender: enemy,
         move,
         attackerSide: "player",
-        damagePercent: relicDamagePercent(state.run.relics),
-        lifestealPercent: relicLifestealPercent(state.run.relics),
-        critRange: relicMaxCritRange(state.run.relics),
-        experiencePercent: relicExperiencePercent(state.run.relics),
+        // Reliques **+ équipement porté** : les chiffres de la fiche viennent
+        // de la possession effective du monstre (sacoche = inerte).
+        damagePercent:
+          relicDamagePercent(state.run.relics) + player.equipmentDamagePercent(),
+        lifestealPercent:
+          relicLifestealPercent(state.run.relics) + player.equipmentLifestealPercent(),
+        critRange: Math.max(
+          relicMaxCritRange(state.run.relics),
+          player.equipmentCritRange(),
+        ),
+        experiencePercent:
+          relicExperiencePercent(state.run.relics) + player.equipmentExperiencePercent(),
       });
       const enemyTurnOpts = (): PlayTurnOptions => ({
         attacker: enemy,
@@ -361,12 +410,13 @@ export class BattleStore {
           s = this._applyRoundWinner(s);
         } else {
           // Coup fatal du premier frappeur : on diffère l'écran suivant.
-          this._scheduleRoundEnd(s.winner!);
+          this._scheduleRoundEnd(s.winner!, this._isBossFightOf(s));
         }
         this._endAnimLater("isAttacking");
         if (followUp) this._enemyLater(enemyTurnOpts);
         if (first.leveledUp) {
           const wait = followUp ? 0 : ROUND_END_DELAY;
+          this._levelUpJuice();
           this._later(
             () => this.openMoveModal(true),
             wait + ANIMATION_END_DELAY + 300,
@@ -391,7 +441,7 @@ export class BattleStore {
       if (followUp) {
         s = this._applyRoundWinner(s);
       } else {
-        this._scheduleRoundEnd(s.winner!);
+        this._scheduleRoundEnd(s.winner!, this._isBossFightOf(s));
       }
       this._endAnimLater("isEnemyAttacking");
       if (followUp) this._playerLater(playerTurnOpts);
@@ -441,6 +491,7 @@ export class BattleStore {
           enemyFeedback: null,
         };
         this._persistState(next);
+        playSound("encounter");
         return next;
       }
 
@@ -459,8 +510,17 @@ export class BattleStore {
         });
       }
 
-      // Boutique : TOUT le catalogue est accessible (toutes les reliques + potion).
-      const shopStock = rollShopStock(RELIC_CATALOG.length);
+      // Boutique : TOUT le catalogue est accessible (toutes les reliques + potion
+      // + un rayon d'équipements adapté à la profondeur de la région).
+      // Anti-doublon : reliques ET pièces déjà possédées (sacoche + portées).
+      const shopStock = rollShopStock(
+        RELIC_CATALOG.length,
+        undefined,
+        run.regionIndex,
+        2,
+        run.relics.map((r) => r.id),
+        this._ownedEquipmentIds(state),
+      );
       const next: BattleState = {
         ...state,
         run: { ...run, phase: "shop", shopStock, path },
@@ -477,6 +537,26 @@ export class BattleStore {
       const run = state.run;
       if (run.phase !== "shop" || !state.playerMonster || !run.shopStock)
         return state;
+      // Anti-doublon (plafonds de reliques, unicité par pièce) : une relique
+      // déjà possédée n'est plus vendable — refus explicite, or intact.
+      // Anti-doublon : relique déjà possédée, OU pièce d'équipement déjà
+      // détenue (sacoche + portée). Refus explicite, or intact.
+      const alreadyOwned =
+        (item.kind === "relic" &&
+          item.relic != null &&
+          this.controller.ownsRelic(run, item.relic.id)) ||
+        (item.kind === "equipment" &&
+          item.equipment != null &&
+          this._ownedEquipmentIds(state).includes(item.equipment.id));
+      if (alreadyOwned) {
+        return {
+          ...state,
+          logs: [
+            ...state.logs,
+            `⛔ ${item.icon} ${item.label} est déjà en votre possession — l'anti-doublon s'y oppose.`,
+          ],
+        };
+      }
       if (item.bought || run.gold < item.price) return state;
 
       const player = state.playerMonster;
@@ -504,6 +584,11 @@ export class BattleStore {
           item.relic,
         );
         logs = [...logs, `✨ ${item.icon} ${item.label} achetée.`];
+      } else if (item.kind === "equipment" && item.equipment) {
+        // La pièce rejoint la SACOCHE (inactive) : elle ne s'active qu'une
+        // fois portée via la fenêtre « Équipement ».
+        nextRun = this.controller.addEquipmentToBag(nextRun, item.equipment);
+        logs = [...logs, `🎒 ${item.icon} ${item.label} ajouté(e) à la sacoche d'équipement.`];
       }
 
       nextRun = { ...nextRun, gold: nextRun.gold - item.price };
@@ -512,6 +597,7 @@ export class BattleStore {
       }
       const next: BattleState = { ...state, run: nextRun, logs };
       this._persistState(next);
+      playSound("coin");
       return next;
     });
   };
@@ -576,16 +662,166 @@ export class BattleStore {
     });
   };
 
+  /**
+   * L'équipement se gère **hors combat uniquement** : les phases où c'est
+   * permis sont la carte (map) et la boutique (shop).
+   */
+  private _canManageEquipment(state: BattleState): boolean {
+    return (
+      (state.run.phase === "map" || state.run.phase === "shop") &&
+      !!state.playerMonster
+    );
+  }
+
+  /**
+   * Ids de TOUTES les pièces d'équipement détenues : sacoche + emplacements
+   * portés. Sert d'anti-doublon (boutique) — une pièce possédée n'est jamais
+   * re-proposée, ce qui évite les clés dupliquées côté affichage.
+   */
+  private _ownedEquipmentIds(state: BattleState): string[] {
+    return [
+      ...dedupeEquipmentBag(state.run.equipmentBag ?? []).map((p) => p.id),
+      ...(state.playerMonster?.getEquippedList() ?? []).map((p) => p.id),
+    ];
+  }
+
+  /** Porte une pièce de la sacoche (remplace la pièce de l'emplacement). */
+  public equipPiece = (equipmentId: string) => {
+    this.store.update((state) => {
+      if (!this._canManageEquipment(state) || !state.playerMonster) return state;
+      const result = this.controller.equipFromBag(
+        state.playerMonster,
+        state.run,
+        equipmentId,
+      );
+      if (!result) return state;
+      const next: BattleState = {
+        ...state,
+        run: result.run,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /** Retire une pièce portée (la remet dans la sacoche). */
+  public unequipPiece = (slot: EquipmentSlot) => {
+    this.store.update((state) => {
+      if (!this._canManageEquipment(state) || !state.playerMonster) return state;
+      const result = this.controller.unequipToBag(
+        state.playerMonster,
+        state.run,
+        slot,
+      );
+      if (!result) return state;
+      const next: BattleState = {
+        ...state,
+        run: result.run,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /**
+   * Carte « pièce d'équipement » des offres mixées : la pièce rejoint la
+   * sacoche (inactive tant que non portée) et TOUTE l'offre s'évapore.
+   */
+  public pickEquipOffer = (piece: Equipment) => {
+    this.store.update((state) => {
+      if (state.run.phase !== "relic" || !state.playerMonster) return state;
+      if (!state.run.equipOffers?.some(p => p.id === piece.id)) return state;
+      // Filet anti-doublon : une pièce déjà détenue (sacoche + portée) ne peut
+      // pas entrer une seconde fois — l'offre s'évapore en le signalant, ce qui
+      // garantit que la sacoche reste sans clé dupliquée à l'affichage.
+      if (this._ownedEquipmentIds(state).includes(piece.id)) {
+        const runRefused: RunState = {
+          ...state.run,
+          phase: "relic",
+          relicOffers: null,
+          equipOffers: null,
+        };
+        const sRefused: BattleState = {
+          ...state,
+          run: runRefused,
+          enemyMonster: null,
+          winner: null,
+          isPlayerTurn: true,
+          logs: [
+            ...state.logs,
+            `⛔ ${piece.icon} ${piece.name} : déjà en votre possession — l'offre s'évapore.`,
+          ],
+          playerLastMove: null,
+          enemyLastMove: null,
+          playerFeedback: null,
+          enemyFeedback: null,
+        };
+        return this._afterRelicDecision(sRefused);
+      }
+      const run: RunState = {
+        ...this.controller.addEquipmentToBag(state.run, piece),
+        phase: "relic",
+        relicOffers: null,
+        equipOffers: null,
+      };
+      const s0: BattleState = {
+        ...state,
+        run,
+        enemyMonster: null,
+        winner: null,
+        isPlayerTurn: true,
+        logs: [
+          ...state.logs,
+          `🧰 ${piece.icon} ${piece.name} rejoint la sacoche d'équipement (portez-la hors combat).`,
+        ],
+        playerLastMove: null,
+        enemyLastMove: null,
+        playerFeedback: null,
+        enemyFeedback: null,
+      };
+      this._persistState(s0);
+      return this._afterRelicDecision(s0);
+    });
+  };
+
   // --- Roguelike transition actions ---
 
   public pickRelic = (relic: Relic) => {
     this.store.update((state) => {
       if (state.run.phase !== "relic" || !state.playerMonster) return state;
+
+      // Anti-doublon (unicité par pièce) : si la relique est déjà possédée
+      // (ne devrait plus arriver — les tirages excluent le possédé —, la
+      // garde subsiste), l'offre retombe en « passe ton chemin ».
+      if (this.controller.ownsRelic(state.run, relic.id)) {
+        const runSkipped: RunState = { ...state.run, phase: "relic", relicOffers: null };
+        const sSkipped: BattleState = {
+          ...state,
+          run: runSkipped,
+          enemyMonster: null,
+          winner: null,
+          isPlayerTurn: true,
+          logs: [
+            ...state.logs,
+            `⛔ ${relic.name} : déjà en votre possession — l'offre s'évapore.`,
+          ],
+          playerLastMove: null,
+          enemyLastMove: null,
+          playerFeedback: null,
+          enemyFeedback: null,
+        };
+        return this._afterRelicDecision(sSkipped);
+      }
+
       const player = state.playerMonster;
 
       this.controller.applyRelic(player, relic);
+      // Le choix se porte sur UNE carte : reliques et pièces d'équipement
+      // s'évaporent ensemble (offres mixées, réglage 2026-10).
       const run = this.controller.grantRelic(
-        { ...state.run, phase: "relic", relicOffers: null },
+        { ...state.run, phase: "relic", relicOffers: null, equipOffers: null },
         relic,
       );
 
@@ -611,7 +847,7 @@ export class BattleStore {
   public skipRelic = () => {
     this.store.update((state) => {
       if (state.run.phase !== "relic" || !state.playerMonster) return state;
-      const run: RunState = { ...state.run, phase: "relic", relicOffers: null };
+      const run: RunState = { ...state.run, phase: "relic", relicOffers: null, equipOffers: null };
       const s0: BattleState = {
         ...state,
         run,
@@ -739,6 +975,7 @@ export class BattleStore {
       enemyFeedback: null,
     };
     this._persistState(next);
+    playSound("encounter");
     return next;
   }
 
@@ -754,15 +991,12 @@ export class BattleStore {
 
     if (isBoss && state.playerMonster) {
       const region = REGIONS[state.run.regionIndex];
-      // Fin de région : les objets à effet durable sont fusionnés dans le
-      // monstre enregistré (copie indépendante — l'inventaire du run reste
-      // intact, on ne peut donc pas récupérer deux fois le même bonus).
-      const championMonster = this.controller.fuseDurableItemsIntoMonster(
-        state.playerMonster,
-        state.run,
-      );
+      // Fin de région : le champion est gravé TEL QUEL. Les objets à effet
+      // durable ne sont plus fusionnés — ils tombent désormais en pièces
+      // d'équipement (capacités signature), portées via la fenêtre
+      // « Équipement » (seules les pièces portées sont actives).
       this.championRepository.saveChampion(
-        championMonster,
+        state.playerMonster,
         state.run.regionIndex,
         region.name,
       );
@@ -770,14 +1004,6 @@ export class BattleStore {
       result.logs.push(
         `🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`,
       );
-      const fusedCount = (state.run.inventory ?? [])
-        .filter(slot => slot.item.statBoost || slot.item.acBonus)
-        .reduce((sum, slot) => sum + slot.quantity, 0);
-      if (fusedCount > 0) {
-        result.logs.push(
-          `💎 ${fusedCount} objet(s) à effet durable fusionné(s) dans la fiche du champion.`,
-        );
-      }
     }
 
     return { ...state, run: result.run, logs: [...state.logs, ...result.logs] };
@@ -790,10 +1016,17 @@ export class BattleStore {
    * dans la même frame que le coup fatal.
    *
    * Idempotent : un second round ne peut pas empiler deux programmations.
+   * Juice : au passage, on déclenche la fanfare de victoire / le tir de
+   * défaite et, sur un boss, l'overlay de célébration (confettis) qui
+   * couvrira précisément le délai de `ROUND_END_DELAY`.
    */
-  private _scheduleRoundEnd(winner: "player" | "enemy"): void {
+  private _scheduleRoundEnd(winner: "player" | "enemy", isBoss?: boolean): void {
     if (this.roundEndScheduled) return;
     this.roundEndScheduled = true;
+    playSound(winner === "player" ? "victory" : "defeat");
+    if (winner === "player" && isBoss) {
+      fireCelebration("bossClear", ROUND_END_DELAY);
+    }
     this._later(() => {
       this.store.update((state) => {
         // Le round a pu être relancé entre-temps : on ne forge rien.
@@ -802,6 +1035,20 @@ export class BattleStore {
         return this._applyRoundWinner(state);
       });
     }, ROUND_END_DELAY);
+  }
+
+  /**
+   * Vrai si le combat courant est une confrontation de boss de région.
+   * Utilisé par les appels à `_scheduleRoundEnd` pour saquer le juice.
+   */
+  private _isBossFightOf(state: BattleState): boolean {
+    return state.isBossFight || state.run.bossBattle;
+  }
+
+  /** Juice de montée de niveau : fanfare 8 bits + overlay de célébration. */
+  private _levelUpJuice(): void {
+    playSound("levelup");
+    fireCelebration("levelup", 1600);
   }
 
   /** Termine la partie selon le vainqueur du round (une seule application). */
@@ -842,7 +1089,7 @@ export class BattleStore {
         if (s.winner) {
           // Le coup fatal : on laisse l'animation de victoire/défaite se jouer
           // avant de basculer sur l'écran suivant.
-          this._scheduleRoundEnd(s.winner);
+          this._scheduleRoundEnd(s.winner, this._isBossFightOf(s));
         } else {
           s = this._applyRoundWinner(s);
         }
@@ -874,7 +1121,7 @@ export class BattleStore {
         };
         s = this._attachFeedback(s, action);
         if (s.winner) {
-          this._scheduleRoundEnd(s.winner);
+          this._scheduleRoundEnd(s.winner, this._isBossFightOf(s));
         } else {
           s = this._applyRoundWinner(s);
         }
@@ -885,6 +1132,7 @@ export class BattleStore {
         // Si le coup a été fatal, la fenêtre de niveau s'ouvre après
         // l'animation de fin de round, pas dessus.
         const wait = roundWinner ? ROUND_END_DELAY : 0;
+        this._levelUpJuice();
         this._later(
           () => this.openMoveModal(true),
           wait + ANIMATION_END_DELAY + 300,
@@ -907,6 +1155,14 @@ export class BattleStore {
       () => this._clearFeedbackField(key),
       FEEDBACK_CLEAR_DELAY,
     );
+    // Juice sonore : chaque feedback porte son bruit (coup, critique, soin…) —
+    // un seul point de branchement couvre tous les chemins du combat.
+    const fb = action.feedback;
+    if (fb.kind === "damage") playSound(fb.isCrit ? "crit" : "hit");
+    else if (fb.kind === "heal") playSound("heal");
+    else if (fb.kind === "buff") playSound("buff");
+    else if (fb.kind === "fumble") playSound("fumble");
+    else if (fb.kind === "miss") playSound("miss");
     return { ...state, [key]: action.feedback };
   }
 

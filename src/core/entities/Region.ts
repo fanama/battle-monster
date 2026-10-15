@@ -42,7 +42,10 @@ export const REGIONS: RegionDef[] = [
     minLevel: 2,
     maxLevel: 4,
     types: ['grass', 'normal', 'fire'],
-    threat: 0.65,
+    // Menaces rétarées (réglage Dragon Quest 2026-10) : après le rebasing du
+    // champion (Instinct 12) et du tirage d'ennemi (8..12), le joueur est
+    // structurellement en avant — la difficulté vient désormais des menaces.
+    threat: 0.82,
     wildLevelOffsets: [-2, -1, 0],
     bossName: 'Gardien des Racines',
     bossType: 'grass',
@@ -55,7 +58,7 @@ export const REGIONS: RegionDef[] = [
     minLevel: 4,
     maxLevel: 7,
     types: ['water', 'grass', 'normal', 'electric'],
-    threat: 0.75,
+    threat: 0.84,
     wildLevelOffsets: [-1, -1, 0],
     bossName: 'Reine des Flots',
     bossType: 'water',
@@ -68,7 +71,7 @@ export const REGIONS: RegionDef[] = [
     minLevel: 7,
     maxLevel: 10,
     types: ['fire', 'normal', 'water', 'rock'],
-    threat: 0.8,
+    threat: 0.86,
     wildLevelOffsets: [-1, 0, 0],
     bossName: 'Dragon de Magma',
     bossType: 'fire',
@@ -81,7 +84,7 @@ export const REGIONS: RegionDef[] = [
     minLevel: 10,
     maxLevel: 13,
     types: ['fire', 'water', 'grass', 'normal', 'electric', 'rock'],
-    threat: 0.85,
+    threat: 0.92,
     wildLevelOffsets: [0, 0, 1],
     bossName: 'Titan Élémentaire',
     bossType: 'normal',

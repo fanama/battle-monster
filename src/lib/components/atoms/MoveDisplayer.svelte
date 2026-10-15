@@ -4,6 +4,7 @@
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
+  import { playSound } from "../../audio/gameAudio";
 
   export let move: Move;
   export let targetType: MonsterType | null = null;
@@ -56,7 +57,11 @@
 
 <button
   disabled={!canClick}
-  on:click={onClick}
+  on:click={() => {
+    if (!canClick) return;
+    playSound("select");
+    onClick();
+  }}
   class={`
     relative flex flex-col gap-1.5
     w-full min-w-0
@@ -64,13 +69,14 @@
     transition-all duration-300
     ${
       canClick
-        ? `${tc.cardBg} ${tc.borderStrong} text-white cursor-pointer hover:-translate-y-0.5 active:scale-95 ${tc.glow}`
+        ? `sheen ${tc.cardBg} ${tc.borderStrong} text-white cursor-pointer hover:-translate-y-0.5 active:scale-95 ${tc.glow}`
         : "border-gray-700 bg-gray-800/70 text-gray-400 cursor-default opacity-50"
     }
   `}
 >
   <!-- Filet coloré par type en haut de carte -->
   <span class="absolute top-0 inset-x-0 h-0.5 {tc.gradient}"></span>
+  <span class="sheen-target" aria-hidden="true"></span>
 
   <div class="flex items-center justify-between gap-1 md:gap-2 min-w-0">
     <span class="flex items-center gap-1.5 md:gap-2 min-w-0 flex-1">

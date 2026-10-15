@@ -39,7 +39,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="codex-title"
-      class="relative z-10 w-full max-w-3xl max-h-[88dvh] flex flex-col rounded-2xl border-2 border-amber-500/50
+      class="relative z-10 w-full max-w-3xl max-h-[88dvh] flex flex-col rounded-2xl pop-in border-2 border-amber-500/50
         bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.9)] overflow-hidden">
       <!-- Modal Header -->
       <div class="px-4 sm:px-5 py-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-900/60">

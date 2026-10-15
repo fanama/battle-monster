@@ -1,6 +1,7 @@
 import type { MonsterStat } from './Move';
 import { CONSUMABLE_CATALOG, type ConsumableItem } from './Consumable';
-export type { ConsumableItem };
+import { EQUIPMENT_CATALOG, type Equipment } from './Equipment';
+export type { ConsumableItem, Equipment };
 
 /**
  * Effets d'une relique (objet passif de run roguelike).
@@ -34,7 +35,7 @@ export interface Relic {
 }
 
 /** Article vendu en boutique. */
-export type ShopItemKind = 'relic' | 'heal' | 'consumable';
+export type ShopItemKind = 'relic' | 'heal' | 'consumable' | 'equipment';
 
 export interface ShopItem {
   id: string;
@@ -47,6 +48,8 @@ export interface ShopItem {
   relic?: Relic;
   /** Consommable vendu (si `kind === 'consumable'`). */
   consumable?: ConsumableItem;
+  /** Pièce d'équipement vendue (si `kind === 'equipment'`). */
+  equipment?: Equipment;
   /** Acheté dans la boutique courante (état local). */
   bought?: boolean;
 }
@@ -735,38 +738,75 @@ export const RELIC_CATALOG: Relic[] = [
   },
 ];
 
-/** % de dégâts supplémentaires cumulés (reliques joueur). */
+/**
+ * Plafonds des effets **cumulables** des reliques (équilibrag 2026-10).
+ *
+ * Avant ces plafonds, les reliques s'additionnaient librement : le vol de vie
+ * atteignait ~50 % avec cinq pièces d'élite (*Cristal Vampire* vaut déjà
+ * 20 % à lui seul) — les combats longs devenaient « auto-chauffe » et le jeu
+ * cessait d'être risqué. Instance roi du réglage : **legless but real**.
+ *
+ * Portée volontairement **restreinte aux reliques** : les passifs fournis
+ * par l'équipement porté (`Monster.equipment*Percent()`) ne sont PAS clampés
+ * ici — deux échelles indépendantes, choisi par design pour garder la
+ * Forge attractive. La plage de critiques, elle, est **unique par
+ * construction** (`relicMaxCritRange` prend le max, jamais une somme).
+ */
+export const RELIC_EFFECT_CAPS = {
+  /** Vol de vie cumulé maximum (%). */
+  lifestealPercent: 10,
+  /** % de dégâts infligés supplémentaires cumulés max. */
+  damagePercent: 10,
+  /** Soin de début de combat cumulé max (%). */
+  healStartPercent: 20,
+  /** % d'EXP gagnée cumulé max. */
+  experiencePercent: 25,
+} as const;
+
+/** % de dégâts supplémentaires cumulés, **plafonné** (reliques). */
 export function relicDamagePercent(relics: Relic[]): number {
-  return relics.reduce((sum, r) => sum + (r.effect.damagePercent ?? 0), 0);
+  const raw = relics.reduce((sum, r) => sum + (r.effect.damagePercent ?? 0), 0);
+  return Math.min(raw, RELIC_EFFECT_CAPS.damagePercent);
 }
 
-/** % de vol de vie cumulés (reliques joueur). */
+/** % de vol de vie cumulés, **plafonné** (reliques). */
 export function relicLifestealPercent(relics: Relic[]): number {
-  return relics.reduce((sum, r) => sum + (r.effect.lifestealPercent ?? 0), 0);
+  const raw = relics.reduce((sum, r) => sum + (r.effect.lifestealPercent ?? 0), 0);
+  return Math.min(raw, RELIC_EFFECT_CAPS.lifestealPercent);
 }
 
-/** % de PV max soignés au début de combat, cumulés. */
+/** % de PV max soignés au début de combat, cumulés **plafonné** (reliques). */
 export function relicHealStartPercent(relics: Relic[]): number {
-  return relics.reduce((sum, r) => sum + (r.effect.healStartPercent ?? 0), 0);
+  const raw = relics.reduce((sum, r) => sum + (r.effect.healStartPercent ?? 0), 0);
+  return Math.min(raw, RELIC_EFFECT_CAPS.healStartPercent);
 }
 
-/** Range de critiques le plus élargi (2 → critiques sur 19-20). */
+/** Range de critiques le plus élargi (2 → critiques sur 19-20). Unique : le
+ *  max est pris, jamais une somme — deux reliques à crit ne COUPENT pas. */
 export function relicMaxCritRange(relics: Relic[]): number {
   return relics.reduce((max, r) => Math.max(max, r.effect.critRange ?? 0), 0);
 }
 
-/** % d'EXP gagnée supplémentaire, cumulés. */
+/** % d'EXP gagnée supplémentaire, cumulés **plafonné** (reliques). */
 export function relicExperiencePercent(relics: Relic[]): number {
-  return relics.reduce((sum, r) => sum + (r.effect.experiencePercent ?? 0), 0);
+  const raw = relics.reduce((sum, r) => sum + (r.effect.experiencePercent ?? 0), 0);
+  return Math.min(raw, RELIC_EFFECT_CAPS.experiencePercent);
 }
 
 /**
  * Retourne `count` reliques rares distinctes au hasard (prix >= 90 ou relique ancienne).
  * `random` est injectable pour des tests déterministes (défaut : Math.random).
+ * `excludeRelicIds` : **anti-doublon** — les reliques déjà possédées par le
+ * run ne sont plus offertes (une même pièce ne se cumule jamais).
  */
-export function rollRareRelicOffers(count = 3, random: () => number = Math.random): Relic[] {
-  const rarePool = RELIC_CATALOG.filter(r => r.price >= 90 || r.id.startsWith('relic-ancient-'));
-  const pool = rarePool.length >= count ? [...rarePool] : [...RELIC_CATALOG];
+export function rollRareRelicOffers(
+  count = 3,
+  random: () => number = Math.random,
+  excludeRelicIds: readonly string[] = [],
+): Relic[] {
+  const owned = new Set(excludeRelicIds);
+  const rarePool = RELIC_CATALOG.filter(r => !owned.has(r.id) && (r.price >= 90 || r.id.startsWith('relic-ancient-')));
+  const pool = rarePool.length >= count ? [...rarePool] : [...RELIC_CATALOG.filter(r => !owned.has(r.id))];
   const offers: Relic[] = [];
   for (let i = 0; i < Math.min(count, pool.length); i++) {
     const index = Math.floor(random() * pool.length);
@@ -778,9 +818,15 @@ export function rollRareRelicOffers(count = 3, random: () => number = Math.rando
 /**
  * Retourne `count` reliques distinctes au hasard.
  * `random` est injectable pour des tests déterministes (défaut : Math.random).
+ * `excludeRelicIds` : anti-doublon, cf. `rollRareRelicOffers`.
  */
-export function rollRelicOffers(count = 5, random: () => number = Math.random): Relic[] {
-  const pool = [...RELIC_CATALOG];
+export function rollRelicOffers(
+  count = 5,
+  random: () => number = Math.random,
+  excludeRelicIds: readonly string[] = [],
+): Relic[] {
+  const owned = new Set(excludeRelicIds);
+  const pool = [...RELIC_CATALOG.filter(r => !owned.has(r.id))];
   const offers: Relic[] = [];
   for (let i = 0; i < Math.min(count, pool.length); i++) {
     const index = Math.floor(random() * pool.length);
@@ -791,6 +837,40 @@ export function rollRelicOffers(count = 5, random: () => number = Math.random): 
 
 /** Prix de la potion de boutique (soin total des PV). */
 export const POTION_PRICE = 30;
+
+/**
+ * Rayon d'équipements d'une boutique (capacités signature) : `count` pièces
+ * distinctes tirées dans le budget de la région (le poly s'étend avec la
+ * profondeur du run — cf. `rollEquipmentDrop`). **Anti-doublon** :
+ * `excludeIds` liste les pièces déjà possédées (sacoche + portées) — une
+ * pièce vendue deux fois créerait des clés dupliquées inexistantes.
+ */
+export function buildEquipmentShopItems(
+  regionIndex: number,
+  count = 2,
+  random: () => number = Math.random,
+  excludeIds: readonly string[] = [],
+): ShopItem[] {
+  const maxPrice = [65, 80, 95, Infinity][Math.min(3, Math.max(0, regionIndex))]!;
+  const owned = new Set(excludeIds);
+  const pool = [...EQUIPMENT_CATALOG.filter(p => !owned.has(p.id) && p.price <= maxPrice)];
+  const items: ShopItem[] = [];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const index = Math.floor(random() * pool.length);
+    const piece = pool.splice(index, 1)[0]!;
+    items.push({
+      id: `shop-${piece.id}`,
+      kind: 'equipment',
+      price: piece.price,
+      label: piece.name,
+      icon: piece.icon,
+      desc: piece.description,
+      equipment: piece,
+      bought: false,
+    });
+  }
+  return items;
+}
 
 /**
  * Construit les articles « consommables » de la boutique à partir du catalogue
@@ -812,11 +892,20 @@ export function buildConsumableShopItems(): ShopItem[] {
 
 /**
  * Génère le stock d'une boutique : reliques distinctes + 1 soin à l'auberge +
- * TOUS les objets consommables du catalogue (potions anti-statut, panacée,
- * soins de poche, élixirs).
+ * TOUS les objets consommables du catalogue + un rayon d'équipements
+ * (`equipmentCount` pièces adaptées à la profondeur de la région).
  * `random` est injectable pour des tests déterministes (défaut : Math.random).
  */
-export function rollShopStock(count = 2, random: () => number = Math.random): ShopItem[] {
+export function rollShopStock(
+  count = 2,
+  random: () => number = Math.random,
+  regionIndex = 0,
+  equipmentCount = 2,
+  /** Anti-doublon : reliques déjà possédées par le run, retirées du rayon. */
+  excludeRelicIds: readonly string[] = [],
+  /** Anti-doublon : pièces d'équipement déjà possédées (sacoche + portées). */
+  excludeEquipmentIds: readonly string[] = [],
+): ShopItem[] {
   // 1. Rayon Alchimie & Consommables (toutes les potions utiles)
   const stock: ShopItem[] = buildConsumableShopItems();
 
@@ -832,7 +921,7 @@ export function rollShopStock(count = 2, random: () => number = Math.random): Sh
   });
 
   // 3. Reliques passives distinctes
-  const relicOffers = rollRelicOffers(count, random);
+  const relicOffers = rollRelicOffers(count, random, excludeRelicIds);
   for (const relic of relicOffers) {
     stock.push({
       id: `shop-${relic.id}`,
@@ -845,6 +934,9 @@ export function rollShopStock(count = 2, random: () => number = Math.random): Sh
       bought: false,
     });
   }
+
+  // 4. Rayon Forge & Équipements (capacités signature)
+  stock.push(...buildEquipmentShopItems(regionIndex, equipmentCount, random, excludeEquipmentIds));
 
   return stock;
 }

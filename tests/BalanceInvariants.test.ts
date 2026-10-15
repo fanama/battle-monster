@@ -209,9 +209,11 @@ describe('Échelle des ennemis', () => {
   test('Un ennemi au niveau de création a le même budget qu’un champion fraîchement forgé', () => {
     const factory = new RandomEnemyFactory(moves, () => 0.5);
     const enemy = factory.createRandomEnemy(CREATION_LEVEL, { type: 'fire' });
-    // Tirage `8 + 0.5 × 7` = 11 sur les six caractéristiques, hors Charisme.
-    expect(enemy.strength).toBe(11);
-    expect(enemy.constitution).toBe(11);
+    // Tirage `8 + 0.5 × 5` = 10 — bande 8..12 (réglage Dragon Quest 2026-10) :
+    // à niveau égal le champion garde un léger avantage statistique, la
+    // difficulté vient des menaces régionales, pas d'un désavantage invisible.
+    expect(enemy.strength).toBe(10);
+    expect(enemy.constitution).toBe(10);
     // Le Charisme est une stat de relique : un sauvage n'en profite pas.
     expect(enemy.charisma).toBe(10);
   });

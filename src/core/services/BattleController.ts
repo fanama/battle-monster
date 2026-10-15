@@ -7,12 +7,19 @@ import type { ConsumableItem, ItemOrigin } from '../entities/Consumable';
 import { CONSUMABLE_CATALOG } from '../entities/Consumable';
 import { REGIONS, type RegionDef } from '../entities/Region';
 import {
+  EQUIPMENT_CATALOG,
+  rollEquipmentDrop,
+  type Equipment,
+  type EquipmentSlot,
+} from '../entities/Equipment';
+import {
   rollRelicOffers,
   rollRareRelicOffers,
   relicHealStartPercent,
   type Relic,
 } from '../entities/Relic';
 import { BattleEngine, defaultDice, type BattleModifiers, type CombatFeedback, type Dice } from './BattleEngine';
+import { type EnemyArchetype } from '../../infra/repositories/monsterFactory';
 import type { EnemyFactory, MoveProvider } from './ports';
 
 // Réglages roguelike (orchestration, pas d'UI)
@@ -21,8 +28,8 @@ const WILD_SCORE_MULTIPLIER = 15;
 const BOSS_SCORE_BONUS = 150;
 const RELIC_SCORE_BONUS = 15;
 const WILD_GOLD_BASE = 8; // or gagné par combat sauvage : base + niveau ennemi
-/** Nombre d'objets laissés par le boss à sa défaite (seuls persistants). */
-const BOSS_LOOT_COUNT = 2;
+/** Nombre d'objets laissés par le boss à sa défaite (capacités signature). */
+const BOSS_LOOT_COUNT = 1;
 const BOSS_GOLD = 60; // or gagné en battant le boss de région
 
 /**
@@ -146,6 +153,11 @@ export interface BeginRoundOptions {
  * - un seul camp soigne → il passe en premier ;
  * - les deux camps soignent, ou aucun → l'initiative tranche ;
  * - un camp est neutralisé (gel, paralysie) → l'autre joue en premier.
+ *
+ * NOTE — le soin passe avant l'initiative même si le soin du round suivant
+ * vient d'un gimmick de tank (sélection spontanée, 0.55 PV max) : la règle
+ * d'ordre reste interfacée par `enemyCanHeal`/`hasUsableHeal` — les sons de
+ * sondes évitent de gaspiller du hasard injecté.
  */
 export interface RoundPlan {
   /** Le joueur agit en premier. */
@@ -178,6 +190,25 @@ export interface VictoryResult {
  * dépendances (moteur, repository/persistance) sont injectées.
  */
 export class BattleController {
+  // --- IA ennemie : archétypes (capacités signature) ---
+
+  /**
+   * Déduit l'archétype d'un monstre **de son panel** (aucun champ sérialisé) :
+   * le panel est l'identité que le joueur peut lire sur l'écran — un
+   * Gluttor affichant trois statuts est un statuteur, peu importe comment il
+   * a été spawné. Fiable aussi après une restauration de sauvegarde.
+   */
+  private archetypeOf(moves: Move[]): EnemyArchetype {
+    const withStatus = moves.filter(m => m.statusEffect).length;
+    const heavyPhysical = moves.filter(m => m.isPhysical && m.power >= 85).length;
+    const heals = moves.filter(m => m.isHeal).length;
+    const buffs = moves.filter(m => m.statBoosts).length;
+    if (withStatus >= 3) return 'statuteur';
+    if (heavyPhysical >= 2 && heals + buffs <= 1) return 'brute';
+    if (heals >= 1 && buffs >= 1) return 'tank';
+    return 'signature';
+  }
+
   private readonly engine: BattleEngine;
   private readonly moveProvider: MoveProvider;
   private readonly enemyFactory: EnemyFactory;
@@ -229,6 +260,34 @@ export class BattleController {
       const heals = candidates.filter(m => m.isHeal);
       if (heals.length > 0) return heals[Math.floor(this.random() * heals.length)];
     }
+
+    // --- Gimmicks archétype (capacités signature) ---
+    // Déduite du panel COMPLET : la personnalité du monstre ne dépend pas des
+    // cooldowns du tour courant.
+    const archetype = this.archetypeOf(actor.moves);
+    if (archetype === 'statuteur') {
+      // Gimmick : injecter un statut tant que la cible n'est pas encore
+      // contaminée — le reste du panel (dégâts sous statut) fait le travail
+      // des tours suivants.
+      if (target.statuses.length === 0) {
+        const statuses = candidates.filter(
+          m => m.statusEffect && !target.hasStatus(m.statusEffect.type),
+        );
+        if (statuses.length > 0 && this.random() < 0.6) {
+          return statuses[Math.floor(this.random() * statuses.length)];
+        }
+      }
+    }
+    if (archetype === 'tank') {
+      // Gimmick : le soigneur garde sa réserve de soin pour la troisième
+      // passe, pas pour étaler un avantage déjà net.
+      const lowHp = actor.currentHp < actor.maxHp * 0.55;
+      const heals = candidates.filter(m => m.isHeal);
+      if (lowHp && heals.length > 0 && this.random() < 0.85) {
+        return heals[Math.floor(this.random() * heals.length)];
+      }
+    }
+    // 'brute' : le tri « tapent fort » ci-dessous EST son gimmick.
 
     // Préfère les moves qui tapent fort sur la cible (multiplicateur > 1)
     const attacking = candidates.filter(m => m.power > 0);
@@ -447,11 +506,14 @@ export class BattleController {
 
   // --- Spawn & progression de run ---
 
-  /** Prépare un combat : reset des cooldowns & statuts + soin de début (reliques). */
+  /** Prépare un combat : reset des cooldowns & statuts + soin de début
+   * (reliques **+ équipement porté** — une pièce posée sur le monstre est
+   * active, une pièce dans la sacoche ne l'est pas). */
   private prepareCombat(player: Monster, run: RunState): void {
     player.resetCooldowns();
     player.clearStatuses();
-    const healPercent = relicHealStartPercent(run.relics);
+    const healPercent =
+      relicHealStartPercent(run.relics) + player.equipmentHealStartPercent();
     if (healPercent > 0 && player.currentHp < player.maxHp) {
       player.heal(Math.floor(player.maxHp * healPercent / 100));
     }
@@ -616,8 +678,10 @@ export class BattleController {
   }
 
   /**
-   * Fige dans le monstre les objets à effet **durable** de l'inventaire.
-   *
+   * (Obsolète) Figeait dans le monstre les objets à effet **durable** de
+   * l'inventaire. Replacé par l'équipement : les objets à effet durable sont
+   * désormais des **pièces d'équipement** portées via `equipFromBag`, et le
+   * butin de boss tombe directement en pièces (cf. `handlePlayerVictory`).
    * Utilisé à la fin d'une région pour la fiche du champion : les bonus de CA
    * et de caractéristiques deviennent des traits permanents du monstre
    * enregistré. **Seuls les objets laissés par le boss** (`origin === 'boss'`)
@@ -656,6 +720,28 @@ export class BattleController {
     return fused;
   }
 
+  /**
+   * Ids de tous les équipements déjà détenus — sacoche **et** pièces portées.
+   * Alimente l'anti-doublon des tirages (drop garanti, butin de boss, offre
+   * mixte, rayon Forge) : un même id ne peut jamais apparaître deux fois.
+   */
+  private _ownedEquipmentIds(player: Monster, run: RunState): string[] {
+    return [
+      ...(run.equipmentBag ?? []).map(piece => piece.id),
+      ...player.getEquippedList().map(piece => piece.id),
+    ];
+  }
+
+  /**
+   * La relique est-elle déjà possédée par ce run ? **Anti-doublon** : une
+   * même relique ne peut être possédée qu'une fois (les offres post-combat
+   * et la boutique tirent dans le poly COMPLET, donc une relique déjà en
+   * portée peut reparvenir — elle est filtrée là, et gardé de défense ici).
+   */
+  ownsRelic(run: RunState, relicId: string): boolean {
+    return (run.relics ?? []).some(r => r.id === relicId);
+  }
+
   /** Applique une relique au monstre (stats permanentes + armure). */
   applyRelic(monster: Monster, relic: Relic): void {
     const { stat, acBonus } = relic.effect;
@@ -680,7 +766,58 @@ export class BattleController {
     };
   }
 
-    /** Tire `count` objets distincts du catalogue (butin de boss). */
+  // --- Sacoche d'équipements & portage (capacités signature) ---
+
+  /**
+   * Ajoute une pièce à la sacoche du run (inactive tant qu'elle n'est pas
+   * portée). **Idempotent** : une pièce déjà présente (même id) n'est pas
+   * ajoutée une seconde fois — garde d'unicité de dernier recours, en plus des
+   * exclusions de tirage, contre le crash `each_key_duplicate` à l'affichage.
+   */
+  addEquipmentToBag(run: RunState, piece: Equipment): RunState {
+    const bag = run.equipmentBag ?? [];
+    if (bag.some(p => p.id === piece.id)) return run;
+    return { ...run, equipmentBag: [...bag, piece] };
+  }
+
+  /**
+   * Porte une pièce de la sacoche sur le monstre (remplace celle de
+   * l'emplacement, qui retourne dans la sacoche). Hors combat uniquement —
+   * l'appelant est responsable de la vérification de phase (UI bloquée).
+   */
+  equipFromBag(
+    monster: Monster,
+    run: RunState,
+    equipmentId: string,
+  ): { run: RunState; displaced: Equipment | null; logs: string[] } | null {
+    const bag = [...(run.equipmentBag ?? [])];
+    const index = bag.findIndex(p => p.id === equipmentId);
+    if (index === -1) return null;
+    const piece = bag.splice(index, 1)[0]!;
+    const displaced = monster.equip(piece);
+    if (displaced) bag.push(displaced);
+    return {
+      run: { ...run, equipmentBag: bag },
+      displaced,
+      logs: [`${piece.icon} ${piece.name} équipé(e)${displaced ? ` — ${displaced.name} retiré(e)` : ''}.`],
+    };
+  }
+
+  /** Retire une pièce portée et la remet dans la sacoche. */
+  unequipToBag(
+    monster: Monster,
+    run: RunState,
+    slot: EquipmentSlot,
+  ): { run: RunState; logs: string[] } | null {
+    const piece = monster.unequip(slot);
+    if (!piece) return null;
+    return {
+      run: this.addEquipmentToBag(run, piece),
+      logs: [`${piece.name} remis(e) dans la sacoche.`],
+    };
+  }
+
+  /** Tire `count` objets distincts du catalogue (butin de boss). */
   private _rollBossLoot(count: number): ConsumableItem[] {
     const pool = [...CONSUMABLE_CATALOG];
     const loot: ConsumableItem[] = [];
@@ -707,13 +844,22 @@ export class BattleController {
       logs.push(`💰 +${BOSS_GOLD} or (boss).`);
       logs.push(`⚔️ ${region.name} conquise !`);
 
-      // Butin du boss : 2 objets tirés au sort dans le catalogue. Marqués
-      // `boss`, ce sont les seuls objets qui survivent d'une partie à l'autre
-      // (fusionnés dans la fiche du champion en fin de région).
+      // Butin du boss (réglage 2026-10, choix joueur) : **2 pièces
+      // garanties** tombent directement dans la sacoche (inactive tant que
+      // non portée) + un consommable courant. L'offre mixte ci-dessous
+      // offre une 3ᵉ pièce au choix. Anti-doublon : chaque tirage exclut les
+      // pièces déjà possédées (sacoche + portées).
+      const bossTaken: string[] = this._ownedEquipmentIds(player, run);
+      for (let i = 0; i < 2; i++) {
+        const piece = rollEquipmentDrop(run.regionIndex, this.random, bossTaken);
+        bossTaken.push(piece.id);
+        run = this.addEquipmentToBag(run, piece);
+        logs.push(`🎁 Le boss laisse ${piece.icon} ${piece.name} !`);
+      }
       const loot = this._rollBossLoot(BOSS_LOOT_COUNT);
       for (const item of loot) {
         run = this.addConsumableToInventory(run, item, 1, 'boss');
-        logs.push(`🎁 Le boss laisse ${item.name}.`);
+        logs.push(`🎁 Le boss laisse ${item.icon} ${item.name}.`);
       }
 
       if (run.regionIndex >= REGIONS.length - 1) {
@@ -721,8 +867,11 @@ export class BattleController {
         logs.push('★ Vous êtes le Champion ! ★');
       } else {
         run.phase = 'relic';
-        run.relicOffers = rollRareRelicOffers(3, this.random);
-        logs.push('🎁 Une relique rare vous est offerte !');
+        // Offres mixtes : 2 reliques rares (anti-doublon, le possédé exclu)
+        // + 1 pièce d'équipement au choix.
+        run.relicOffers = rollRareRelicOffers(2, this.random, run.relics.map(r => r.id));
+        run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, bossTaken)];
+        logs.push('🎁 Butin rare : une relique ou une pièce au choix !');
       }
       return { run, logs };
     }
@@ -734,9 +883,26 @@ export class BattleController {
     const goldReward = WILD_GOLD_BASE + enemy.level;
     run.gold += goldReward;
     run.phase = 'relic';
-    run.relicOffers = rollRelicOffers(3, this.random);
+    // Offres mixtes (réglage 2026-10, choix joueur) : 2 reliques + 1 pièce
+    // d'équipement à choisir. Anti-doublon : le possédé est exclu.
+    const taken: string[] = this._ownedEquipmentIds(player, run);
+    run.relicOffers = rollRelicOffers(2, this.random, run.relics.map(r => r.id));
     logs.push(`🧪 ${player.name} récupère ${heal} PV.`);
     logs.push(`💰 +${goldReward} or.`);
+
+    // Drop GARANTI d'équipement : une pièce à la fin de chaque combat
+    // (réglage 2026-10, choix joueur). Elle rejoint la sacoche — inactive
+    // tant que non portée. La QUALITÉ suit le budget de la région.
+    {
+      const dropped = rollEquipmentDrop(run.regionIndex, this.random, taken);
+      taken.push(dropped.id);
+      run = this.addEquipmentToBag(run, dropped);
+      logs.push(`🎁 Le sauvage égoutte ${dropped.icon} ${dropped.name} !`);
+    }
+
+    // La pièce offerte s'ajoute APRÈS le drop en sacoche : le bucket `taken`
+    // inclut le garanti, offrant et garanti ne peuvent jamais se doubler.
+    run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, taken)];
 
     return { run, logs };
   }

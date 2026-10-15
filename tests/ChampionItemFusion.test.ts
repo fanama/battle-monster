@@ -135,7 +135,10 @@ describe('Fusion des objets durables dans la fiche du champion', () => {
     expect(fused.armorBonus).toBe(6);
   });
 
-  test('le boss lâche bien 2 objets marqués boss', () => {
+  test("le boss lâche 2 pièces garanties + 1 consommable marqué boss (fusion remplacée)", () => {
+    // Réglage 2026-10 (choix joueur) : chaque boss laisse **2 pièces garanties**
+    // tombées DIRECTEMENT en sacoche, plus une 3ᵉ pièce à choisir dans les
+    // offres mixées. La fusion consommables est remplacée.
     let seed = 0.42;
     const ctrl = new BattleController({} as never, { random: () => seed } as never);
     const run = ctrl.handlePlayerVictory({
@@ -145,13 +148,27 @@ describe('Fusion des objets durables dans la fiche du champion', () => {
       isBossFight: true,
     });
 
-    expect(run.run.inventory).toHaveLength(2);
+    // Les 2 pièces garanties passent dans la sacoche.
+    expect(run.run.equipmentBag).toHaveLength(2);
+    for (const piece of run.run.equipmentBag!) {
+      expect(piece.id).toBeTruthy();
+      expect(piece.slot).toBeTruthy();
+      // Budget de la région 0.
+      expect(piece.price).toBeLessThanOrEqual(65);
+    }
+
+    // Offre mixte : 2 reliques rares + 1 pièce au choix.
+    expect(run.run.relicOffers).toHaveLength(2);
+    expect(run.run.equipOffers).toHaveLength(1);
+
+    // Le consommable restant est bien marqué 'boss'.
+    expect(run.run.inventory).toHaveLength(1);
     for (const slot of run.run.inventory!) {
       expect(slot.origin).toBe('boss');
     }
   });
 
-  test('un combat sauvage ne laisse aucun butin persistant', () => {
+  test('un sauvage vaincu : 1 pièce garantie + offres mixtes (2 reliques, 1 pièce)', () => {
     const ctrl = new BattleController({} as never, { random: () => 0.1 } as never);
     const run = ctrl.handlePlayerVictory({
       player: new Monster('m', 'Chef', 'fire', 5, 12, 12, 12, 12, 12, 12, [strike]),
@@ -160,6 +177,13 @@ describe('Fusion des objets durables dans la fiche du champion', () => {
       isBossFight: false,
     });
 
+    // L'inventaire de consommables reste vide (tué avant le drop).
     expect(run.run.inventory ?? []).toHaveLength(0);
+    // Drop GARANTI : une pièce rejoint la sacoche au choix (Q1 = fin de combat).
+    expect(run.run.equipmentBag).toHaveLength(1);
+    expect(run.run.equipmentBag![0]!.price).toBeLessThanOrEqual(65);
+    // Offres mixtes : 2 reliques + 1 pièce à choisir (Q2).
+    expect(run.run.relicOffers).toHaveLength(2);
+    expect(run.run.equipOffers).toHaveLength(1);
   });
 });

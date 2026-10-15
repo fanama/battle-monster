@@ -33,7 +33,7 @@
   aria-modal="true"
   aria-label="Sacoche d'aventurier">
   <div
-    class="flex flex-col w-full max-w-xl max-h-[90dvh] rounded-2xl border-2 sm:border-4 border-stone-600
+    class="flex flex-col w-full max-w-xl max-h-[90dvh] rounded-2xl pop-in border-2 sm:border-4 border-stone-600
       bg-gradient-to-b from-stone-900 via-stone-900 to-stone-950 shadow-2xl overflow-hidden">
     <!-- En-tête -->
     <div class="flex items-center justify-between gap-2 p-3.5 sm:p-4 border-b border-stone-700/80 bg-stone-900/90">

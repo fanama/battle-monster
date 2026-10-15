@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RunTab, RunTabId } from "../../runTabs";
+  import { playSound } from "../../audio/gameAudio";
 
   export let tabs: RunTab[] = [];
   export let activeTab: RunTabId;
@@ -27,7 +28,15 @@
           aria-selected={isActive}
           aria-label={tab.label}
           title={tab.label}
-          on:click={() => onSelect(tab.id)}
+          on:click={() => {
+            playSound("select");
+            onSelect(tab.id);
+          }}
+          on:mouseenter={() => {
+            // populations souris : bip sur le focus/hover plutôt qu'au clic
+            if (!(typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches && tab.id !== activeTab)) return;
+            playSound("select");
+          }}
           class="relative flex-1 min-w-0 min-h-11 flex flex-col items-center justify-center gap-0.5
             rounded-lg px-0.5 py-1.5 cursor-pointer transition-all duration-200 active:scale-95
             {isActive

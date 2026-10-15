@@ -58,7 +58,10 @@ Légende : 🐛 Bug / 🧹 Hygiène / 🎮 Gameplay / ✨ Feature / 🧪 Tests /
   4. **Catalogue** : même échelle de puissance, un soin, un buff et quatre statuts pour chaque type (les trois types sans soin et la Roche sans statut sont corrigés).
   5. **Magie vs physique** : le sort passe sur `mod(Savoir)` au lieu de `Savoir × (1 + power/120)`, qui écartait la magie du physique de 60 %.
   6. **Constitution** : d10 pour tous les types, +2 minimum d'affinité, croissance de stats normalisée (9 points/niveau pour chaque type) et points de destin répartis en tour de rôle.
-  7. **Difficulté** : `threat` et `wildLevelOffsets` par région (ramp croisante), panneau d'ennemis composé des 4 plus fortes capacités, IA qui ne gaspille plus de tour, boss à PV ×1.2.
+  7. **Difficulté** : `threat` et `wildLevelOffsets` par région (ramp croisante 0.82→0.92), panneau d'ennemis composé des 4 plus fortes capacités, IA qui ne gaspille plus de tour, boss à PV ×1.2.
+  8. **Capacités signature — archétypes de sauvages** : l'ennemi tire 8-12 par stat (+ croissance du type) et l'Instinct du champion est figé à 12 à la forge ; capacité 130 débloquée au niveau 9 (au lieu de 11) pour accélérer les duels du creux. Sauvages instancient un archétype (signature / brute / statuteur / tank, quotas de panel dans `monsterFactory`), l'IA déduit l'identité du panel et joue son gimmick (`BattleController.selectEnemyMove`), boss toujours en signature.
+  Résultat mesuré : victoire en miroir **48-79 %** (creux n7 roche 48 % = le plus dur du run), boss régionaux **57-76 %**, sauvages plus accessibles (ADN Dragon Quest), duels 4-8 rounds. Test dédié `tests/EnemyArchetypes.test.ts`.
+  9. **Plafonds des reliques (choix joueur : sévères, reliques seules, anti-doublon)** : cumulés bornés (vol de vie ≤ 10 %, dégâts ≤ +10 %, soin de début ≤ +20 %, EXP ≤ +25 %) via `RELIC_EFFECT_CAPS` ; plage de critiques unique (max, jamais somme) ; une même relique ne se possède qu'une fois (`ownsRelic` + tirages/boutique filtrés + gardes d'achat). L'équipement porté garde son échelle indépendante (hors plafond). Test dédié `tests/RelicCaps.test.ts`.
   Résultat mesuré : victoire en miroir passée de **3-35 % à 44-72 %**, combats ramenés à 3.5-10 rounds quel que soit le niveau, difficulté croissante de région en région.
 
 ---

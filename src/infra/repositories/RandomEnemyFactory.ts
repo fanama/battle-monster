@@ -4,7 +4,11 @@ import { statGrowthForType } from '../../core/entities/Monster';
 import { CREATION_CHARISMA, CREATION_LEVEL, STAT_FLOOR } from '../../core/entities/MonsterCreation';
 import type { EnemyFactory, MoveProvider } from '../../core/services/ports';
 import { MoveRepository } from './MoveRepositories';
-import { createMonsterFromDefinition, type MonsterDefinition } from './monsterFactory';
+import {
+  createMonsterFromDefinition,
+  type EnemyArchetype,
+  type MonsterDefinition,
+} from './monsterFactory';
 
 const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal', 'electric', 'rock'];
 
@@ -90,9 +94,30 @@ export class RandomEnemyFactory implements EnemyFactory {
     this.random = random;
   }
 
+  /**
+   * Tirage de l'archétype (le « signature ») d'un sauvage. Le boss de région
+   * est **toujours** en panel signature (top-4 par score) : c'est un exploit
+   * du catalogue complet, pas un gimmick aléatoire.
+   *
+   * Répartition (réglage Dragon Quest 2026-10 — « créatures aux capacités
+   * signature ») : 40 % signature, 20 % brute, 25 % statuteur, 15 % tank.
+   */
+  private rollArchetype(): EnemyArchetype {
+    const r = this.random();
+    if (r < 0.4) return 'signature';
+    if (r < 0.6) return 'brute';
+    if (r < 0.85) return 'statuteur';
+    return 'tank';
+  }
+
   createRandomEnemy(
     targetLevel: number,
-    opts: { type?: MonsterType; name?: string; statScale?: number } = {}
+    opts: {
+      type?: MonsterType;
+      name?: string;
+      statScale?: number;
+      archetype?: EnemyArchetype;
+    } = {}
   ): Monster {
     const randomType = opts.type ?? ALL_TYPES[Math.floor(this.random() * ALL_TYPES.length)];
 
@@ -135,22 +160,34 @@ export class RandomEnemyFactory implements EnemyFactory {
       newDef.stats[stat] = Math.max(STAT_FLOOR, Math.floor(grown * statScale));
     });
 
-    return createMonsterFromDefinition(newDef, this.moveProvider, this.random);
+    const archetype = opts.archetype ?? this.rollArchetype();
+    return createMonsterFromDefinition(newDef, this.moveProvider, this.random, { archetype });
   }
 
-  /** Tirage de base d'une caractéristique : même bande que la création d'un champion (8..14). */
+  /**
+   * Tirage de base d'une caractéristique : 8..12 (réglage Dragon Quest 2026-10,
+   * ancien bande 8..14). À niveau égal, le champion forgé doit garder un léger
+   * avantage statistique : c'est la base du run — la difficulté vient de la
+   * menace régionale et des boss, pas d'un désavantage invisible aggregated.
+   * Mesuré avant correction : miroir 21-39 % à niveau égal pour Fire/Roche.
+   */
   private rollStat(): number {
-    return Math.floor(8 + this.random() * 7);
+    return Math.floor(8 + this.random() * 5);
   }
 
-  /** Boss de région : monstre du type demandé, plus gros pool de PV, rang boss (XP accrue). */
+  /** Boss de région : monstre du type demandé, plus gros pool de PV, rang boss (XP accrue). Panel signature (top-4), jamais un gimmick tiré. */
   createBoss(
     level: number,
     type: MonsterType,
     name: string,
     statScale?: number
   ): Monster {
-    const boss = this.createRandomEnemy(level, { type, name, statScale });
+    const boss = this.createRandomEnemy(level, {
+      type,
+      name,
+      statScale,
+      archetype: 'signature',
+    });
     boss.maxHp = Math.floor(boss.maxHp * BOSS_HP_MULTIPLIER);
     boss.currentHp = boss.maxHp;
     boss.rank = 'boss';

@@ -275,19 +275,28 @@ function reportRegions(runs: number): void {
       Math.max(region.minLevel, level + (offsets[Math.floor(offsets.length / 2)] ?? 0)),
     );
     const wilds = region.types.map((type) => {
-      const agg = simulate(
-        rng => makePlayer('fire', level, rng),
-        rng => makeEnemy(wildLevel, type, rng, region.threat),
-        Math.floor(runs / region.types.length),
+      // Champion moyenné sur tous ses types : fixer `fire` transformait une
+      // mesure de difficulté en mesure de matchup (Feu vs boss Eau = ×0.5).
+      const perType = TYPES.map((playerType) =>
+        simulate(
+          rng => makePlayer(playerType, level, rng),
+          rng => makeEnemy(wildLevel, type, rng, region.threat),
+          Math.max(8, Math.floor(runs / region.types.length / TYPES.length)),
+        ).winRate,
       );
-      return `${type} ${pct(agg.winRate)}`;
+      const wildRate = perType.reduce((a, b) => a + b, 0) / perType.length;
+      return `${type} ${pct(wildRate)}`;
     });
     const boss = simulate(
-      rng => makePlayer('fire', level, rng),
       rng => {
-        const rng2 = rng;
-        const b = makeEnemy(Math.min(region.maxLevel + 1, level + 1), region.bossType, rng2, region.threat);
-        b.maxHp = Math.floor(b.maxHp * 1.4);
+        const playerType = TYPES[Math.floor(rng() * TYPES.length)];
+        return makePlayer(playerType, level, rng);
+      },
+      rng => {
+        const b = makeEnemy(Math.min(region.maxLevel + 1, level + 1), region.bossType, rng, region.threat);
+        // Même multiplicateur que le moteur réel (`BOSS_HP_MULTIPLIER`) :
+        // le ×1.4 hérité du rééquilibrage précédent mentait sur les boss.
+        b.maxHp = Math.floor(b.maxHp * 1.2);
         b.currentHp = b.maxHp;
         b.rank = 'boss';
         return b;
@@ -497,10 +506,71 @@ const runs = quick ? 120 : 400;
 if (which === 'all' || which === 'table') reportTypeTable();
 if (which === 'all' || which === 'table') reportTypeTable();
 if (which === 'all' || which === 'moves') reportMoves();
-if (which === 'stats') reportStats(7);
+if (which === 'stats') reportStats(Number(process.argv[3] ?? '7'));
 if (which === 'sweep') reportSweep(runs);
 if (which === 'kit') reportKitEffect(runs);
+
+/**
+ * Diagnostic — duel «impartial » : deux champions **forgés par la même usine**
+ * (miroir réel du joueur) s'affrontent. S'il est loin de 50 %, une asymétrie
+ * systématique vit dans `duel()`/le moteur (et non dans la fabrique d'ennemis).
+ */
+function reportFair(runs = 300): void {
+  console.log('\n=== Duel impartial : champion forgé vs champion forgé (usine identique) ===');
+  for (const level of [5, 7, 9, 11, 13]) {
+    for (const type of TYPES) {
+      const agg = simulate(
+        rng => makePlayer(type, level, rng),
+        rng => makePlayer(type, level, rng),
+        runs,
+      );
+      console.log(`n${String(level).padStart(2)} ${type.padEnd(9)} ${pct(agg.winRate)} / ${agg.avgRounds.toFixed(1)}r`);
+    }
+  }
+}
+/**
+ * Diagnostic — winrate du miroir par écart de stats brutes. Le miroir forgé
+ * vs usine ne tourne pas à 50 % à niveau égal : on classe chaque duel selon
+ * la somme des écarts (champion − ennemi) et on affiche un taux par tranche.
+ * Winrate biaisé même avec l'écart en faveur du champion = asymétrie
+ * mécanique (ordre du round, panels, prompteur…) ; taux monotone = problème
+ * de distribution des stats (convexité ou décentrage du tirage).
+ */
+function reportDiag(runs = 400): void {
+  console.log('\n=== Diagnostic : winrate par écart de stats (forgé vs usine) ===');
+  for (const level of [7, 9]) {
+    for (const type of ['fire', 'rock'] as const) {
+      const buckets: Record<string, { w: number; n: number }> = {};
+      for (let i = 0; i < runs; i++) {
+        const pRng = makeRng(i * 7919 + 13);
+        const eRng = makeRng(i * 7919 + 104729);
+        const dRng = makeRng(i * 7919 + 99991);
+        const p = makePlayer(type, level, pRng);
+        const e = makeEnemy(level, type, eRng);
+        const margin =
+          (p.strength - e.strength) +
+          (p.speed - e.speed) +
+          (p.constitution - e.constitution) +
+          (p.wisdom - e.wisdom) +
+          (p.instinct - e.instinct);
+        const key =
+          margin >= 10 ? '≥+10' : margin >= 0 ? '+0..9' : margin >= -10 ? '-10..-1' : '≤-10';
+        const b = buckets[key] ?? (buckets[key] = { w: 0, n: 0 });
+        b.n++;
+        if (duel(p, e, dRng).playerWon) b.w++;
+      }
+      console.log(
+        `n${level} ${type} : ` +
+          Object.entries(buckets)
+            .map(([k, v]) => `${k}:${v.n} (${pct(v.w / v.n)})`)
+            .join('  '),
+      );
+    }
+  }
+}
 if (which === 'calibrate') reportCalibrate(runs);
+if (which === 'fair') reportFair(runs);
+if (which === 'diag') reportDiag(runs);
 if (which === 'all' || which === 'mirror') reportMirror(runs);
 if (which === 'all' || which === 'matrix') reportMatrix(Math.floor(runs / 2));
 if (which === 'all' || which === 'regions') reportRegions(runs);

@@ -5,6 +5,7 @@
   import type { Monster } from "../../../core/entities/Monster";
   import type { InventorySlot } from "../../../core/entities/Consumable";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
+  import { EQUIPMENT_SLOT_LABELS } from "../../../core/entities/Equipment";
 
   export let stock: ShopItem[] | null;
   export let gold: number;
@@ -13,7 +14,7 @@
   export let onBuy: (item: ShopItem) => void;
   export let onLeave: () => void;
 
-  type CategoryTab = "all"| "consumable"| "relic"| "heal";
+  type CategoryTab = "all"| "consumable"| "relic"| "heal"| "equipment";
   type SortOption = "default"| "price-asc"| "price-desc"| "affordable"| "type";
   type StatFilter = "all"| "strength"| "speed"| "constitution"| "wisdom"| "instinct"| "charisma"| "ac"| "heal"| "combat";
 
@@ -36,11 +37,13 @@
   $: consumablesCount = effectiveStock.filter((i) => i.kind === "consumable").length;
   $: relicsCount = effectiveStock.filter((i) => i.kind === "relic").length;
   $: healCount = effectiveStock.filter((i) => i.kind === "heal").length;
+  $: equipmentCount = effectiveStock.filter((i) => i.kind === "equipment").length;
 
   $: CATEGORY_TABS = [
     { id: "all" as CategoryTab, label: "Tout le Magasin", icon: "🌟", count: effectiveStock.length },
     { id: "consumable" as CategoryTab, label: "Potions & Sacoche", icon: "🎒", count: consumablesCount },
     { id: "relic" as CategoryTab, label: "Reliques Passives", icon: "💍", count: relicsCount },
+    { id: "equipment" as CategoryTab, label: "Forge & Équipements", icon: "🧰", count: equipmentCount },
     { id: "heal" as CategoryTab, label: "Auberge", icon: "🏨", count: healCount },
   ];
 
@@ -92,6 +95,13 @@
   }
 
   function matchesStatFilter(item: ShopItem, filter: StatFilter): boolean {
+    // Les pièces d'équipement sont filtrées par leurs propres effets.
+    if (item.kind === "equipment" && item.equipment) {
+      const effect = item.equipment.effect;
+      if (filter === "heal") return Boolean(effect.healStartPercent);
+      if (filter === "ac") return Boolean(effect.acBonus);
+      return Boolean(effect.stat?.[filter as "strength"]);
+    }
     if (filter === "all") return true;
     if (filter === "heal") {
       return (
@@ -159,7 +169,7 @@
         });
       case "type":
         return list.sort((a, b) => {
-          const order = { consumable: 0, relic: 1, heal: 2 };
+          const order = { consumable: 0, relic: 1, equipment: 2, heal: 3 };
           if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
           return a.label.localeCompare(b.label);
         });
@@ -172,6 +182,7 @@
   $: consumableItems = filteredAndSortedStock.filter((i) => i.kind === "consumable");
   $: relicItems = filteredAndSortedStock.filter((i) => i.kind === "relic");
   $: healItems = filteredAndSortedStock.filter((i) => i.kind === "heal");
+  $: equipmentItems = filteredAndSortedStock.filter((i) => i.kind === "equipment");
 </script>
 
 <div
@@ -523,6 +534,78 @@
                         transition-all active:scale-95 shadow-sm
                         {affordable
                           ? 'border-amber-300 bg-gradient-to-r from-amber-400 to-amber-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(251,191,36,0.3)]'
+                          : 'border-stone-700 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
+                      {affordable ? `Acheter · ${item.price} 🪙` : gold < item.price ? `Manque ${item.price - gold} 🪙` : "Épuisé"}
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
+      <!-- RAYON FORGE & ÉQUIPEMENTS (capacités signature) -->
+      {#if equipmentItems.length > 0 && (activeCategory === "all" || activeCategory === "equipment")}
+        <section class="rounded-2xl border-2 border-sky-600/40 bg-gradient-to-b from-sky-950/20 via-stone-900/90 to-stone-950 p-3 sm:p-4 shadow-md">
+          <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-sky-800/40">
+            <span class="text-2xl p-1 rounded-lg bg-sky-500/20 border border-sky-400/40">🧰</span>
+            <div>
+              <h3 class="font-serif font-bold text-sm sm:text-base text-sky-200 tracking-wider uppercase">
+                Forge & Équipements
+              </h3>
+              <p class="text-xs text-stone-400">
+                Pièces portées sur le monstre (Arme / Armure / Casque / Bouclier / Accessoire).
+                Une pièce achetée rejoint la <span class="text-sky-300 font-bold">sacoche — inactive tant qu'elle n'est pas portée</span>.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {#each equipmentItems as item}
+              {@const affordable = !item.bought && gold >= item.price}
+              {@const piece = item.equipment}
+              <div
+                class="flex flex-col justify-between rounded-xl border-2 p-3 text-center transition-all shadow-md
+                  {item.bought
+                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200/70'
+                    : affordable
+                      ? 'border-sky-500/50 bg-gradient-to-b from-sky-950/25 to-stone-900/80 hover:border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
+                      : 'border-stone-800 bg-stone-900/60 text-stone-400'}">
+                <div>
+                  <div class="w-12 h-12 mx-auto rounded-xl bg-black/50 border border-sky-600/40 flex items-center justify-center text-3xl mb-2 shadow-inner">
+                    {item.icon}
+                  </div>
+
+                  <div class="flex items-center justify-center gap-1.5 mb-1.5 flex-wrap">
+                    <span class="text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded border border-sky-500/40 bg-sky-950/40 text-sky-300">
+                      {EQUIPMENT_SLOT_LABELS[piece!.slot]}
+                    </span>
+                  </div>
+
+                  <h4 class="font-serif font-bold text-sm tracking-wide text-stone-100">
+                    {item.label}
+                  </h4>
+
+                  <p class="text-xs mt-1 text-stone-300/80 leading-relaxed min-h-[36px]">
+                    {item.desc}
+                  </p>
+                </div>
+
+                <div class="mt-3 pt-2.5 border-t border-stone-800">
+                  {#if item.bought}
+                    <span class="block py-1.5 rounded-lg border border-emerald-400/40 bg-emerald-950/60 font-mono font-bold text-emerald-300 text-xs uppercase tracking-widest shadow-inner">
+                      Acheté ✓
+                    </span>
+                  {:else}
+                    <button
+                      type="button"
+                      on:click={() => onBuy(item)}
+                      disabled={!affordable}
+                      class="w-full py-2 rounded-lg border font-mono font-bold text-xs uppercase tracking-widest
+                        transition-all active:scale-95 shadow-sm
+                        {affordable
+                          ? 'border-sky-300 bg-gradient-to-r from-sky-400 to-blue-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(56,189,248,0.3)]'
                           : 'border-stone-700 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
                       {affordable ? `Acheter · ${item.price} 🪙` : gold < item.price ? `Manque ${item.price - gold} 🪙` : "Épuisé"}
                     </button>

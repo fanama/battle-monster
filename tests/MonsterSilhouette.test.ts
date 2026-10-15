@@ -1,249 +1,240 @@
 import { describe, expect, test } from 'bun:test';
-import fs from 'node:fs';
-import path from 'node:path';
-import { MonsterWebGLRenderer } from '../src/lib/renderers/MonsterWebGLRenderer';
-import type { Monster3DOptions } from '../src/lib/renderers/MonsterWebGLRenderer';
+import {
+  buildRig,
+  ELEMENT_COLORS,
+  GUARD_POSE,
+  JOINT_IDS,
+  RIG_ACTIONS,
+  rigWorldBounds,
+  sampleRigPose,
+  scaleRigPose,
+  type Rig,
+  type MonsterType,
+} from '../src/lib/renderers/monsterRig';
 
 /**
- * Vérifie la silhouette **réellement construite** par le moteur : on injecte un
- * contexte WebGL simulé qui enregistre le contenu des `bufferData`, puis on
- * mesure les positions de sommets produites par `buildGeometry`.
+ * Teste le **rig pur** réellement construit (aucun contexte WebGL simulé
+ * nécessaire) : segments, pivots articulaires, garde d'origine, bornes du
+ * monde sous chaque action, densité de maillage mobile.
  *
- * C'est une exécution réelle du code de rendu (pas une analyse de source) : les
- * nombres mesurés ci-dessous proviennent du maillage réellement produit.
+ * La garde (toutes rotations nulles) doit reproduire exactement la silhouette
+ * humanoïde du moteur fusionné d'origine — continuité visuelle verrouillée.
  */
 
-const TYPES: Monster3DOptions['type'][] = [
-  'fire',
-  'water',
-  'grass',
-  'electric',
-  'rock',
-  'normal',
-];
-
-/** Contexte GL factice : capture les trois Float32Array (positions/normales/couleurs). */
-function fakeGL() {
-  const captured: Record<string, Float32Array> = {};
-  const handle = { __buf: 0 };
-  let binding = '';
-  const gl: any = {
-    DEPTH_TEST: 1, LEQUAL: 2, CULL_FACE: 3, BACK: 4, ARRAY_BUFFER: 5, STATIC_DRAW: 6,
-    FLOAT: 7, TRIANGLES: 8, COLOR_BUFFER_BIT: 16, DEPTH_BUFFER_BIT: 32, CCW: 64,
-    enable() {}, depthFunc() {}, cullFace() {}, frontFace() {}, viewport() {},
-    clearColor() {}, clear() {}, useProgram() {}, enableVertexAttribArray() {},
-    vertexAttribPointer() {}, uniformMatrix4fv() {}, uniformMatrix3fv() {},
-    uniform3fv() {}, uniform3f() {}, uniform1f() {},
-    createShader: () => handle, shaderSource() {}, compileShader() {},
-    createProgram: () => handle, attachShader() {}, linkProgram() {},
-    getAttribLocation: () => 0, getUniformLocation: () => handle,
-    createBuffer: () => ({ __id: ++handle.__buf }),
-    bindBuffer(_t: number, b: any) { binding = String(b?.__id ?? '?'); },
-    bufferData(_t: number, data: Float32Array) { captured[binding] = data; },
-    deleteBuffer() {}, deleteProgram() {}, drawArrays() {},
-  };
-  return { gl, captured };
-}
-
-/** Construit le maillage d'un type et renvoie ses positions de sommets. */
-function buildPositions(type: Monster3DOptions['type'], isBoss = false): Float32Array {
-  const { gl, captured } = fakeGL();
-  const canvas: any = { getContext: () => gl, clientWidth: 100, clientHeight: 100, width: 100, height: 100 };
-  const prevRaf = globalThis.requestAnimationFrame;
-  const prevCaf = globalThis.cancelAnimationFrame;
-  // Le rendu n'est pas nécessaire : on neutralise la boucle d'animation.
-  globalThis.requestAnimationFrame = (() => 0) as any;
-  globalThis.cancelAnimationFrame = (() => {}) as any;
-  try {
-    const renderer = new MonsterWebGLRenderer(canvas, {
-      type, isPlayer: false, isBoss, isLowHp: false, isStrong: false, hasWisdom: false,
-    });
-    const pos = Object.values(captured).find((a) => a?.length && a.length % 3 === 0);
-    renderer.destroy();
-    return pos!;
-  } finally {
-    globalThis.requestAnimationFrame = prevRaf;
-    globalThis.cancelAnimationFrame = prevCaf;
-  }
-}
-
-function bounds(pos: Float32Array) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (let i = 0; i < pos.length; i += 3) {
-    const x = pos[i]!, y = pos[i + 1]!, z = pos[i + 2]!;
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-  }
-  return { minX, maxX, minY, maxY, minZ, maxZ };
-}
+const TYPES: MonsterType[] = ['fire', 'water', 'grass', 'electric', 'rock', 'normal'];
 
 // Champ vertical visible : FOV 42°, caméra à z = -2.70, centrée sur y = 0.
-// On intègre l'animation de respiration (± 2.5 %) et le flottement (± 0.04),
-// sinon le crâne sortirait du cadre au pic de l'animation.
 const HALF_H = 2.7 * Math.tan(((42 * Math.PI) / 180) / 2);
 const TOP = HALF_H;
 const BOTTOM = -HALF_H;
+// Animation d'idle globale (respiration ±2.5 % + flottement ±0.04).
 const BREATHE = 1.025;
 const BOUNCE = 0.04;
 
-describe('Silhouette humanoïde — maillage réellement construit', () => {
-  test('chaque type produit un maillage non vide et sans NaN', () => {
+describe('Rig articulé — structure des segments', () => {
+  test('chaque type produit les 10 segments articulés attendus', () => {
     for (const type of TYPES) {
-      const pos = buildPositions(type);
-      expect(pos.length, `${type} : maillage vide`).toBeGreaterThan(0);
-      expect(pos.length % 3, `${type} : sommets non alignés sur des triplets`).toBe(0);
-      for (let i = 0; i < pos.length; i++) {
-        if (!Number.isFinite(pos[i]!)) {
-          throw new Error(`${type} : valeur non finie à l'index ${i}`);
+      const rig = buildRig(type, false);
+      const ids = rig.parts.map((p) => p.id);
+      expect(ids).toContain('torso');
+      expect(ids).toContain('head');
+      for (const side of ['L', 'R'] as const) {
+        expect(ids).toContain(`armU.${side}`);
+        expect(ids).toContain(`fore.${side}`);
+        expect(ids).toContain(`legU.${side}`);
+        expect(ids).toContain(`shin.${side}`);
+      }
+      expect(rig.parts).toHaveLength(10);
+
+      // Hiérarchie parent → enfant cohérente
+      for (const part of rig.parts) {
+        if (part.parent !== 'root') {
+          expect(ids, `${part.id} : parent inconnu`).toContain(part.parent);
+        }
+        expect(part.mesh.positions.length, `${part.id} : maillage vide`).toBeGreaterThan(0);
+        expect(part.mesh.positions.length % 3, `${part.id} : sommets non alignés`).toBe(0);
+        expect(part.mesh.positions.length).toBe(part.mesh.normals.length);
+      }
+    }
+  });
+
+  test('tout sommet est fini (pas de NaN) pour les 6 types', () => {
+    for (const type of TYPES) {
+      for (const isBoss of [false, true]) {
+        const rig = buildRig(type, isBoss);
+        for (const part of rig.parts) {
+          for (const v of part.mesh.positions) {
+            expect(Number.isFinite(v), `${type}/boss=${isBoss} : NaN`).toBe(true);
+          }
         }
       }
     }
   });
 
-  test('le corps est centré horizontalement (jambes symétriques)', () => {
-    for (const type of TYPES) {
-      const b = bounds(buildPositions(type));
-      // La largeur totale reste faible : une pose debout, pas une écartée.
-      expect(b.maxX - b.minX, `${type} trop large`).toBeLessThan(2.2);
-      expect(b.minX, `${type} : déséquilibre gauche`).toBeGreaterThan(-1.2);
-      expect(b.maxX, `${type} : déséquilibre droite`).toBeLessThan(1.2);
-    }
+  test('la chaîne bras respecte les pivots (coude sous l’épaule, poing remonté)', () => {
+    const rig = buildRig('normal', false);
+    const shoulder = rig.parts.find((p) => p.id === 'armU.L')!;
+    const elbow = rig.parts.find((p) => p.id === 'fore.L')!;
+
+    // Le coude est sous l'épaule : pivot y du coude < pivot y de l'épaule.
+    expect(elbow.pivot[1]).toBeLessThan(shoulder.pivot[1]);
+    // L'avant-bras remonte en garde : son poing est au-dessus du coude
+    // (coordonnée y locale positive, garde de boxe).
+    const fistAbove = elbow.mesh.positions.filter(
+      (_, i) => i % 3 === 1 && elbow.mesh.positions[i]! > 0.2,
+    );
+    expect(fistAbove.length, 'poing remonté en garde').toBeGreaterThan(0);
   });
 
-  // Haut du crâne (centre 0.56 + rayon 0.32) dans le maillage de base.
-  const CRANIUM_TOP = 0.88;
-
-  test('la tête dépasse le torse : le corps est erecté', () => {
-    for (const type of TYPES) {
-      const b = bounds(buildPositions(type));
-      // Hauteur totale cohérente avec buste + tête + jambes.
-      expect(b.maxY - b.minY, `${type} : silhouette trop plate`).toBeGreaterThan(1.5);
-    }
+  test('la chaîne jambes s’enfonce : genou au-dessus du pied', () => {
+    const rig = buildRig('normal', false);
+    const shin = rig.parts.find((p) => p.id === 'shin.L')!;
+    // Le pied (y ≈ -0.24) est bien sous le genou (pivot y ≈ -0.005 dans le
+    // shin local) : la jambe descend.
+    const footDy = Math.min(...shin.mesh.positions.filter((_, i) => i % 3 === 1));
+    expect(footDy).toBeLessThan(-0.2);
   });
 
-  test('les pieds et le crâne tiennent dans le champ, animation comprise', () => {
-    for (const type of TYPES) {
-      const b = bounds(buildPositions(type));
-      // Pieds au point bas de l'animation (contraction + flottement).
-      expect(b.minY * BREATHE - BOUNCE, `${type} : pieds hors cadre`).toBeGreaterThan(BOTTOM);
-      // Crâne au point haut de l'animation. On borne au crâne (0.88), pas au
-      // bout des cornes/oreilles, qui débordent volontairement (décor).
-      expect(CRANIUM_TOP * BREATHE + BOUNCE, `${type} : crâne hors cadre`).toBeLessThan(TOP);
-    }
-  });
-
-  test('les pieds descendent réellement sous le torse', () => {
-    for (const type of TYPES) {
-      expect(bounds(buildPositions(type)).minY).toBeLessThan(-0.6);
-    }
-  });
-
-  test('la version boss ajoute la couronne sans casser le maillage', () => {
-    const normal = buildPositions('normal');
-    const boss = buildPositions('normal', true);
-    expect(boss.length).toBeGreaterThan(normal.length);
-    expect(bounds(boss).minY).toBeGreaterThan(BOTTOM);
+  test('les 6 types ont des palettes distinctes (identité visuelle conservée)', () => {
+    expect(new Set(TYPES.map((t) => ELEMENT_COLORS[t].body.join(','))).size).toBe(6);
   });
 });
 
-/**
- * Le maillage exécuté donne les positions mais ne dit pas **avec quelle
- * primitive** chaque membre est construit. On vérifie donc les appels de
- * `buildGeometry` : les épaules doivent exister, et les membres doivent être
- * des cylindres (et non des sphères).
- */
-const GEOM = fs.readFileSync(
-  path.join(import.meta.dir, '../src/lib/renderers/MonsterWebGLRenderer.ts'),
-  'utf8',
-);
-const BODY_SRC = GEOM.slice(
-  GEOM.indexOf('private buildGeometry'),
-  GEOM.indexOf('this.vertexCount'),
-).replace(/\s+/g, ' ');
+describe('Garde = silhouette d’origine (continuité visuelle)', () => {
+  test('la pose zéro tient dans le cadre caméra, pieds et crâne inclus', () => {
+    for (const type of TYPES) {
+      const rig = buildRig(type, false);
+      const b = rigWorldBounds(rig, GUARD_POSE);
 
-describe('Épaules et membres cylindriques', () => {
-  test('les deux épaules (articulations deltoïdiennes) existent', () => {
-    const shoulders = BODY_SRC.match(
-      /addSphere\(mesh, *[-\d.]+, *0\.16, *0, *0\.11, *0\.115, *0\.105/g,
-    );
-    expect(shoulders).toHaveLength(2);
-  });
+      // Largeur debout maîtrisée (pas une pose écartée).
+      expect(b.maxX - b.minX, `${type} trop large`).toBeLessThan(2.2);
+      expect(b.minX, `${type} : déséquilibre gauche`).toBeGreaterThan(-1.2);
+      expect(b.maxX, `${type} : déséquilibre droite`).toBeLessThan(1.2);
 
-  test('les épaules sont posées sur le haut du torse', () => {
-    // Torse : centre -0.02, rayon vertical 0.34 → sommet à y = 0.32.
-    const y = Number(
-      /addSphere\(mesh, *-?[\d.]+, *(0\.16), *0,/.exec(BODY_SRC)![1],
-    );
-    expect(y).toBeGreaterThan(0);
-    expect(y).toBeLessThan(0.32);
-  });
-
-  test('chaque bras est fait de deux cylindres (bras + avant-bras)', () => {
-    const upper = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *0\.12, *0\.02, *-?[\d.]+, *-0\.06/g,
-    );
-    const fore = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.03, *0\.06, *-?[\d.]+, *0\.16/g,
-    );
-    expect(upper, 'bras supérieur').toHaveLength(2);
-    expect(fore, 'avant-bras').toHaveLength(2);
-  });
-
-  test('chaque jambe est faite de deux cylindres (cuisse + tibia)', () => {
-    const thigh = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.36, *0, *-?[\d.]+, *-0\.53/g,
-    );
-    const shin = BODY_SRC.match(
-      /addCylinder\(mesh, *-?[\d.]+, *-0\.56, *0\.02, *-?[\d.]+, *-0\.72/g,
-    );
-    expect(thigh, 'cuisse').toHaveLength(2);
-    expect(shin, 'tibia').toHaveLength(2);
-  });
-
-  test('les poings sont remontés en garde, pas pendants le long du corps', () => {
-    // Poings à y = 0.20 : au niveau du menton (bas du crâne à 0.24), donc
-    // nettement au-dessus de la taille et des hanches (y = -0.34).
-    const fists = BODY_SRC.match(
-      /addSphere\(mesh, *-?[\d.]+, *0\.20, *0\.13, *0\.085/g,
-    );
-    expect(fists).toHaveLength(2);
-    expect(0.2).toBeGreaterThan(-0.34);
-  });
-
-  test('les coudes sont pliés : avant-bras remontant vers le haut', () => {
-    // L’avant-bras part du coude (y = -0.03) vers le poignet (y = 0.16) :
-    // il monte, ce qui characterizes la garde.
-    const m = /addCylinder\(mesh, *-?[\d.]+, *(-0\.03), *0\.06, *-?[\d.]+, *(0\.16)/.exec(
-      BODY_SRC,
-    );
-    expect(m).not.toBeNull();
-    expect(Number(m![2])).toBeGreaterThan(Number(m![1]));
-  });
-
-  test('les jambes sont écartées : assise de combat élargie', () => {
-    const knee = /addSphere\(mesh, *(-?[\d.]+), *-0\.54/.exec(BODY_SRC);
-    const hip = /addSphere\(mesh, *(-?[\d.]+), *-0\.34, *0,/.exec(BODY_SRC);
-    expect(knee).not.toBeNull();
-    // Le genou est plus écarté que la hanche : l'assise est élargie.
-    expect(Math.abs(Number(knee![1]))).toBeGreaterThan(Math.abs(Number(hip![1])));
-  });
-
-  test('aucun segment de membre n’est construit avec une sphère', () => {
-    // Seules les articulations (épaule, coude, genou, main, pied) sont des
-    // sphères ; les segments entre elles doivent être des cylindres.
-    for (const forbidden of ['0.29, 0.12', '-0.42, -0.06', '0.13, -0.36']) {
-      const sphere = new RegExp(
-        `addSphere\\(mesh, *-?[\\d.]+, *${forbidden.replace(/[.\-]/g, '\\$&')}`,
-      );
-      expect(BODY_SRC.match(sphere)).toBeNull();
+      // Debout : hauteur du corps (buste + tête + jambes) — même bornes que
+      // l'ancien mesh fusionné : crâne ~0.88, pieds ~-0.85, idem.
+      expect(b.maxY - b.minY, `${type} : silhouette trop plate`).toBeGreaterThan(1.5);
+      // Crâne dans le champ (idem test historique).
+      expect(0.88 * BREATHE + BOUNCE).toBeLessThan(TOP);
+      // Pieds sous le torse ET dans le champ.
+      expect(b.minY, `${type} : pieds remontés`).toBeLessThan(-0.6);
+      expect(b.minY * BREATHE - BOUNCE, `${type} : pieds hors cadre`).toBeGreaterThan(BOTTOM);
     }
   });
 
-  test('les hanches sont elles aussi articulées', () => {
-    const hips = BODY_SRC.match(
-      /addSphere\(mesh, *-?[\d.]+, *-0\.34, *0, *0\.105, *0\.105, *0\.10/g,
-    );
-    expect(hips).toHaveLength(2);
+  test('la version boss ajoute la couronne sans casser le rig', () => {
+    const plain = buildRig('normal', false);
+    const boss = buildRig('normal', true);
+    expect(boss.vertexCount).toBeGreaterThan(plain.vertexCount);
+    expect(rigWorldBounds(boss, GUARD_POSE).minY).toBeGreaterThan(BOTTOM);
+  });
+});
+
+describe('Actions articulées — bornes plausibles et retour en garde', () => {
+  const TESTS: Array<[keyof typeof RIG_ACTIONS, number]> = [
+    ['melee', 0.4],
+    ['ranged', 0.5],
+    ['channel', 0.55],
+    ['block', 0.45],
+    ['victory', 0.6],
+    ['defeat', 0.75],
+  ];
+
+  test('besoins déclarés : actions connues, durées positives', () => {
+    expect(Object.keys(RIG_ACTIONS)).toContain('melee');
+    expect(Object.keys(RIG_ACTIONS)).toContain('ranged');
+    expect(Object.keys(RIG_ACTIONS)).toContain('channel');
+    expect(Object.keys(RIG_ACTIONS)).toContain('block');
+    expect(Object.keys(RIG_ACTIONS)).toContain('victory');
+    expect(Object.keys(RIG_ACTIONS)).toContain('defeat');
+    for (const spec of Object.values(RIG_ACTIONS)) {
+      expect(spec.duration).toBeGreaterThan(0);
+      expect(spec.keyframes.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test(`toutes les actions restent dans des bornes plausibles (pas de membre volant)`, () => {
+    for (const type of TYPES) {
+      const rig = buildRig(type, false);
+      for (const [kind, mid] of TESTS) {
+        for (const t of [0, mid, 1]) {
+          const pose = scaleRigPose(sampleRigPose(kind, t), 1.3);
+          const b = rigWorldBounds(rig, pose);
+          // Les rotations d’articulation ne projettent aucun membre hors du
+          // volume utile de l’arène.
+          expect(Math.abs(b.minX), `${type}/${kind}@${t}`).toBeLessThan(1.8);
+          expect(Math.abs(b.maxX), `${type}/${kind}@${t}`).toBeLessThan(1.8);
+          expect(b.minY, `${type}/${kind}@${t} fusée vers le haut`).toBeGreaterThan(-2.2);
+          expect(b.maxY, `${type}/${kind}@${t} sort du cadre haut`).toBeLessThan(2.2);
+          // L'attaque pousse vers l'avant (+z), jamais dans la caméra.
+          expect(b.maxZ, `${type}/${kind}@${t} perce la caméra`).toBeLessThan(1.4);
+          expect(b.minZ, `${type}/${kind}@${t} recule trop loin`).toBeGreaterThan(-1.4);
+        }
+      }
+    }
+  });
+
+  test('les actions non-maintenues finissent en garde (rotation ~0)', () => {
+    for (const kind of ['melee', 'ranged', 'channel', 'block', 'victory'] as const) {
+      const final = sampleRigPose(kind, 1);
+      for (const rot of Object.values(final.joints)) {
+        const norm = Math.abs(rot![0]) + Math.abs(rot![1]) + Math.abs(rot![2]);
+        expect(norm, `${kind} ne relâche pas en garde`).toBeLessThan(0.05);
+      }
+      expect(final.dy, `${kind} dy final`).toBeCloseTo(0, 2);
+    }
+  });
+
+  test('la défaite maintient l’effondrement (holdAfter)', () => {
+    expect(RIG_ACTIONS.defeat.holdAfter).toBe(true);
+    const held = sampleRigPose('defeat', 1);
+    // Le buste est toujours penché après la durée.
+    expect(Math.abs(held.joints.torso![0])).toBeGreaterThan(0.3);
+    // Et un échantillonnage au-delà de 1 écrase à la même pose.
+    expect(sampleRigPose('defeat', 5).joints.torso![0]).toBeCloseTo(held.joints.torso![0], 5);
+  });
+
+  test('la garde (t=0 de toute action) vaut bien pose zéro', () => {
+    for (const kind of Object.keys(RIG_ACTIONS) as (keyof typeof RIG_ACTIONS)[]) {
+      const start = sampleRigPose(kind, 0);
+      expect(start.dy).toBe(0);
+      // Le sampler normalise sur les 10 joints (absents = [0,0,0]) : toute
+      // rotation est ~0 à t=0.
+      for (const rot of Object.values(start.joints)) {
+        expect(
+          Math.abs(rot![0]) + Math.abs(rot![1]) + Math.abs(rot![2]),
+          `${kind}@t=0 non garde`,
+        ).toBeLessThan(0.05);
+      }
+    }
+  });
+
+  test('les 10 articulations existent dans le rig type (JOINT_IDS couverts)', () => {
+    const rig: Rig = buildRig('fire', false);
+    for (const id of JOINT_IDS) {
+      expect(rig.parts.find((p) => p.id === id), `${id} manquant`).toBeDefined();
+    }
+  });
+});
+
+describe('Qualité mobile — densité de maillage', () => {
+  test('le mode low produit moins de sommets que le mode high', () => {
+    for (const type of TYPES) {
+      const high = buildRig(type, false, 'high');
+      const low = buildRig(type, false, 'low');
+      expect(low.vertexCount, `${type} : pas d'économie`).toBeLessThan(high.vertexCount);
+      // Économie substantielle (perf mobile).
+      expect(low.vertexCount).toBeLessThan(high.vertexCount * 0.55);
+    }
+  });
+
+  test('la qualité n’altère ni la garde ni les bornes', () => {
+    const high = buildRig('water', false, 'high');
+    const low = buildRig('water', false, 'low');
+    const bh = rigWorldBounds(high, GUARD_POSE);
+    const bl = rigWorldBounds(low, GUARD_POSE);
+    for (const key of ['minY', 'maxY', 'minX', 'maxX'] as const) {
+      expect(Math.abs(bh[key] - bl[key])).toBeLessThan(0.02);
+    }
   });
 });

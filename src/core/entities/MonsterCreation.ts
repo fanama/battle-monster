@@ -25,8 +25,19 @@ export const STAT_CAP = 18;
 /** Charisme fixe (stat de fluff : expression du sprite, pas de combat). */
 export const CREATION_CHARISMA = 10;
 
-/** Instinct fixe de départ (regard du sprite et réflexes critiques). */
-export const CREATION_INSTINCT = 10;
+/**
+ * Instinct de départ (regard du sprite et réflexes critiques).
+ *
+ * Rebassé de 10 à 12 (réglage Dragon Quest 2026-10) : les ennemis procéduraux
+ * tirent leur Instinct dans la bande 8-12 **plus la croissance du type**, et
+ * à niveau égal ils dépassaient le champion de 3 à 5 points sur cette stat.
+ * Or l'Instinct étend la plage de critique : en duel miroir, l'ennemi critiquait
+ * ~15 % du temps contre ~5 % pour le champion — mesure : le miroir était à
+ * 21-39 % de victoire alors que les stats moyennes autres étaient égales ou
+ * supérieures (diagnostic « fair » : 47-54 %, duel sain ; tranches du
+ * winrate monotones sur l'écart de stats).
+ */
+export const CREATION_INSTINCT = 12;
 
 export const NAME_MIN_LENGTH = 2;
 export const NAME_MAX_LENGTH = 18;

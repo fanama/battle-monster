@@ -84,7 +84,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="moves-modal-title"
-      class="relative z-10 w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl border-2 border-violet-500/60
+      class="relative z-10 w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl pop-in border-2 border-violet-500/60
         bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.95)] overflow-hidden">
       <!-- Modal Header -->
       <div class="px-4 sm:px-5 py-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-900/80">

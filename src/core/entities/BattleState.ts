@@ -4,6 +4,7 @@ import type { Move } from './Move';
 import type { Relic, ShopItem } from './Relic';
 import type { RegionMap } from './RegionMap';
 import type { InventorySlot } from './Consumable';
+import type { Equipment } from './Equipment';
 export type { InventorySlot };
 
 /** Phase de la run roguelike (machine à états du run). */
@@ -36,8 +37,21 @@ export interface RunState {
   relics: Relic[];
   score: number;
   relicOffers: Relic[] | null;
+  /**
+   * Pièces d'équipement offertes en parallèle des reliques (offres mixées :
+   * 2 reliques + 1 pièce après chaque victoire). Une pièce non choisie est
+   * perdue ; choisie, elle rejoint la sacoche (inactive tant que non portée).
+   */
+  equipOffers: Equipment[] | null;
   /** Sacoche d'objets à utilisation unique (potions anti-statut, soins, buffs). */
   inventory: InventorySlot[];
+  /**
+   * Sacoche d'équipements **non portés** (drops de sauvages, butin de boss,
+   * achats). Une pièce n'entre dans le champ `equipped` du monstre qu'au
+   * moment où elle est portée : **seuls les équipements équipés sont actifs**,
+   * tout ce qui traîne ici n'a aucun effet.
+   */
+  equipmentBag: Equipment[];
 }
 
 /** État complet du combat + run — interface unique partagée par le store et le contrôleur. */

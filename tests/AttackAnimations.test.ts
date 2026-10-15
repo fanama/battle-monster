@@ -165,4 +165,53 @@ describe('Familles d’animation d’attaque', () => {
     expect(util).toContain('translateY');
     expect(util).not.toContain('translateX');
   });
+
+  test('la charge physique porte le corps jusqu’au contact (≥ 40 % de la scène)', () => {
+    // Au sommet de la charge (palier 46 %), le corps est propulsé vers
+    // l’adversaire : l’amplitude du clamp doit dépasser 40 % du conteneur
+    // pour que les deux créatures se croisent. Le clamp de l’ennemi est le
+    // miroir exact (bornes px et % opposés).
+    const matches = (kf: string) =>
+      keyframeBody(kf).match(/clamp\((-?[\d.]+)px,\s*(-?[\d.]+)%/);
+    const p = matches('melee-player');
+    const e = matches('melee-enemy');
+    expect(p, 'melee-player : charge au clamp').not.toBeNull();
+    expect(e, 'melee-enemy : charge au clamp').not.toBeNull();
+    expect(Math.abs(Number(p![2])), 'amplitude joueur ≥ 40 %').toBeGreaterThanOrEqual(40);
+    expect(Math.abs(Number(e![2])), 'amplitude ennemi ≥ 40 %').toBeGreaterThanOrEqual(40);
+    // Miroir exact : le % au sommet est le même en valeur absolue, et les
+    // bornes px suivent (valeur absolue identique, signe opposé).
+    expect(Math.abs(Number(e![2]))).toBe(Math.abs(Number(p![2])));
+    expect(Math.sign(Number(e![2]))).toBe(-Math.sign(Number(p![2])));
+    // Le clamp CSS range ses bornes [min, val, max] : avec les valeurs
+    // négatives de l’ennemi, l’ordre des bornes px est inversé — on compare
+    // l’ENSEMBLE des bornes absolues {38, 84}.
+    const pxBounds = (kf: string) =>
+      [...keyframeBody(kf).matchAll(/clamp\(([^)]+)\)/g)]
+        .flatMap((m) => m[1]!.split(',').map((v) => Math.abs(parseFloat(v))))
+        .sort((a, b) => a - b)
+        .join(',');
+    expect(pxBounds('melee-enemy')).toBe(pxBounds('melee-player'));
+  });
+
+  test('l’attaque à distance envoie un projectile qui traverse l’arène', () => {
+    expect(SRC).toContain('class:projectile-fx-player=');
+    expect(SRC).toContain('class:projectile-fx-enemy=');
+    expect(SRC).toContain('@keyframes projectile-player');
+    expect(SRC).toContain('@keyframes projectile-enemy');
+    for (const kf of ['projectile-player', 'projectile-enemy']) {
+      const body = keyframeBody(kf);
+      // Départ du corps (40 %) puis arrivée au-delà du centre de l’arène
+      // (115 % du conteneur : franchit le gap central).
+      expect(body).toContain('40%');
+      expect(body).toContain('115%');
+      // Petite courbe (le projectile passe au-dessus du sol).
+      expect(body).toContain('top');
+    }
+    // Le vol est chronométré pour coïncider avec la fin de l’animation ranged
+    // (0.72 s = 0.28 s d’armement + 0.44 s de vol).
+    // 0.72 s attendus = 0.28 s d’armement (delay) + 0.44 s de vol,
+    // pour les DEUX camps (la règle figure deux fois, player + enemy).
+    expect(SRC.match(/0\.44s cubic-bezier\([^;]*0\.28s both/g) ?? []).toHaveLength(2);
+  });
 });

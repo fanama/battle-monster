@@ -40,7 +40,7 @@
 </script>
 
 <div
-  class="w-full h-4 md:h-5 rounded-md border-2 border-black overflow-hidden relative bg-gray-500/70 shadow-inner"
+  class="w-full h-5 md:h-6 rounded-full border-[2.5px] border-stone-950 overflow-hidden relative bg-slate-950/85 shadow-[inset_0_2px_6px_rgba(0,0,0,0.7),0_1px_8px_rgba(0,0,0,0.55)]"
   role="progressbar"
   aria-valuenow={current}
   aria-valuemin={0}
@@ -48,7 +48,7 @@
 >
   <!-- Traînée de dégâts (retardée) -->
   <div
-    class="absolute inset-y-0 left-0 h-full bg-red-800/90"
+    class="absolute inset-y-0 left-0 h-full bg-red-900/90"
     style="width: {trailPercent}%; transition: width 0.7s ease 0.15s;"
   ></div>
 
@@ -58,6 +58,19 @@
     style="width: {percent}%; background: {gradient}; transition: width 0.25s ease-out;"
   ></div>
 
+  <!-- Gloss « bonbon » : reflet clair en haut de la jauge (accent Pokémon) -->
+  <div
+    class="pointer-events-none absolute inset-x-2 top-[1.5px] h-[30%] rounded-full
+      bg-gradient-to-b from-white/45 to-white/5"
+    aria-hidden="true"
+  ></div>
+  <!-- Ticks façon jauge rétro : découpe la barre en tranches lisibles -->
+  <div
+    class="pointer-events-none absolute inset-0"
+    style="background-image: repeating-linear-gradient(90deg, transparent 0 14px, rgba(0,0,0,0.28) 14px 16px)"
+    aria-hidden="true"
+  ></div>
+
   <!-- Pulsation quand les PV sont bas -->
   {#if percent <= 25}
     <div class="absolute inset-0 low-hp-pulse rounded-md"></div>
@@ -65,11 +78,15 @@
 
   <!-- Valeurs inscrites dans la barre -->
   <span
-    class="absolute inset-0 flex items-center justify-center
-      text-[9px] md:text-[10px] font-bold text-white drop-shadow-md
+    class="absolute inset-0 flex items-center justify-center gap-1.5
+      text-[11px] md:text-sm font-extrabold text-white
+      [text-shadow:0_1px_2px_rgba(0,0,0,0.95),0_0_8px_rgba(0,0,0,1)]
       pointer-events-none"
   >
-    {current}/{max} PV
+    <span class="rounded-sm bg-black/60 px-1.5 leading-tight font-display uppercase">PV</span>
+    <span class="font-mono tabular-nums tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,1)]">
+      {current}/{max}
+    </span>
   </span>
 </div>
 

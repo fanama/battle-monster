@@ -43,12 +43,17 @@ describe('Graduation des sorts de soin (healPower)', () => {
     // régénération, alors qu’un combat mal engagé se décide à la
     // régénération. La graduation se fait désormais par le **niveau** (la
     // formule D&D contient déjà `(niveau + 1)d4`), pas par le type.
+    //
+    // Réglage Dragon Quest (2026-10) : le soin devient un gros-coups à
+    // recharge longue — `healPower` 15 (au lieu de 10) et recharge 5 tours
+    // (au lieu de 3) **pour les six types** : parer un combat mal engagé
+    // coûte un vrai tour de respiration, pas une rotation quasi gratuite.
     const repo = new MoveRepository();
     for (const type of ['normal', 'fire', 'water', 'grass', 'electric', 'rock'] as const) {
       const heals = repo.getMovesForType(type).filter((m) => m.isHeal);
       expect(heals.length, `soin manquant pour ${type}`).toBe(1);
-      expect(heals[0]!.healPower, `healPower de ${type}`).toBe(10);
-      expect(heals[0]!.maxCoolDown, `recharge de ${type}`).toBe(3);
+      expect(heals[0]!.healPower, `healPower de ${type}`).toBe(15);
+      expect(heals[0]!.maxCoolDown, `recharge de ${type}`).toBe(5);
     }
   });
 

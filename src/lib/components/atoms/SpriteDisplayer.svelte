@@ -1,10 +1,20 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import type { Monster } from "../../../core/entities/Monster";
-  import { MonsterWebGLRenderer } from "../../renderers/MonsterWebGLRenderer";
+  import {
+    MonsterWebGLRenderer,
+    type StageAction,
+  } from "../../renderers/MonsterWebGLRenderer";
 
   export let monster: Monster;
   export let isPlayer: boolean = false;
+  /**
+   * Action articulée de scène (attaque mêlée/à distance, canalisation,
+   * blocage, victoire, défaite). `null` = pose de garde avec idle respirant.
+   * Passé par MonsterDisplayer en variante « stage » ; hors combat (fiche,
+   * Panthéon) il reste null.
+   */
+  export let stageAction: StageAction | null = null;
 
   let canvasEl: HTMLCanvasElement;
   let renderer: MonsterWebGLRenderer | null = null;
@@ -22,9 +32,15 @@
     renderer.updateOptions(options);
   }
 
+  // Rejoue l'action articulée à chaque changement (attaque, blocage subi…).
+  $: if (renderer) {
+    renderer.setAction(stageAction);
+  }
+
   onMount(() => {
     if (canvasEl) {
       renderer = new MonsterWebGLRenderer(canvasEl, options);
+      renderer.setAction(stageAction);
     }
   });
 

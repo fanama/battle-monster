@@ -2,6 +2,7 @@
   import type { RegionMap } from "../../../core/entities/RegionMap";
   import { TYPE_LABELS } from "../../../core/entities/Move";
   import { TYPE_ICONS } from "../../styles/typeColors";
+  import { playSound } from "../../audio/gameAudio";
 
   export let map: RegionMap | null;
   export let currentLayer: number;
@@ -160,7 +161,7 @@
           tabindex={available ? 0 : -1}
           aria-label={done ? (chosen ? `${em.label} (pris)` : `couche ${row + 1} (faite)`) : available ? `${em.label} — relié, choisir ce nœud` : current ? `${em.label} — hors de portée` : `${em.label} à venir`}
           class="{available ? 'cursor-pointer map-node' : ''}"
-          on:click={() => { if (available) onNodeSelect(node.col); }}
+          on:click={() => { if (available) { playSound("select"); onNodeSelect(node.col); } }}
           on:keydown={(e) => { if (available && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onNodeSelect(node.col); } }}
         >
           {#if done}

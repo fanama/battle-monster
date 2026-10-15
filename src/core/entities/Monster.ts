@@ -1,5 +1,7 @@
 import type { MonsterStat, Move, MonsterType } from './Move';
 import type { ActiveStatus, StatusEffectType } from './StatusEffect';
+import type { Equipment, EquipmentSlot, EquipmentEffect } from './Equipment';
+import { EQUIPMENT_SLOTS, equipmentTotals } from './Equipment';
 export type { ActiveStatus, StatusEffectType };
 
 /**
@@ -191,6 +193,14 @@ export class Monster {
   public armorBonus: number = 0;
   /** Statuts élémentaires actifs (Brûlure, Gel, Paralysie, Poison). */
   public statuses: ActiveStatus[] = [];
+  /**
+   * Équipements **portés** (un par emplacement, 5 slots façon DQ).
+   * Une pièce hors de cette carte (dans la sacoche du run) est inactive.
+   * Les stats & CA sont appliquées/désappliquées à l'acte d'équipement
+   * (`equip`/`unequip`) ; les passifs se lisent via les getters
+   * `equipment*Percent()` ci-dessous, **en addition des reliques**.
+   */
+  public equipped: Partial<Record<EquipmentSlot, Equipment>> = {};
 
   constructor(
     public readonly id: string,
@@ -303,6 +313,78 @@ export class Monster {
     this.moves.forEach(move => {
       move.coolDown = 0;
     });
+  }
+
+  // --- Équipement porté (capacités signature) ---
+
+  /** Liste des pièces portées, ordonnée par emplacement. */
+  getEquippedList(): Equipment[] {
+    return EQUIPMENT_SLOTS.map(slot => this.equipped[slot]).filter((p): p is Equipment => !!p);
+  }
+
+  /**
+   * Porte une pièce dans son emplacement. La pièce déjà portée (le cas
+   * échéant) est **déséquipée d'abord** — ses effets sont inversés exactement,
+   * sous le poids de sa valeur (chaque boost est édité via une saisie secrète
+   * testable : les stats s'ajoutent seulement via l'acte de portage).
+   * @returns la pièce délogée (null si l'emplacement était vide).
+   */
+  equip(piece: Equipment): Equipment | null {
+    const displaced = this.unequip(piece.slot);
+    this.equipped[piece.slot] = piece;
+    this._applyEquipmentEffect(piece.effect);
+    return displaced;
+  }
+
+  /**
+   * Déséquipe la pièce de l'emplacement (aucun effet si vide) et inverse ses
+   * bonus de stats/CA. Les passifs étaient lus à la volée : rien à inverser.
+   */
+  unequip(slot: EquipmentSlot): Equipment | null {
+    const piece = this.equipped[slot];
+    if (!piece) return null;
+    delete this.equipped[slot];
+    this._applyEquipmentEffect(piece.effect, -1);
+    return piece;
+  }
+
+  private _applyEquipmentEffect(effect: EquipmentEffect, direction: 1 | -1 = 1): void {
+    if (effect.stat) {
+      for (const [key, value] of Object.entries(effect.stat)) {
+        if (value) this.boostStat(key as MonsterStat, value * direction);
+      }
+    }
+    if (effect.acBonus) {
+      this.armorBonus += effect.acBonus * direction;
+    }
+  }
+
+  // --- Passifs d'équipement porté (lus en addition des reliques) ---
+
+  /** Somme des « % de dégâts » de l'équipement porté. */
+  equipmentDamagePercent(): number {
+    return equipmentTotals(this.equipped).damagePercent ?? 0;
+  }
+
+  /** Somme des « % de vol de vie » de l'équipement porté. */
+  equipmentLifestealPercent(): number {
+    return equipmentTotals(this.equipped).lifestealPercent ?? 0;
+  }
+
+  /** Plage de critiques la plus élargie de l'équipement porté (0 sinon). */
+  equipmentCritRange(): number {
+    return equipmentTotals(this.equipped).critRange ?? 0;
+  }
+
+
+  /** Somme des « % d'EXP » de l'équipement porté. */
+  equipmentExperiencePercent(): number {
+    return equipmentTotals(this.equipped).experiencePercent ?? 0;
+  }
+
+  /** Somme des « % de soin de début de combat » de l'équipement porté. */
+  equipmentHealStartPercent(): number {
+    return equipmentTotals(this.equipped).healStartPercent ?? 0;
   }
 
   // --- Gestion des Statuts Élémentaires ---
@@ -503,6 +585,8 @@ export interface MonsterSnapshot {
   rank: MonsterRank;
   armorBonus: number;
   statuses?: ActiveStatus[];
+  /** Équipements portés (capacités signature) : sérialisés tels quels. */
+  equipped?: Partial<Record<EquipmentSlot, Equipment>>;
 }
 
 export namespace MonsterIO {
@@ -530,6 +614,7 @@ export namespace MonsterIO {
       rank: monster.rank,
       armorBonus: monster.armorBonus,
       statuses: monster.statuses.map(s => ({ ...s })),
+      equipped: monster.equipped ?? {},
     };
   }
 
@@ -559,6 +644,10 @@ export namespace MonsterIO {
     monster.armorBonus = snapshot.armorBonus ?? 0;
     monster.moves = snapshot.moves.map(move => ({ ...move }));
     monster.statuses = (snapshot.statuses ?? []).map(s => ({ ...s }));
+    // Le portage est restauré TEL QUEL (stats & CA déjà incluses dans les
+    // champs du snapshot — ne JAMAIS re-appliquer les effets ici, sinon
+    // double comptabilisation à chaque chargement).
+    monster.equipped = snapshot.equipped ? { ...snapshot.equipped } : {};
     return monster;
   }
 }
