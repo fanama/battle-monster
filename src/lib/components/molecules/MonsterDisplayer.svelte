@@ -306,17 +306,26 @@
         <div class="px-1 mt-0.5">
           <div class="flex justify-between items-center mb-0.5">
             <span class="text-xs font-bold text-sky-300">EXP</span>
-            <span class="text-xs text-sky-200/65">
-              {monster.experience} / {monster.experienceToNextLevel}
-            </span>
+            {#if monster.isMaxLevel}
+              <span class="text-xs font-bold text-amber-200">NIVEAU MAX</span>
+            {:else}
+              <span class="text-xs text-sky-200/65" title="EXP du niveau / taille du niveau · restantes · total">
+                {monster.experienceInLevel()} / {monster.experienceLevelSpan()}
+                <span class="text-sky-200/45">
+                  · ⏭ {monster.experienceToNextLevel} · Σ {monster.experience}
+                </span>
+              </span>
+            {/if}
           </div>
           <div class="w-full bg-[#1d2d49] rounded-full h-2 shadow-inner overflow-hidden relative">
             <div
               class="h-2 rounded-full bg-gradient-to-r from-sky-600 to-cyan-400 transition-[width] duration-700 ease-out relative"
-              style="width: {Math.min(
-                100,
-                (monster.experience / monster.experienceToNextLevel) * 100,
-              )}%"
+              style="width: {monster.isMaxLevel
+                ? 100
+                : Math.min(
+                    100,
+                    (monster.experienceInLevel() / monster.experienceLevelSpan()) * 100,
+                  )}%"
             >
               <span class="absolute inset-x-1 top-[1px] h-[35%] rounded-full bg-white/30" aria-hidden="true"></span>
             </div>

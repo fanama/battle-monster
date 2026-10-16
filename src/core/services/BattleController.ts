@@ -8,17 +8,21 @@ import { CONSUMABLE_CATALOG } from '../entities/Consumable';
 import { REGIONS, type RegionDef } from '../entities/Region';
 import {
   EQUIPMENT_CATALOG,
+  EQUIPMENT_SLOTS,
+  bestLoadout,
   rollEquipmentDrop,
   type Equipment,
   type EquipmentSlot,
 } from '../entities/Equipment';
 import {
+  RELIC_SLOT_COUNT,
   rollMonsterPowerOffers,
   rollRareMonsterPowerOffers,
-  relicHealStartPercent,
+  relicScore,
+  sellPrice,
   type Relic,
 } from '../entities/Relic';
-import { BattleEngine, defaultDice, type BattleModifiers, type CombatFeedback, type Dice } from './BattleEngine';
+import { BattleEngine, defaultDice, type BattleModifiers, type CombatFeedback, type Dice, type LevelUpSummary } from './BattleEngine';
 import { type EnemyArchetype } from '../../infra/repositories/monsterFactory';
 import type { EnemyFactory, MoveProvider } from './ports';
 
@@ -121,6 +125,8 @@ export interface PlayTurnResult {
   leveledUp: boolean;
   /** L'attaquant (joueur) a monté de niveau et appris de nouveaux moves. */
   learnedNewMoves: boolean;
+  /** Détail de la montée de niveau (gains de stats + capacités apprises), sinon `null`. */
+  levelUp: LevelUpSummary | null;
   /** PV volés (relique vol de vie), 0 si aucun. */
   lifesteal: number;
 }
@@ -409,6 +415,7 @@ export class BattleController {
         winner,
         leveledUp: false,
         learnedNewMoves: false,
+        levelUp: null,
         lifesteal: 0,
       };
     }
@@ -442,6 +449,7 @@ export class BattleController {
     // Level-up → le joueur (seul) apprend de nouveaux moves (capé à 4 moves max).
     const leveledUp = turn.logs.some(log => log.payload?.leveledUp);
     let learnedNewMoves = false;
+    const learnedMoves: string[] = [];
     if (leveledUp && attackerSide === 'player') {
       const eligible = this.moveProvider.getMovesForMonster(attacker);
       const existingIds = new Set(attacker.moves.map(m => m.id));
@@ -451,6 +459,7 @@ export class BattleController {
         for (const newMove of newlyUnlocked) {
           if (attacker.moves.length < MAX_MOVES) {
             attacker.learnMove(newMove);
+            learnedMoves.push(newMove.name);
             logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » !`);
             learnedNewMoves = true;
           } else {
@@ -474,6 +483,7 @@ export class BattleController {
             if (moveScore(newMove) > moveScore(lowest.move)) {
               const { replacedMove, success } = attacker.learnMove(newMove, lowest.index);
               if (success && replacedMove) {
+                learnedMoves.push(newMove.name);
                 logs.push(`✨ ${attacker.name} a appris « ${newMove.name} » en remplacement de « ${replacedMove.name} » !`);
                 learnedNewMoves = true;
               }
@@ -496,7 +506,12 @@ export class BattleController {
     const isSelfEffect = move.power === 0;
     const feedbackTarget = isSelfEffect ? attacker : defender;
 
-    return { logs, feedback: turn.feedback, move, feedbackTarget, winner, leveledUp, learnedNewMoves, lifesteal };
+    const levelUpPayload = turn.logs.find(log => log.payload?.levelUp)?.payload?.levelUp;
+    const levelUp: LevelUpSummary | null = levelUpPayload
+      ? { ...levelUpPayload, learnedMoves }
+      : null;
+
+    return { logs, feedback: turn.feedback, move, feedbackTarget, winner, leveledUp, learnedNewMoves, levelUp, lifesteal };
   }
 
   /** Retourne toutes les capacités actuellement débloquées pour ce monstre (selon type & niveau). */
@@ -507,13 +522,15 @@ export class BattleController {
   // --- Spawn & progression de run ---
 
   /** Prépare un combat : reset des cooldowns & statuts + soin de début
-   * (reliques **+ équipement porté** — une pièce posée sur le monstre est
-   * active, une pièce dans la sacoche ne l'est pas). */
-  private prepareCombat(player: Monster, run: RunState): void {
+   * (reliques **portées** + équipement **porté** — tout ce qui traîne en
+   * réserve ou en sacoche est inerte). */
+  private prepareCombat(player: Monster): void {
     player.resetCooldowns();
     player.clearStatuses();
+    // Une charge armée ne survit pas d'un combat à l'autre.
+    player.clearCharge();
     const healPercent =
-      relicHealStartPercent(run.relics) + player.equipmentHealStartPercent();
+      player.relicHealStartPercent() + player.equipmentHealStartPercent();
     if (healPercent > 0 && player.currentHp < player.maxHp) {
       player.heal(Math.floor(player.maxHp * healPercent / 100));
     }
@@ -551,7 +568,7 @@ export class BattleController {
     run: RunState,
     opts: { type?: MonsterType } = {}
   ): { enemyMonster: Monster; logs: string[] } {
-    this.prepareCombat(player, run);
+    this.prepareCombat(player);
     const region = REGIONS[run.regionIndex];
     const level = this.wildLevelFor(player, region);
     const type = opts.type ?? region.types[Math.floor(this.random() * region.types.length)];
@@ -561,7 +578,7 @@ export class BattleController {
 
   /** Lance le combat contre le boss de région. */
   enterBossCombat(player: Monster, run: RunState): { enemyMonster: Monster; logs: string[] } {
-    this.prepareCombat(player, run);
+    this.prepareCombat(player);
     const region = REGIONS[run.regionIndex];
     const bossLevel = this.bossLevelFor(player, region);
     const enemy = this.enemyFactory.createBoss(
@@ -742,20 +759,11 @@ export class BattleController {
     return (run.relics ?? []).some(r => r.id === relicId);
   }
 
-  /** Applique une relique au monstre (stats permanentes + armure). */
-  applyRelic(monster: Monster, relic: Relic): void {
-    const { stat, acBonus } = relic.effect;
-    if (stat) {
-      (Object.keys(stat) as Array<keyof typeof stat>).forEach(key => {
-        monster.boostStat(key, stat[key]!);
-      });
-    }
-    if (acBonus) {
-      monster.armorBonus += acBonus;
-    }
-  }
-
-  /** Ajoute la relique au run (score + inventaire) ; enchaîne hors phase relic. */
+  /**
+   * Ajoute la relique à la **réserve** du run (score + possession) ; enchaîne
+   * hors phase relic. Aucun effet immédiat : la relique n'agit qu'une fois
+   * **portée** depuis la fenêtre « Équipement » (réglage DQ, 2026-10).
+   */
   grantRelic(run: RunState, relic: Relic): RunState {
     return {
       ...run,
@@ -815,17 +823,138 @@ export class BattleController {
     monster: Monster,
     run: RunState,
     equipmentId: string,
-  ): { run: RunState; displaced: Equipment | null; logs: string[] } | null {
+  ): { run: RunState; displaced: Equipment | null; logs: string[]; blocked: boolean } | null {
     const bag = [...(run.equipmentBag ?? [])];
     const index = bag.findIndex(p => p.id === equipmentId);
     if (index === -1) return null;
     const piece = bag.splice(index, 1)[0]!;
+
+    // Règle Dragon Quest des armes à deux mains : le bouclier attend que
+    // l'arme soit retirée. Le portage est refusé, la sacoche est intacte.
+    if (!monster.canEquip(piece)) {
+      return {
+        run,
+        displaced: null,
+        blocked: true,
+        logs: [
+          `⛔ ${piece.name} impossible : ${monster.equipped.weapon?.name ?? "l'arme tenue"} se manie à deux mains.`,
+        ],
+      };
+    }
+
+    // Porter une arme à deux mains **chasse le bouclier** (il retourne en
+    // sacoche), comme dans DQ où les deux mains sont prises.
+    const evicted = monster
+      .conflictingSlots(piece)
+      .map(slot => monster.unequip(slot))
+      .filter((p): p is Equipment => !!p);
     const displaced = monster.equip(piece);
     if (displaced) bag.push(displaced);
+    for (const piece2 of evicted) bag.push(piece2);
+
+    const notes = [
+      displaced ? `${displaced.name} retiré(e)` : '',
+      evicted.length > 0
+        ? `${evicted.map(p => p.name).join(', ')} lâché(e) (deux mains)`
+        : '',
+    ].filter(Boolean);
+
     return {
       run: { ...run, equipmentBag: bag },
       displaced,
-      logs: [`${piece.icon} ${piece.name} équipé(e)${displaced ? ` — ${displaced.name} retiré(e)` : ''}.`],
+      blocked: false,
+      logs: [`${piece.icon} ${piece.name} équipé(e)${notes.length ? ` — ${notes.join(' · ')}` : ''}.`],
+    };
+  }
+
+  /**
+   * « Meilleur équipement » (最強装備 de RPG Maker) : habille le monstre de la
+   * meilleure pièce possédée dans chaque emplacement (`bestLoadout`) **et** des
+   * `RELIC_SLOT_COUNT` meilleures reliques de la réserve (`relicScore`).
+   *
+   * Une pièce déjà portée peut gagner : à score égal, `bestLoadout` garde la
+   * première — le portage ne tourne donc jamais pour rien. Les pièces délogées
+   * retournent en sacoche, les reliques écartées dans la réserve : rien n'est
+   * jamais perdu. Hors combat uniquement (même verrou que le portage manuel).
+   */
+  optimizeEquipment(
+    monster: Monster,
+    run: RunState,
+  ): { run: RunState; logs: string[] } {
+    const logs: string[] = [];
+
+    // 1. Reliques : les meilleures d'abord, on libère les emplacements avant.
+    const ranked = [...(run.relics ?? [])]
+      .sort((a, b) => relicScore(b) - relicScore(a))
+      .slice(0, RELIC_SLOT_COUNT);
+    let relicsChanged = 0;
+    for (const worn of monster.getWornRelics()) {
+      if (!ranked.some(relic => relic.id === worn.id)) {
+        monster.takeOffRelic(worn.id);
+        relicsChanged++;
+      }
+    }
+    for (const relic of ranked) {
+      if (monster.wearRelic(relic)) relicsChanged++;
+    }
+
+    // 2. Équipement, emplacement par emplacement (arme en premier : la règle
+    //    des deux mains chasse le bouclier avant que son tour vienne).
+    const chosen = bestLoadout(
+      [...(run.equipmentBag ?? []), ...monster.getEquippedList()],
+      monster.equipped,
+    );
+    let next = run;
+    let piecesChanged = 0;
+    for (const slot of EQUIPMENT_SLOTS) {
+      const piece = chosen[slot];
+      if (!piece || monster.equipped[slot]?.id === piece.id) continue;
+      const result = this.equipFromBag(monster, next, piece.id);
+      if (!result) continue;
+      next = result.run;
+      logs.push(...result.logs);
+      if (!result.blocked) piecesChanged++;
+    }
+
+    logs.unshift(
+      `⚙️ Meilleur équipement : ${piecesChanged} pièce(s) et ${relicsChanged} relique(s) ajustées.`,
+    );
+    return { run: next, logs };
+  }
+
+  /**
+   * Porte une relique de la **réserve** du run (elles ne s'appliquent plus à la
+   * prise, réglage DQ) — `RELIC_SLOT_COUNT` emplacements, comme des
+   * accessoires. Refusé (null) si la relique n'est pas possédée, déjà portée,
+   * ou si les emplacements sont pris : c'est un choix, on retire avant.
+   */
+  wearRelic(
+    monster: Monster,
+    run: RunState,
+    relicId: string,
+  ): { logs: string[] } | null {
+    const relic = (run.relics ?? []).find(candidate => candidate.id === relicId);
+    if (!relic || !monster.wearRelic(relic)) return null;
+    return {
+      logs: [
+        `🔱 ${relic.icon} ${relic.name} portée (${monster.wornRelics.length}/${RELIC_SLOT_COUNT}) : ${relic.description}`,
+      ],
+    };
+  }
+
+  /** Retire une relique portée : elle retourne dans la réserve, intacte. */
+  takeOffRelic(
+    monster: Monster,
+    run: RunState,
+    relicId: string,
+  ): { run: RunState; logs: string[] } | null {
+    const relic = monster.takeOffRelic(relicId);
+    if (!relic) return null;
+    return {
+      run,
+      logs: [
+        `🔱 ${relic.icon} ${relic.name} retirée — conservée dans la réserve (${monster.wornRelics.length}/${RELIC_SLOT_COUNT}).`,
+      ],
     };
   }
 
@@ -840,6 +969,69 @@ export class BattleController {
     return {
       run: this.addEquipmentToBag(run, piece),
       logs: [`${piece.name} remis(e) dans la sacoche.`],
+    };
+  }
+
+  // --- Boutique : rachat des possessions ---
+
+  /**
+   * **Rachat** d'un article par la boutique (75 % du prix catalogue, cf.
+   * `sellPrice`) : **une unité** de potion par appel, ou une pièce de la
+   * **sacoche d'équipement**. Les reliques ne se vendent pas (pouvoir arraché
+   * aux monstres, et l'anti-doublon repose sur leur possession).
+   *
+   * L'équipement **porté** est **refusé** : on ne vend pas ce qu'on tient — le
+   * joueur le retire d'abord (fenêtre « Équipement », ouverte en boutique).
+   *
+   * @returns `null` si l'article n'est pas possédé ; sinon le run recrédité, ou
+   *          un refus journalisé (`refused: true`, run **et** or intacts).
+   */
+  sellItem(
+    monster: Monster,
+    run: RunState,
+    input: { kind: 'consumable' | 'equipment'; id: string },
+  ): { run: RunState; logs: string[]; refused: boolean } | null {
+    if (input.kind === 'consumable') {
+      const inventory = [...(run.inventory ?? [])];
+      const index = inventory.findIndex(slot => slot.item.id === input.id);
+      if (index === -1) return null;
+      const slot = inventory[index]!;
+      if (slot.quantity <= 0) return null;
+
+      const price = sellPrice(slot.item.price);
+      const quantity = slot.quantity - 1;
+      if (quantity > 0) inventory[index] = { ...slot, quantity };
+      else inventory.splice(index, 1);
+
+      return {
+        run: { ...run, inventory, gold: run.gold + price },
+        refused: false,
+        logs: [`💰 Vendu : ${slot.item.icon} ${slot.item.name} (+${price} or).`],
+      };
+    }
+
+    const bag = [...(run.equipmentBag ?? [])];
+    const index = bag.findIndex(piece => piece.id === input.id);
+    if (index === -1) {
+      // Peut-être PORTÉE : on le dit explicitement plutôt que de laisser croire
+      // à une vente silencieuse.
+      const worn = monster.getEquippedList().find(piece => piece.id === input.id);
+      if (!worn) return null;
+      return {
+        run,
+        refused: true,
+        logs: [
+          `⛔ ${worn.icon} ${worn.name} est porté(e) : retirez-la d'abord pour la vendre.`,
+        ],
+      };
+    }
+
+    const piece = bag.splice(index, 1)[0]!;
+    const price = sellPrice(piece.price);
+    return {
+      run: { ...run, equipmentBag: bag, gold: run.gold + price },
+      refused: false,
+      logs: [`💰 Vendu(e) : ${piece.icon} ${piece.name} (+${price} or).`],
     };
   }
 

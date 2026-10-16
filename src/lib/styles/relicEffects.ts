@@ -5,7 +5,15 @@ import {
   charismaMagicPercent,
   effectiveArmorBonus,
 } from '../../core/entities/Monster';
-import type { Relic, RelicEffect } from '../../core/entities/Relic';
+import {
+  relicDamagePercent,
+  relicExperiencePercent,
+  relicHealStartPercent,
+  relicLifestealPercent,
+  relicMaxCritRange,
+  type Relic,
+  type RelicEffect,
+} from '../../core/entities/Relic';
 import { STAT_LABELS, type MonsterStat } from '../../core/entities/Move';
 
 /**
@@ -110,8 +118,14 @@ export function relicEffectLines(relic: Relic): RelicEffectLine[] {
 }
 
 /**
- * Effets cumulés de tout le run, avec les conséquences chiffrées quand le
- * monstre est connu (CA réelle, PV lors du soin de début de combat).
+ * Effets cumulés des reliques **portées**, avec les conséquences chiffrées
+ * quand le monstre est connu (CA réelle, PV lors du soin de début de combat).
+ *
+ * Les pourcentages cumulés passent par les **mêmes helpers plafonnés que le
+ * moteur** (`RELIC_EFFECT_CAPS` : dégâts ≤ +10 %, vol de vie ≤ 10 %, soin de
+ * début ≤ 20 %, EXP ≤ 25 %, critiques = max jamais somme) : le panneau annonce
+ * donc exactement ce que le combat appliquera. Les caractéristiques et la CA,
+ * eux, ne sont pas plafonnés par design et restent de simples sommes.
  */
 export function relicEffectTotals(relics: Relic[], player: Monster | null = null): RelicEffectLine[] {
   const lines: RelicEffectLine[] = [];
@@ -132,12 +146,12 @@ export function relicEffectTotals(relics: Relic[], player: Monster | null = null
     });
   }
 
-  const damage = relics.reduce((sum, r) => sum + (r.effect.damagePercent ?? 0), 0);
+  const damage = relicDamagePercent(relics);
   if (damage > 0) {
     lines.push({ label: 'Dégâts', value: `+${damage} %`, hint: 'cumulés sur chaque coup' });
   }
 
-  const lifesteal = relics.reduce((sum, r) => sum + (r.effect.lifestealPercent ?? 0), 0);
+  const lifesteal = relicLifestealPercent(relics);
   if (lifesteal > 0) {
     lines.push({
       label: 'Vol de vie',
@@ -146,7 +160,7 @@ export function relicEffectTotals(relics: Relic[], player: Monster | null = null
     });
   }
 
-  const healStart = relics.reduce((sum, r) => sum + (r.effect.healStartPercent ?? 0), 0);
+  const healStart = relicHealStartPercent(relics);
   if (healStart > 0) {
     lines.push({
       label: 'Soin initial',
@@ -157,7 +171,7 @@ export function relicEffectTotals(relics: Relic[], player: Monster | null = null
     });
   }
 
-  const critRange = relics.reduce((max, r) => Math.max(max, r.effect.critRange ?? 0), 0);
+  const critRange = relicMaxCritRange(relics);
   if (critRange > 0) {
     lines.push({
       label: 'Critique',
@@ -166,7 +180,7 @@ export function relicEffectTotals(relics: Relic[], player: Monster | null = null
     });
   }
 
-  const xp = relics.reduce((sum, r) => sum + (r.effect.experiencePercent ?? 0), 0);
+  const xp = relicExperiencePercent(relics);
   if (xp > 0) {
     lines.push({ label: 'EXP', value: `+${xp} %`, hint: 'niveaux plus rapides' });
   }

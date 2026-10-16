@@ -1,8 +1,14 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import type { Monster } from "../../../core/entities/Monster";
   import type { RegionDef } from "../../../core/entities/Region";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import { dq } from "../../styles/style";
+  import {
+    isGameAudioMuted,
+    onGameAudioEnabledChange,
+    setGameAudioEnabled,
+  } from "../../audio/gameAudio";
 
   export let phase: string = "starter";
   export let player: Monster | null = null;
@@ -23,6 +29,18 @@
   export let onQuitToMenu: (() => void) | undefined = undefined;
 
   let showQuitConfirm = false;
+
+  // --- Son : bouton muet (coupe bruitages **et** musique de combat) ---------
+  let muted = isGameAudioMuted();
+  const unsubscribeAudio = onGameAudioEnabledChange((on) => {
+    muted = !on;
+  });
+  onDestroy(unsubscribeAudio);
+
+  function toggleMute() {
+    // `muted` est l'état courant : le passer fait l'inverse.
+    setGameAudioEnabled(muted);
+  }
 
   function handleLogoClick() {
     if (phase === "starter") {
@@ -147,6 +165,18 @@
         title="Ouvrir le Codex D&D & Table des types">
         <span>📖</span>
         <span class="hidden sm:inline">Codex</span>
+      </button>
+
+      <!-- Son on/off (bruitages + musique de combat), préférence persistée -->
+      <button
+        type="button"
+        on:click={toggleMute}
+        class="flex items-center justify-center w-8 h-8 rounded-md bg-[#16233a] hover:bg-[#1d2d49]
+          border border-sky-100/25 text-sky-50 transition-colors cursor-pointer"
+        title={muted ? "Activer le son" : "Couper le son"}
+        aria-label={muted ? "Activer le son" : "Couper le son"}
+        aria-pressed={muted}>
+        <span>{muted ? "🔇" : "🔊"}</span>
       </button>
 
       {#if phase === "starter"}

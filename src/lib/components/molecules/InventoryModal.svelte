@@ -7,6 +7,8 @@
 
   export let inventory: InventorySlot[] = [];
   export let player: Monster | null = null;
+  /** Un combat est en cours : utiliser un objet y **consomme l'action du tour**. */
+  export let inBattle: boolean = false;
   export let isPlayerTurn: boolean = true;
   export let disabled: boolean = false;
 
@@ -159,8 +161,10 @@
       <span class="italic">
         {#if !isPlayerTurn}
           ⏳ En attente de votre tour pour utiliser un objet
+        {:else if inBattle}
+          ⚔️ Agir avec un objet passe votre tour (façon どうぐ) — l'ennemi riposte ensuite
         {:else}
-          ✨ L'utilisation d'une potion est instantanée
+          ✨ Hors combat, l'objet s'applique immédiatement
         {/if}
       </span>
 

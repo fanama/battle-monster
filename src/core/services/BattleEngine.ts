@@ -1,4 +1,4 @@
-import type { Monster, MonsterRank } from "../entities/Monster";
+import type { Monster, MonsterRank, StatGrowth } from "../entities/Monster";
 import { abilityModifier, charismaHealBonus, levelPaceFactor } from "../entities/Monster";
 import type { Move, MonsterStat, MonsterType } from "../entities/Move";
 import { STAT_LABELS, moveAccuracyBonus } from "../entities/Move";
@@ -8,11 +8,29 @@ import {
 } from "../entities/StatusEffect";
 import { typeEffectiveness } from "./effectiveness";
 
+/**
+ * Rapport de montée de niveau (façon RPG Maker, qui liste les gains) : niveau
+ * atteint, points gagnés par caractéristique et capacités apprises. Alimente le
+ * pop-up de montée de niveau côté UI.
+ */
+export interface LevelUpSummary {
+  /** Niveau atteint (final si plusieurs paliers ont été franchis d'un coup). */
+  level: number;
+  /** Nombre de niveaux franchis par ce gain d'EXP (≥ 1). */
+  levels: number;
+  /** Points gagnés par caractéristique, cumulés sur tous les paliers franchis. */
+  statGains: StatGrowth;
+  /** Noms des capacités apprises à cette montée (remplies par le contrôleur). */
+  learnedMoves: string[];
+}
+
 export interface BattleLog {
   message: string;
   // Add a payload to signal a level up to the store
   payload?: {
     leveledUp?: boolean;
+    /** Détail de la montée de niveau (gains de stats), pour le pop-up. */
+    levelUp?: LevelUpSummary;
   };
 }
 
@@ -44,6 +62,17 @@ export interface BattleModifiers {
 /** Générateur de dés injectable — permet des tests déterministes. */
 export interface Dice {
   roll(count: number, sides: number): number;
+}
+
+/** Dépendances du moteur, injectables pour rendre un tour reproductible. */
+export interface BattleEngineDeps {
+  dice?: Dice;
+  /**
+   * Source d'aléatoire de la **variance de dégâts** (0 inclus → 1 exclu).
+   * Injectée comme les dés : sans elle, les tests de dégâts exacts deviennent
+   * instables. `0.5` = variance neutre (facteur 1).
+   */
+  variance?: () => number;
 }
 
 export const defaultDice: Dice = {
@@ -91,6 +120,28 @@ export function constitutionDamageReduction(defender: Monster): number {
  */
 export const BURN_DAMAGE_RATIO = 0.06;
 export const POISON_DAMAGE_RATIO = 0.04;
+
+/**
+ * Multiplicateur des dégâts d'une attaque qui consomme une **charge**
+ * (« ちからため », mécanique RPG Maker/Dragon Quest).
+ *
+ * 1.6 : un tour investi doit rapporter sensiblement plus qu'une attaque
+ * normale (sinon la charge ne se joue jamais), sans transformer la signature
+ * de niveau 9 en exécution — ×1.6 sur 130 reste dans l'épaisseur d'une barre
+ * de PV de boss.
+ */
+export const CHARGE_DAMAGE_MULTIPLIER = 1.6;
+
+/**
+ * Amplitude de la **variance de dégâts** façon Dragon Quest : chaque coup
+ * touche varie dans ±12 %.
+ *
+ * DQ ne publie jamais un nombre exact — les dégâts « respirent », ce qui
+ * interdit les calculs de seuil parfaits (lire « il me faut 3 coups » devient
+ * une estimation). La variance reste **modérée** : au-delà de ±20 %, un combat
+ * se décide sur un jet de dé et non sur les choix du joueur.
+ */
+export const DAMAGE_VARIANCE_PERCENT = 12;
 
 /**
  * Maps a move's power to a weapon die face count (1d6…1d20).
@@ -168,9 +219,20 @@ export interface DamageRoll {
  */
 export class BattleEngine {
   private readonly dice: Dice;
+  private readonly variance: () => number;
 
-  constructor(deps: { dice?: Dice } = {}) {
+  constructor(deps: BattleEngineDeps = {}) {
     this.dice = deps.dice ?? defaultDice;
+    this.variance = deps.variance ?? Math.random;
+  }
+
+  /**
+   * Facteur de variance Dragon Quest : 1 au centre, borné à
+   * ±{@link DAMAGE_VARIANCE_PERCENT} %.
+   */
+  varianceFactor(): number {
+    const spread = DAMAGE_VARIANCE_PERCENT / 100;
+    return 1 + (this.variance() * 2 - 1) * spread;
   }
 
   // --- 1. Résolution pure (aucune mutation) ---
@@ -197,6 +259,14 @@ export class BattleEngine {
     const attackMod = abilityModifier(attackStat);
     const bonus = moveAccuracyBonus(move);
     const ac = defender.getAC();
+
+    // Coup mortel (Dragon Quest) : **aucun jet**. Il touche toujours — pas de
+    // fumble, pas de CA à franchir, pas d'aléa consommé (le ruisseau de dés
+    // reste identique, ce qui garde les scénarios de test lisibles).
+    if (move.guaranteedCrit) {
+      return { hit: true, crit: false, fumble: false, roll: 0, total: 0, ac, attackMod, bonus };
+    }
+
     const roll = this.dice.roll(1, 20);
     const total = roll + attackMod + bonus;
     const fumble = roll === 1;
@@ -295,11 +365,15 @@ export class BattleEngine {
     rawDamage: number,
     multiplier: number,
     modifiers?: BattleModifiers,
+    variance = 1,
   ): number {
     const damageBonusFactor = modifiers?.damagePercent
       ? 1 + modifiers.damagePercent / 100
       : 1;
-    return Math.max(1, Math.floor(rawDamage * multiplier * damageBonusFactor));
+    return Math.max(
+      1,
+      Math.floor(rawDamage * multiplier * damageBonusFactor * variance),
+    );
   }
 
   calculateDamage(attacker: Monster, defender: Monster, move: Move): number {
@@ -309,9 +383,13 @@ export class BattleEngine {
     const base = this.computeFinalDamage(
       roll.total,
       this.typeMultiplier(move.type, defender.type, move.isPhysical),
+      undefined,
+      this.varianceFactor(),
     );
     // Absorption : mod(Constitution) positif de la victime retiré des dégâts.
-    return Math.max(1, base - constitutionDamageReduction(defender));
+    // Un coup mortel ignore cette défense.
+    const reduction = move.guaranteedCrit ? 0 : constitutionDamageReduction(defender);
+    return Math.max(1, base - reduction);
   }
 
   /**
@@ -567,15 +645,20 @@ export class BattleEngine {
     attacker: Monster,
     defender: Monster,
     experiencePercent?: number,
-  ): { leveledUp: boolean; logs: BattleLog[] } {
+  ): { leveledUp: boolean; levels: number; statGains: StatGrowth; logs: BattleLog[] } {
     const experience = this.calculateExperienceGained(
       attacker,
       defender,
       experiencePercent,
     );
-    const { leveledUp, logs: expMessages } =
+    const { leveledUp, levels, statGains, logs: expMessages } =
       attacker.gainExperience(experience);
-    return { leveledUp, logs: expMessages.map((message) => ({ message })) };
+    return {
+      leveledUp,
+      levels,
+      statGains,
+      logs: expMessages.map((message) => ({ message })),
+    };
   }
 
   // --- 3. Orchestration du tour ---
@@ -640,26 +723,47 @@ export class BattleEngine {
           defender.type,
           actualMoveInstance.isPhysical,
         );
-        const base = this.computeFinalDamage(roll.total, multiplier, modifiers);
+        // Variance Dragon Quest : les dégâts « respirent » (±12 %).
+        const base = this.computeFinalDamage(
+          roll.total,
+          multiplier,
+          modifiers,
+          this.varianceFactor(),
+        );
         // Absorption : si le mod(Constitution) de la victime est positif, il
         // est retiré des dégâts d'attaque (minimum 1 dégât infligé).
-        const reduction = constitutionDamageReduction(defender);
-        const final = Math.max(1, base - reduction);
+        // Un **coup mortel** traverse cette défense.
+        const mortal = Boolean(actualMoveInstance.guaranteedCrit);
+        const reduction = mortal ? 0 : constitutionDamageReduction(defender);
+        let final = Math.max(1, base - reduction);
+
+        // Charge armée : consommée par la première attaque qui **touche**
+        // (un raté la laisse en place, elle n'est pas dépensée).
+        const charged = attacker.consumeCharge();
+        if (charged > 0) final = Math.max(1, Math.floor(final * charged));
+
         defender.takeDamage(final);
         feedback = { kind: "damage", damage: final, isCrit: outcome.crit };
 
         const critMark = outcome.crit ? " 💥 CRITIQUE !" : "";
-        const signature = `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}]`;
+        const signature = mortal
+          ? "Coup mortel"
+          : `[1d20${sign(outcome.attackMod)}${sign(outcome.bonus)}${outcome.bonus ? " précision" : ""} = ${outcome.total}] vs CA ${outcome.ac}`;
         const effective = multiplier !== 1 ? ` (×${multiplier})` : "";
         const soak =
           reduction > 0
             ? ` − ${reduction} (mod CON ${sign(reduction)} de ${defender.name})`
             : "";
+        const chargeMark =
+          charged > 0 ? ` ⚡ charge dépensée ×${charged.toFixed(2)}` : "";
+        const hitLine = mortal
+          ? `${signature} → touche toujours (ignore la défense) !`
+          : `Jet ${signature} → Touché !`;
 
         logs.push({
           message:
             `🎯${critMark} ${attacker.name} attaque ${defender.name} avec ${actualMoveInstance.name} ! ` +
-            `Jet ${signature} vs CA ${outcome.ac} → Touché ! Dégâts : ${roll.total}${effective} = ${base}${soak} = ${final}.`,
+            `${hitLine} Dégâts : ${roll.total}${effective} = ${base}${soak}${chargeMark} = ${final}.`,
         });
 
         // Application de l'effet de statut élémentaire (si la capacité en possède un et la cible est vivante)
@@ -721,23 +825,40 @@ export class BattleEngine {
       }
     }
 
+    // 6b. Charge (« ちからため ») : arme la prochaine attaque de l'attaquant.
+    if (actualMoveInstance.charge) {
+      attacker.armCharge(CHARGE_DAMAGE_MULTIPLIER);
+      logs.push({
+        message: `⚡ ${attacker.name} concentre son énergie : sa prochaine attaque infligera ×${CHARGE_DAMAGE_MULTIPLIER.toFixed(2)} dégâts !`,
+      });
+    }
+
     // 7. Cooldown Management (always, even on fumble)
     this.manageCooldowns(attacker, actualMoveInstance);
 
     // 8. Post-Turn Check
     if (defender.isFainted()) {
       logs.push({ message: `☠️ ${defender.name} est K.O. !` });
-      const { leveledUp, logs: expLogs } = this.applyDefeatRewards(
-        attacker,
-        defender,
-        modifiers?.experiencePercent,
-      );
+      const { leveledUp, levels, statGains, logs: expLogs } =
+        this.applyDefeatRewards(
+          attacker,
+          defender,
+          modifiers?.experiencePercent,
+        );
       expLogs.forEach((log) => logs.push(log));
 
       if (leveledUp) {
         logs.push({
           message: `(Système) ${attacker.name} a gagné un niveau !`,
-          payload: { leveledUp: true },
+          payload: {
+            leveledUp: true,
+            levelUp: {
+              level: attacker.level,
+              levels,
+              statGains,
+              learnedMoves: [],
+            },
+          },
         });
       }
     }

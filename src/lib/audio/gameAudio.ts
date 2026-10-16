@@ -33,8 +33,64 @@ let initialized = false;
 /** Master gain chain: contexte → gain → destination. */
 let masterGain: GainNode | null = null;
 
+/**
+ * Bus **musique** : sous-gain du master, pour que la musique de combat vive à
+ * un niveau nettement plus bas que les bruitages (elle tourne en boucle, les
+ * bruitages doivent rester lisibles par-dessus).
+ */
+let musicGain: GainNode | null = null;
+
+/**
+ * Niveau du bus musique, relatif au master. Volontairement sous le niveau des
+ * bruitages (dont les pics montent à ~0,17 après master) : la boucle tourne en
+ * continu, elle doit rester un fond sonore.
+ */
+const MUSIC_GAIN = 0.35;
+
+/** Appelés dès que le contexte existe (le module musique s'y accroche). */
+const readyCallbacks = new Set<() => void>();
+
+/** Appelés à chaque bascule muet/son (la musique s'arrête/rep rend). */
+const enabledCallbacks = new Set<(on: boolean) => void>();
+
 export function isGameAudioEnabled(): boolean {
   return enabled && ctx != null;
+}
+
+/** L'utilisateur a-t-il coupé le son ? (état persisté, indépendant du contexte) */
+export function isGameAudioMuted(): boolean {
+  return !enabled;
+}
+
+/** Contexte partagé (module musique) — `null` tant que l'utilisateur n'a pas interagi. */
+export function getGameAudioContext(): AudioContext | null {
+  return ctx;
+}
+
+/** Bus musique (sous-gain du master) — `null` tant que le contexte n'existe pas. */
+export function getMusicBus(): GainNode | null {
+  return musicGain;
+}
+
+/**
+ * S'abonne à la création du contexte. Le callback est appelé **tout de suite**
+ * si le contexte existe déjà, sinon au premier geste utilisateur — c'est ce qui
+ * permet à la musique de démarrer sans dépendre de l'ordre d'initialisation.
+ */
+export function onGameAudioReady(cb: () => void): void {
+  readyCallbacks.add(cb);
+  if (ctx) cb();
+}
+
+/**
+ * S'abonne aux bascules muet/son. Renvoie la fonction de désabonnement (les
+ * composants UI l'utilisent en `onDestroy`).
+ */
+export function onGameAudioEnabledChange(cb: (on: boolean) => void): () => void {
+  enabledCallbacks.add(cb);
+  return () => {
+    enabledCallbacks.delete(cb);
+  };
 }
 
 /** Bascule le son on/off (utile pour un bouton « 🔊 / 🔇 » dans l'UI). */
@@ -45,6 +101,16 @@ export function setGameAudioEnabled(on: boolean): void {
   } catch {
     /* pas grave : préférence non persistée */
   }
+  if (on && ctx?.state === "suspended") void ctx.resume();
+  // La musique de combat suit la préférence : coupée net au mute, reprise au
+  // démutage si un combat est en cours (le module musique écoute).
+  enabledCallbacks.forEach((cb) => {
+    try {
+      cb(on);
+    } catch {
+      /* un abonné ne doit jamais casser l'audio */
+    }
+  });
 }
 
 export function initGameAudio(): void {
@@ -83,6 +149,19 @@ function createCtx(): void {
   masterGain = ctx.createGain();
   masterGain.gain.value = 0.5;
   masterGain.connect(ctx.destination);
+
+  musicGain = ctx.createGain();
+  musicGain.gain.value = MUSIC_GAIN;
+  musicGain.connect(masterGain);
+
+  // Les abonnés (musique de combat) peuvent enfin démarrer.
+  readyCallbacks.forEach((cb) => {
+    try {
+      cb();
+    } catch {
+      /* idem : jamais faire planter le jeu pour un son */
+    }
+  });
 }
 
 /** Note synthétique de base : oscillateur + enveloppe ADSR minimale. */

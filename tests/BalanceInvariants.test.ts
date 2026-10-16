@@ -6,11 +6,13 @@ import {
 } from '../src/core/services/effectiveness';
 import { MoveRepository } from '../src/infra/repositories/MoveRepositories';
 import {
+  GROWTH_CURVE_REFERENCE_LEVEL,
+  GROWTH_CURVES,
   MAX_MOVES,
   Monster,
   STAT_GROWTH_TOTAL,
   levelPaceFactor,
-  statGrowthForType,
+  statGrowthForLevel,
 } from '../src/core/entities/Monster';
 import { TYPE_AFFINITIES, ALLOCATABLE_STATS } from '../src/core/entities/MonsterCreation';
 import { REGIONS } from '../src/core/entities/Region';
@@ -140,24 +142,53 @@ describe('Catalogue de moves — parité entre types', () => {
 });
 
 describe('Courbe de progression des caractéristiques', () => {
-  test('Tous les types gagnent exactement STAT_GROWTH_TOTAL points par niveau', () => {
+  test('Tous les types gagnent exactement STAT_GROWTH_TOTAL points à chaque niveau', () => {
     for (const type of ALL_TYPES) {
-      const growth = statGrowthForType(type);
-      const total =
-        growth.strength +
-        growth.speed +
-        growth.constitution +
-        growth.wisdom +
-        growth.charisma +
-        growth.instinct;
-      expect(total).toBe(STAT_GROWTH_TOTAL);
+      // L'invariant doit tenir sur TOUTE la courbe : la redistribution entre
+      // stats se fait à budget constant (arrondi au plus fort reste).
+      for (let level = 2; level <= GROWTH_CURVE_REFERENCE_LEVEL; level++) {
+        const growth = statGrowthForLevel(type, level);
+        const total =
+          growth.strength +
+          growth.speed +
+          growth.constitution +
+          growth.wisdom +
+          growth.charisma +
+          growth.instinct;
+        expect(total).toBe(STAT_GROWTH_TOTAL);
+      }
     }
   });
 
   test('Le Charisme ne croît jamais (il ne vient que des reliques)', () => {
     for (const type of ALL_TYPES) {
-      expect(statGrowthForType(type).charisma).toBe(0);
+      for (let level = 2; level <= GROWTH_CURVE_REFERENCE_LEVEL; level++) {
+        expect(statGrowthForLevel(type, level).charisma).toBe(0);
+      }
     }
+  });
+
+  test('Chaque courbe atteint son incrément final au niveau de référence', () => {
+    for (const type of ALL_TYPES) {
+      expect(statGrowthForLevel(type, GROWTH_CURVE_REFERENCE_LEVEL)).toEqual(
+        GROWTH_CURVES[type].end,
+      );
+    }
+  });
+
+  test('Le budget tôt/tard bascule : un type précoce frappe d’abord, un type tardif encaisse ensuite', () => {
+    // Feu = offense précoce (Force qui décroît au profit tardif de la
+    // Constitution), Roche = colosse tardif (Constitution qui croît) — la
+    // courbure doit être observable dans la run jouée (niveaux 2→14).
+    expect(statGrowthForLevel('fire', 2).strength).toBeGreaterThan(
+      statGrowthForLevel('fire', 14).strength,
+    );
+    expect(statGrowthForLevel('fire', 2).constitution).toBeLessThan(
+      statGrowthForLevel('fire', 14).constitution,
+    );
+    expect(statGrowthForLevel('rock', 2).constitution).toBeLessThan(
+      statGrowthForLevel('rock', 14).constitution,
+    );
   });
 
   test('Chaque type reçoit au moins +2 Constitution à la création', () => {
@@ -218,13 +249,21 @@ describe('Échelle des ennemis', () => {
     expect(enemy.charisma).toBe(10);
   });
 
-  test('L’ennemi suit la croissance de son propre type', () => {
+  test('L’ennemi suit la courbe de son propre type', () => {
     const factory = new RandomEnemyFactory(moves, () => 0.5);
     const base = factory.createRandomEnemy(CREATION_LEVEL, { type: 'grass' });
     const grown = factory.createRandomEnemy(CREATION_LEVEL + 3, { type: 'grass' });
-    const growth = statGrowthForType('grass');
-    expect(grown.wisdom - base.wisdom).toBe(growth.wisdom * 3);
-    expect(grown.strength - base.strength).toBe(growth.strength * 3);
+    // L'ennemi cumule l'incrément de chaque palier franchi — exactement ce
+    // qu'un champion du même type aurait gagné en montant un à un.
+    let wisdom = 0;
+    let strength = 0;
+    for (let level = CREATION_LEVEL + 1; level <= CREATION_LEVEL + 3; level++) {
+      const growth = statGrowthForLevel('grass', level);
+      wisdom += growth.wisdom;
+      strength += growth.strength;
+    }
+    expect(grown.wisdom - base.wisdom).toBe(wisdom);
+    expect(grown.strength - base.strength).toBe(strength);
   });
 
   test('La menace régionale réduit les caractéristiques sans passer sous le plancher', () => {

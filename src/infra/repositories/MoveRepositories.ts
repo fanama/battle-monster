@@ -14,8 +14,8 @@ import type { Monster } from "../../core/entities/Monster";
  * | ---------- | ------ | --------- | -------- | --------------------------- |
  * | `a`        | 1      | 35        | physique | statut 35 %                 |
  * | `b`        | 1      | 55        | magique  | statut 45 %                 |
- * | `c`        | 3      | 65        | physique | —                           |
- * | amplification | 3   | 0         | —        | +2 stat, recharge 4        |
+ * | `c`        | 3      | 65        | physique | **coup mortel** (Dragon Quest) : touche toujours, ignore la défense |
+ * | amplification | 3   | 0         | —        | +2 stat, **charge** armée (« ちからため »), recharge 4 |
  * | `d`        | 5      | 80        | magique  | statut 55 %                 |
  * | soin       | 6      | 0         | —        | `healPower` 15, cd 5 (gros-coups à recharge longue) |
  * | `e`        | 7      | 95–100    | physique | recharge 1 — décalé du niveau 9 : le creux de tension 7-9 venait de l'absence d'attaque de haut palier dans le panel |
@@ -38,6 +38,24 @@ import type { Monster } from "../../core/entities/Monster";
  * alternance), de son **statut** (brûlure, gel, paralysie, poison), de son
  * **buff** et de sa courbe de caractéristiques — plus jamais d'un multiplicateur
  * de dégâts caché dans le catalogue.
+ *
+ * ## Mécaniques RPG Maker × Dragon Quest (2026-10)
+ *
+ * Deux créneaux de la grille portent désormais une **mécanique** au lieu d'un
+ * simple palier, sans toucher à l'échelle de puissance (les niveaux et les
+ * puissances restent strictement identiques d'un type à l'autre, invariants
+ * testés) :
+ *
+ * - le créneau `c` (niv. 3, puissance 65, physique) devient un **coup mortel**
+ *   (`guaranteedCrit`) : il touche **toujours** et **ignore la défense** de la
+ *   victime. Sa valeur tient à la fiabilité, pas au plafond de dégâts.
+ * - le créneau d'amplification (niv. 3, puissance 0) devient une **charge**
+ *   (`charge`) : il conserve son `statBoosts` (l'invariant « une amplification
+ *   par type » tient tel quel) **et** arme la prochaine attaque d'un
+ *   multiplicateur (`CHARGE_DAMAGE_MULTIPLIER`).
+ *
+ * La **variance de dégâts** (±`DAMAGE_VARIANCE_PERCENT` %) s'applique, elle, à
+ * toutes les attaques du moteur — c'est une propriété du combat, pas du move.
  *
  * Les moves `normal` sont de surcroît accessibles à **tous** les types
  * (`getMovesForMonster`) : le panel de choix fait donc 16 capacités, dont 8
@@ -73,6 +91,7 @@ export class MoveRepository {
       type: "normal",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "normal-rally": {
       id: "normal-rally",
@@ -82,6 +101,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "strength", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "normal-hyper-beam": {
@@ -150,6 +170,7 @@ export class MoveRepository {
       type: "fire",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "fire-rage": {
       id: "fire-rage",
@@ -159,6 +180,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "strength", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "fire-blaze": {
@@ -227,6 +249,7 @@ export class MoveRepository {
       type: "water",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "water-bubble": {
       id: "water-bubble",
@@ -236,6 +259,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "constitution", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "water-wave": {
@@ -304,6 +328,7 @@ export class MoveRepository {
       type: "grass",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "grass-bark": {
       id: "grass-bark",
@@ -313,6 +338,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "constitution", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "grass-drain": {
@@ -381,6 +407,7 @@ export class MoveRepository {
       type: "electric",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "elec-charge": {
       id: "elec-charge",
@@ -390,6 +417,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "speed", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "elec-bolt": {
@@ -460,6 +488,7 @@ export class MoveRepository {
       type: "rock",
       isPhysical: true,
       level: 3,
+      guaranteedCrit: true,
     },
     "rock-armor": {
       id: "rock-armor",
@@ -469,6 +498,7 @@ export class MoveRepository {
       isPhysical: false,
       level: 3,
       statBoosts: { stat: "constitution", value: 2 },
+      charge: true,
       maxCoolDown: 4,
     },
     "rock-geyser": {

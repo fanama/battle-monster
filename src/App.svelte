@@ -16,6 +16,7 @@
   import MoveManagerModal from "./lib/components/molecules/MoveManagerModal.svelte";
   import EquipmentModal from "./lib/components/molecules/EquipmentModal.svelte";
   import { EQUIPMENT_SLOT_LABELS, type EquipmentSlot } from "./core/entities/Equipment";
+  import { RELIC_SLOT_COUNT } from "./core/entities/Relic";
   import InventoryModal from "./lib/components/molecules/InventoryModal.svelte";
   import Home from "./lib/components/molecules/Home.svelte";
   import ArenaSpellLayer from "./lib/components/molecules/ArenaSpellLayer.svelte";
@@ -39,11 +40,19 @@
   const unlockedTypes = battleStore.unlockedTypes;
   const isMoveModalOpen = battleStore.isMoveModalOpen;
   const isLevelUpMovePrompt = battleStore.isLevelUpMovePrompt;
+  const levelUpInfo = battleStore.levelUpInfo;
 
   $: run = $battleStore.run;
   $: phase = run.phase;
   $: player = $battleStore.playerMonster;
   $: region = REGIONS[run.regionIndex];
+
+  // Portage réel du monstre, recopié à CHAQUE mise à jour du store : Svelte ne
+  // suit pas les mutations en place du monstre (le portage mute la même
+  // instance), ces valeurs fraîches portent donc la réactivité jusqu'aux
+  // fenêtres de gestion.
+  $: equippedPieces = player ? { ...player.equipped } : {};
+  $: wornRelics = player?.getWornRelics() ?? [];
   // Palette de l'arène = couleurs de la région courante (partagées avec le HUD).
   $: regionColors = REGION_COLORS[region.id] ?? REGION_COLORS["region-verdure"];
 
@@ -89,14 +98,14 @@
     (fb) => fb && fb.kind === "damage" && fb.isCrit,
   );
 
-  // `relicCount` est passé explicitement : Svelte ne suit pas les variables
-  // lues dans le corps d'une fonction, le badge doit donc rester réactif.
-  $: tabs = buildTabs(
-    phase,
-    isMyTurn,
-    run.relics.length,
-    $battleStore.run.equipmentBag?.length ?? 0,
-  );
+  // `relicCount` et `pendingPlacements` sont passés explicitement : Svelte ne
+  // suit pas les variables lues dans le corps d'une fonction, le badge doit
+  // donc rester réactif. `pendingPlacements` = pièces en sacoche + reliques
+  // encore en réserve : « il y a quelque chose à porter ».
+  $: pendingPlacements =
+    ($battleStore.run.equipmentBag?.length ?? 0) +
+    Math.max(0, run.relics.length - wornRelics.length);
+  $: tabs = buildTabs(phase, isMyTurn, run.relics.length, pendingPlacements);
 
   function buildTabs(
     currentPhase: RunPhase,
@@ -113,7 +122,8 @@
       list.push({ id: 'shop', label: 'Boutique', icon: '🛒' });
     }
 
-    // Pastille dorée sur l'onglet Champion : des pièces attendent d'être portées.
+    // Pastille dorée sur l'onglet Champion : des pièces ou des reliques
+    // attendent d'être portées.
     list.push({ id: 'champion', label: 'Champion', icon: '🐉', alert: bagCount > 0 });
     list.push({
       id: 'relics',
@@ -277,6 +287,7 @@
       mapLayer={run.mapLayer}
       mapLayers={run.map?.layers.length ?? 0}
       relics={run.relics}
+      wornRelicIds={wornRelics.map((r) => r.id)}
       inventory={run.inventory}
       score={run.score}
       gold={run.gold}
@@ -524,7 +535,10 @@
             gold={run.gold}
             player={player}
             inventory={run.inventory}
+            equipped={equippedPieces}
+            equipmentBag={$battleStore.run.equipmentBag ?? []}
             onBuy={(item) => battleStore.buyShopItem(item)}
+            onSell={(entry) => battleStore.sellShopItem(entry)}
             onLeave={() => battleStore.leaveShop()}
           />
         </div>
@@ -566,10 +580,10 @@
                 border border-emerald-200/35 bg-[#16233a] hover:bg-[#1d2d49] text-emerald-100
                 transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-95
                 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Porter ou retirer des pièces d'équipement (hors combat uniquement)"
+              title="Porter ou retirer équipement et reliques (hors combat uniquement)"
             >
               <span>🧰</span>
-              <span>Équipement ({$battleStore.run.equipmentBag?.length ?? 0} en sacoche)</span>
+              <span>Équipement & Reliques ({wornRelics.length}/{RELIC_SLOT_COUNT} reliques portées)</span>
             </button>
             <!-- Pastille dorée : une pièce attend d'être portée (offres mixées,
                  drops garantis, butin de boss) -->
@@ -590,7 +604,7 @@
       <!-- ================= ONGLET : RELIQUES OBTENUES ================= -->
       {:else if currentTab === 'relics'}
         <div class="flex-1 min-h-0 scroll-panel px-2 sm:px-3 py-2 panel-enter">
-          <RelicList relics={run.relics} {player} />
+          <RelicList relics={run.relics} {player} wornRelicIds={wornRelics.map((r) => r.id)} />
         </div>
 
       <!-- ================= ONGLET : JOURNAL ================= -->
@@ -607,6 +621,7 @@
     <InventoryModal
       inventory={run.inventory}
       player={player}
+      inBattle={phase === 'encounter'}
       isPlayerTurn={$battleStore.isPlayerTurn && !$battleStore.isAttacking && !$battleStore.isEnemyAttacking && !$battleStore.winner}
       disabled={phase === 'encounter' && (!$battleStore.isPlayerTurn || !!$battleStore.winner || $battleStore.isAttacking || $battleStore.isEnemyAttacking)}
       on:use={(e) => battleStore.useConsumable(e.detail.itemId)}
@@ -614,15 +629,25 @@
     />
   {/if}
 
-  <!-- MODAL ÉQUIPEMENT : 5 emplacements DQ, portage hors combat -->
+  <!--
+    MODAL ÉQUIPEMENT & RELIQUES (conventions DQ / RPG Maker) : 5 emplacements
+    d'équipement + 3 emplacements de reliques, portage **hors combat**, aperçu
+    des stats avant/après et bouton « Meilleur équipement » (最強装備).
+  -->
   {#if isEquipmentOpen}
     <EquipmentModal
       isOpen={isEquipmentOpen}
       monster={player}
       bag={$battleStore.run.equipmentBag ?? []}
+      equipped={equippedPieces}
+      relics={run.relics}
+      {wornRelics}
       canManage={canManageEquipment}
       on:equip={(e) => battleStore.equipPiece(e.detail)}
       on:unequip={(e) => battleStore.unequipPiece(e.detail)}
+      on:wearRelic={(e) => battleStore.wearRelic(e.detail)}
+      on:takeoffRelic={(e) => battleStore.takeOffRelic(e.detail)}
+      on:optimize={() => battleStore.optimizeEquipment()}
       on:close={() => (isEquipmentOpen = false)}
     />
   {/if}
@@ -638,6 +663,7 @@
   <MoveManagerModal
     isOpen={$isMoveModalOpen}
     isLevelUp={$isLevelUpMovePrompt}
+    levelUpInfo={$levelUpInfo}
     monster={player}
     availableMoves={availableMoves}
     onSave={(selectedMoves) => battleStore.setPlayerMoves(selectedMoves)}

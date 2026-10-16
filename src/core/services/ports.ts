@@ -27,8 +27,16 @@ export interface EnemyFactory {
   createBoss(level: number, type: MonsterType, name: string, statScale?: number): Monster;
 }
 
-/** Version du format de sauvegarde — un décalage = sauvegarde invalide. */
-export const SAVE_VERSION = 3;
+/**
+ * Version du format de sauvegarde — un décalage = sauvegarde invalide.
+ *
+ * v4 (courbe d'EXP RPG Maker) : `Monster.experience` est désormais une EXP
+ * **cumulée** (et non plus un reliquat de palier). Les sauvegardes v3 portent
+ * un reliquat qui serait relu comme un total : on les invalide plutôt que de
+ * reprendre avec une barre d'EXP fausse. La progression méta (types débloqués,
+ * Panthéon) vit dans son propre stockage, elle n'est pas affectée.
+ */
+export const SAVE_VERSION = 4;
 
 /** Sauvegarde JSON-safe d'une partie (menu titre → « Continuer »). */
 export interface RunSave {

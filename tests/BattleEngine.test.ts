@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { BattleEngine, constitutionDamageReduction, type Dice } from '../src/core/services/BattleEngine';
+
+/**
+ * Variance de dégâts **neutralisée** (facteur 1) : ces tests vérifient des
+ * valeurs de dégâts exactes, ils doivent donc figer la variance Dragon Quest
+ * (±12 %) comme ils figent déjà les dés. `0.5` est le centre de la fourchette.
+ */
+const NEUTRAL_VARIANCE = () => 0.5;
 import { Monster } from '../src/core/entities/Monster';
 import type { Move } from '../src/core/entities/Move';
 
@@ -109,11 +116,11 @@ describe('Absorption des dégâts par la Constitution de la victime', () => {
 
   test('Le mod(CON) positif de la victime est retiré des dégâts infligés', () => {
     // Dégâts bruts : 1d8(8) + 4 (puissance) + 2 (mod FOR 14) + 2 (bonus) = 16.
-    const engineNoCon = new BattleEngine({ dice: attackDice() });
+    const engineNoCon = new BattleEngine({ dice: attackDice(), variance: NEUTRAL_VARIANCE });
     const soft = new Monster('d', 'Souple', 'normal', 1, 10, 14, 10, 10, 10, 10, []); // CON 10 → +0
     const turnSoft = engineNoCon.executeTurn(attacker(), soft, tackle);
 
-    const engineHighCon = new BattleEngine({ dice: attackDice() });
+    const engineHighCon = new BattleEngine({ dice: attackDice(), variance: NEUTRAL_VARIANCE });
     const tough = new Monster('d', 'Coriace', 'normal', 1, 10, 14, 18, 10, 10, 10, []); // CON 18 → +4
     const turnTough = engineHighCon.executeTurn(attacker(), tough, tackle);
 
@@ -128,7 +135,7 @@ describe('Absorption des dégâts par la Constitution de la victime', () => {
   });
 
   test('Les dégâts restent minimum 1 malgré une CON très élevée', () => {
-    const engine = new BattleEngine({ dice: attackDice() });
+    const engine = new BattleEngine({ dice: attackDice(), variance: NEUTRAL_VARIANCE });
     const wall = new Monster('d', 'Mur', 'normal', 1, 10, 14, 46, 10, 10, 10, []); // mod CON +17
     const turn = engine.executeTurn(attacker(), wall, tackle);
 

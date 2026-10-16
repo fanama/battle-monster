@@ -1,5 +1,9 @@
 import type { MonsterStat, MonsterType } from './Move';
-import { CONSUMABLE_CATALOG, type ConsumableItem } from './Consumable';
+import {
+  CONSUMABLE_CATALOG,
+  type ConsumableItem,
+  type InventorySlot,
+} from './Consumable';
 import {
   EQUIPMENT_CATALOG,
   type Equipment,
@@ -777,6 +781,43 @@ export const RELIC_EFFECT_CAPS = {
   experiencePercent: 25,
 } as const;
 
+/**
+ * **Emplacements de reliques portées** (réglage DQ, 2026-10).
+ *
+ * Une relique obtenue en combat ne s'applique plus à la prise : elle rejoint
+ * la **réserve** du run (`RunState.relics`) et n'agit qu'une fois **portée**
+ * sur le monstre (`Monster.wornRelics`) — exactement comme une pièce
+ * d'équipement. Trois emplacements : la puissance n'est plus une accumulation
+ * aveugle, c'est un **choix de build** à refaire quand la réserve grandit.
+ *
+ * La portée de la règle est symétrique de l'équipement : portage **hors
+ * combat** uniquement (carte, boutique), retrait exactement inversible.
+ */
+export const RELIC_SLOT_COUNT = 3;
+
+/**
+ * Score de puissance d'une relique — base du bouton « Meilleur équipement »
+ * (最強装備 RPG Maker). Heuristique **entière** (aucun flottant, donc
+ * parfaitement déterministe et testable) qui met les poids là où le jeu les
+ * met : 1 CA ≈ 3 points de caractéristique, 1 point de plage de critique
+ * (5 % de chance de ×2) en vaut 4, les pourcentages valent la moitié d'un
+ * point de caractéristique, et l'EXP — confort, pas puissance — un dixième.
+ */
+export function relicScore(relic: Relic): number {
+  const e = relic.effect;
+  let score = 0;
+  if (e.stat) {
+    for (const value of Object.values(e.stat)) score += (value ?? 0) * 10;
+  }
+  score += (e.acBonus ?? 0) * 30;
+  score += (e.critRange ?? 0) * 40;
+  score += (e.damagePercent ?? 0) * 5;
+  score += (e.lifestealPercent ?? 0) * 5;
+  score += (e.healStartPercent ?? 0) * 2;
+  score += (e.experiencePercent ?? 0) * 1;
+  return score;
+}
+
 /** % de dégâts supplémentaires cumulés, **plafonné** (reliques). */
 export function relicDamagePercent(relics: Relic[]): number {
   const raw = relics.reduce((sum, r) => sum + (r.effect.damagePercent ?? 0), 0);
@@ -900,6 +941,19 @@ export function rollRareMonsterPowerOffers(
 export const POTION_PRICE = 30;
 
 /**
+ * **Taux de rachat** de la boutique d'aventurier (2026-10) : 75 % du prix
+ * catalogue, arrondi au **supérieur**, jamais moins de 1 💰. Une pièce achetée
+ * puis revendue perd un quart de sa valeur — assez pour que l'achat reste un
+ * engagement, assez peu pour qu'une erreur de casting se corrige.
+ */
+export const SELL_PRICE_RATE = 0.75;
+
+/** Prix de **rachat** d'un article (75 % du catalogue, arrondi au supérieur). */
+export function sellPrice(catalogPrice: number): number {
+  return Math.max(1, Math.ceil(catalogPrice * SELL_PRICE_RATE));
+}
+
+/**
  * Familles **toujours en vitrine** dans le rayon Forge : une **arme**, une
  * **armure** et un **accessoire**. Les pièces suivantes du rayon (au-delà de
  * trois) sont tirées dans le poly entier — casques et boucliers compris.
@@ -988,6 +1042,89 @@ export function buildConsumableShopItems(): ShopItem[] {
     consumable: item,
     bought: false,
   }));
+}
+
+/**
+ * Article **repris** par la boutique (symétrique de `ShopItem`) : potions de la
+ * sacoche et pièces d'équipement **non portées**. L'équipement porté n'est
+ * jamais repris — le joueur le retire d'abord (`unequipToBag`, la fenêtre
+ * « Équipement » étant ouverte en boutique) : on ne vend pas ce qu'on tient,
+ * façon Dragon Quest.
+ *
+ * Les **reliques** ne se vendent pas : elles sont le pouvoir arraché aux
+ * monstres vaincus, et l'anti-doublon repose sur leur possession.
+ */
+export interface SellEntry {
+  /** Clé d'affichage (`sell-<kind>-<id catalogue>`), unique par ligne. */
+  id: string;
+  kind: 'consumable' | 'equipment';
+  /** Prix de rachat effectif (75 % du catalogue). */
+  price: number;
+  /** Prix catalogue — affiché pour situer la perte. */
+  catalogPrice: number;
+  label: string;
+  icon: string;
+  desc: string;
+  /** Unités vendables : 1 par clic (potions empilées), 1 pour une pièce. */
+  quantity: number;
+  consumable?: ConsumableItem;
+  equipment?: Equipment;
+}
+
+/**
+ * Liste de revente d'un run, reconstruite depuis ses deux réserves : la
+ * **sacoche d'objets** (une ligne par potion, avec sa quantité) et la
+ * **sacoche d'équipement** (une ligne par pièce). Les pièces **portées** n'y
+ * figurent pas — elles ne sont pas dans la sacoche.
+ *
+ * Dé-duplication **par id** (filet d'affichage) : ces lignes sont les clés d'un
+ * `each` Svelte, une sauvegarde ancienne à clés dupliquées ne doit jamais le
+ * faire crasher.
+ */
+export function buildSellEntries(
+  inventory: readonly InventorySlot[] = [],
+  equipmentBag: readonly Equipment[] = [],
+): SellEntry[] {
+  const entries: SellEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const slot of inventory) {
+    if (!slot || slot.quantity <= 0) continue;
+    const id = `sell-consumable-${slot.item.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    entries.push({
+      id,
+      kind: 'consumable',
+      price: sellPrice(slot.item.price),
+      catalogPrice: slot.item.price,
+      label: slot.item.name,
+      icon: slot.item.icon,
+      desc: slot.item.description,
+      quantity: slot.quantity,
+      consumable: slot.item,
+    });
+  }
+
+  for (const piece of equipmentBag) {
+    if (!piece) continue;
+    const id = `sell-equipment-${piece.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    entries.push({
+      id,
+      kind: 'equipment',
+      price: sellPrice(piece.price),
+      catalogPrice: piece.price,
+      label: piece.name,
+      icon: piece.icon,
+      desc: piece.description,
+      quantity: 1,
+      equipment: piece,
+    });
+  }
+
+  return entries;
 }
 
 /**

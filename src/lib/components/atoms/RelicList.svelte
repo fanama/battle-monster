@@ -8,9 +8,18 @@
 
   export let relics: Relic[] = [];
   export let player: Monster | null = null;
+  /**
+   * Ids des reliques **portées** (réglage DQ, 3 emplacements). Seules celles-là
+   * agissent : tout le reste est en réserve, donc inerte.
+   */
+  export let wornRelicIds: string[] = [];
 
-  // Effets cumulés de tout le run, avec les conséquences chiffrées.
-  $: totals = relicEffectTotals(relics, player);
+  $: wornSet = new Set(wornRelicIds);
+  $: wornRelics = relics.filter((relic) => wornSet.has(relic.id));
+
+  // Effets cumulés des reliques **portées** (la réserve ne compte pas), avec
+  // les conséquences chiffrées.
+  $: totals = relicEffectTotals(wornRelics, player);
 </script>
 
 <!--
@@ -29,7 +38,8 @@
             Effets cumulés
           </h3>
           <p class="text-[11px] text-sky-200/60">
-            {relics.length} relique{relics.length > 1 ? "s" : ""} sur l'ensemble du périple
+            {wornRelics.length} portée{wornRelics.length > 1 ? "s" : ""} sur
+            {relics.length} obtenue{relics.length > 1 ? "s" : ""} — la réserve n'agit pas
           </p>
         </div>
       </header>
@@ -76,6 +86,17 @@
               <span class="font-display text-sm font-bold text-amber-100">{relic.name}</span>
               <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border {tag.chip}">
                 {tag.label}
+              </span>
+              <span
+                class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border
+                  {wornSet.has(relic.id)
+                    ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/60'
+                    : 'text-sky-200/60 border-sky-100/25 bg-[#16233a]'}"
+                title={wornSet.has(relic.id)
+                  ? 'Portée : ses effets comptent en combat'
+                  : 'En réserve : portez-la (fenêtre Équipement) pour la rendre active'}
+              >
+                {wornSet.has(relic.id) ? '🔱 Portée · active' : 'Inerte · en réserve'}
               </span>
               {#if relic.powerOf}
                 <span

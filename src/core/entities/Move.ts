@@ -63,6 +63,24 @@ export interface Move {
   healPower?: number;
   statBoosts?: StatBoost;
   statusEffect?: MoveStatusEffect;
+  /**
+   * **Coup mortel** façon Dragon Quest (会心の一撃) : la capacité ne passe par
+   * **aucun jet contre la CA** (elle touche toujours) et **ignore la défense**
+   * de la victime (sa réduction de Constitution).
+   *
+   * Elle ne double **pas** les dés de dégâts : sa valeur vient de la fiabilité
+   * (jamais de fumble, jamais de raté, armure traversée), pas du plafond de
+   * dégâts — c'est ce qui lui permet d'occuper un palier de puissance médian
+   * sans devenir une exécution.
+   */
+  guaranteedCrit?: boolean;
+  /**
+   * **Charge** façon « ちからため » : sacrifie l'offensive du tour pour armer la
+   * **prochaine attaque** d'un multiplicateur de dégâts
+   * (`CHARGE_DAMAGE_MULTIPLIER`), consommé par le premier coup qui **touche**
+   * (une attaque ratée laisse la charge en place).
+   */
+  charge?: boolean;
 }
 
 /**

@@ -109,11 +109,29 @@
             <div class="p-4 rounded-xl border border-sky-100/15 bg-[#0d1526]/60 flex flex-col gap-2">
               <span class="font-mono font-bold text-sky-400 uppercase tracking-wider text-xs">🛡️ Classe d'Armure (CA)</span>
               <p class="text-sky-100/80 leading-relaxed">
-                La défense de base est déterminée par la vitesse et augmentée par les reliques d'armure passives (plafonnée à 24 pour éviter l'intouchabilité).
+                La défense de base est déterminée par la vitesse et augmentée par les reliques et pièces d'armure <span class="text-amber-100">portées</span> (plafonnée à 24 pour éviter l'intouchabilité).
               </p>
               <div class="p-2.5 rounded bg-black/50 border border-sky-100/15 font-mono text-[11px] text-sky-200/65">
                 • CA : <span class="text-sky-300">10 + mod(Vitesse ≤ +5) + Armure</span><br/>
                 • Plafond effectif : <span class="text-amber-100">Max 24 CA</span>
+              </div>
+            </div>
+
+            <!-- ÉQUIPEMENT & RELIQUES (conventions Dragon Quest / RPG Maker) -->
+            <div class="md:col-span-2 p-4 rounded-xl border border-amber-200/20 bg-[#0d1526]/60 flex flex-col gap-2">
+              <span class="font-mono font-bold text-amber-100 uppercase tracking-wider text-xs">🧰 Équipement & Reliques (Dragon Quest / RPG Maker)</span>
+              <p class="text-sky-100/80 leading-relaxed">
+                Seul ce que le monstre <span class="text-amber-100">porte</span> agit : une pièce restée en
+                sacoche et une relique restée en <span class="text-amber-100">réserve</span> sont inertes.
+                Le portage se fait <span class="text-amber-100">hors combat</span>, dans la fenêtre
+                « Équipement », avec l'<span class="text-amber-100">aperçu</span> des statistiques
+                avant/après et le bouton <span class="text-amber-100">« Meilleur équipement »</span> (最強装備).
+              </p>
+              <div class="p-2.5 rounded bg-black/50 border border-sky-100/15 font-mono text-[11px] text-sky-200/65">
+                • 5 emplacements : <span class="text-sky-300">Arme · Armure · Casque · Bouclier · Accessoire</span><br/>
+                • Reliques : <span class="text-amber-100">3 emplacements portés</span> — la réserve n'agit pas<br/>
+                • Arme à deux mains : <span class="text-violet-200">le bouclier est lâché</span> (et refusé tant qu'elle est tenue)<br/>
+                • En combat, agir avec un <span class="text-amber-100">objet</span> passe votre tour (どうぐ) — l'ennemi riposte
               </div>
             </div>
 

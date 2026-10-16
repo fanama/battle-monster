@@ -61,8 +61,10 @@
   </p>
   <p class="text-sm text-sky-100/70">
     Le monstre terrassé abandonne son pouvoir. Choisissez une seule carte : une
-    relique (le pouvoir du monstre, permanent pour la run) ou une pièce
-    d'équipement (à porter depuis l'onglet Champion) — ou passez.
+    relique (elle rejoint votre <span class="text-amber-100">réserve</span> —
+    3 emplacements à porter) ou une pièce d'équipement. Les deux se portent
+    <span class="text-amber-100">hors combat</span>, depuis la fenêtre
+    « Équipement » — ou passez.
   </p>
 
   <div

@@ -66,7 +66,7 @@ export interface TypeAffinity {
 
 /**
  * Affinités innées par type (+6 points répartis), calquées sur les courbes de
- * progression de `Monster.getStatGrowth` : le type oriente l'archétype, les
+ * progression (`GROWTH_CURVES`) : le type oriente l'archétype, les
  * points de destin permettent de le confirmer ou de le contredire.
  *
  * **Invariant d'équilibrage : tout type reçoit au moins +2 Constitution.**

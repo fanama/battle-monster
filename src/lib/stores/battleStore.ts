@@ -3,14 +3,8 @@ import type { BattleState, RunState } from "../../core/entities/BattleState";
 import { Monster } from "../../core/entities/Monster";
 import { MonsterIO } from "../../core/entities/Monster";
 import { TYPE_LABELS, type Move, type MonsterType } from "../../core/entities/Move";
-import type { Relic, ShopItem } from "../../core/entities/Relic";
-import {
-  relicDamagePercent,
-  relicLifestealPercent,
-  relicMaxCritRange,
-  relicExperiencePercent,
-  rollShopStock,
-} from "../../core/entities/Relic";
+import type { Relic, SellEntry, ShopItem } from "../../core/entities/Relic";
+import { RELIC_SLOT_COUNT, rollShopStock } from "../../core/entities/Relic";
 import { STARTER_INVENTORY } from "../../core/entities/Consumable";
 import {
   EQUIPMENT_SLOTS,
@@ -29,6 +23,7 @@ import type {
   PlayTurnOptions,
   PlayTurnResult,
 } from "../../core/services/BattleController";
+import type { LevelUpSummary } from "../../core/services/BattleEngine";
 import {
   SAVE_VERSION,
   type RunSave,
@@ -38,6 +33,7 @@ import {
   type SavedChampion,
 } from "../../core/services/ports";
 import { playSound } from "../audio/gameAudio";
+import { startBattleMusic, stopBattleMusic } from "../audio/battleMusic";
 import { fireCelebration } from "./juiceStore";
 
 /**
@@ -110,6 +106,9 @@ export class BattleStore {
   /** Indique si l'ouverture de la modale fait suite directe à une montée de niveau. */
   public readonly isLevelUpMovePrompt: Writable<boolean>;
 
+  /** Rapport de la dernière montée de niveau (niveau, gains de stats, capacités apprises). */
+  public readonly levelUpInfo: Writable<LevelUpSummary | null>;
+
   constructor(
     controller: BattleController,
     saveRepository: SaveRepository,
@@ -127,6 +126,7 @@ export class BattleStore {
     this.unlockedTypes = writable(progressionRepository.getUnlockedTypes());
     this.isMoveModalOpen = writable(false);
     this.isLevelUpMovePrompt = writable(false);
+    this.levelUpInfo = writable(null);
   }
 
   private _getInitialState(): BattleState {
@@ -205,6 +205,9 @@ export class BattleStore {
     // (les stats des pièces lui restent gravées via la sauvegarde du
     // panthéon, pas doubled : unequip inverse exactement l'effet de pose).
     for (const slot of EQUIPMENT_SLOTS) monster.unequip(slot);
+    // Idem pour les reliques portées : la nouvelle run repart d'une réserve
+    // vide (`_newRunState`), donc rien ne doit rester porté.
+    monster.clearWornRelics();
 
     const state: BattleState = {
       ...this._getInitialState(),
@@ -317,6 +320,8 @@ export class BattleStore {
       isPlayerTurn: true,
       logs: ["— Sauvegarde restaurée —", ...spawnLogs],
     });
+    // Une sauvegarde reprise en plein combat reprend aussi son thème.
+    if (enemyMonster) startBattleMusic(isBoss);
     return true;
   };
 
@@ -388,18 +393,16 @@ export class BattleStore {
         defender: enemy,
         move,
         attackerSide: "player",
-        // Reliques **+ équipement porté** : les chiffres de la fiche viennent
-        // de la possession effective du monstre (sacoche = inerte).
+        // Reliques **portées** + équipement **porté** : les chiffres de la
+        // fiche viennent de ce que le monstre porte réellement (réserve de
+        // reliques et sacoche d'équipement = inertes).
         damagePercent:
-          relicDamagePercent(state.run.relics) + player.equipmentDamagePercent(),
+          player.relicDamagePercent() + player.equipmentDamagePercent(),
         lifestealPercent:
-          relicLifestealPercent(state.run.relics) + player.equipmentLifestealPercent(),
-        critRange: Math.max(
-          relicMaxCritRange(state.run.relics),
-          player.equipmentCritRange(),
-        ),
+          player.relicLifestealPercent() + player.equipmentLifestealPercent(),
+        critRange: Math.max(player.relicCritRange(), player.equipmentCritRange()),
         experiencePercent:
-          relicExperiencePercent(state.run.relics) + player.equipmentExperiencePercent(),
+          player.relicExperiencePercent() + player.equipmentExperiencePercent(),
       });
       const enemyTurnOpts = (): PlayTurnOptions => ({
         attacker: enemy,
@@ -441,6 +444,7 @@ export class BattleStore {
         if (followUp) this._enemyLater(enemyTurnOpts);
         if (first.leveledUp) {
           const wait = followUp ? 0 : ROUND_END_DELAY;
+          this.levelUpInfo.set(first.levelUp);
           this._levelUpJuice();
           this._later(
             () => this.openMoveModal(true),
@@ -517,6 +521,7 @@ export class BattleStore {
         };
         this._persistState(next);
         playSound("encounter");
+        startBattleMusic(false);
         return next;
       }
 
@@ -642,7 +647,7 @@ export class BattleStore {
       if (!res) return state;
 
       success = true;
-      const next: BattleState = {
+      let next: BattleState = {
         ...state,
         run: res.run,
         logs: [...state.logs, ...res.logs],
@@ -657,6 +662,24 @@ export class BattleStore {
           () => this._clearFeedbackField(key),
           FEEDBACK_CLEAR_DELAY,
         );
+      }
+
+      // DQ / RPG Maker : agir avec un objet EST l'action du tour. L'ennemi
+      // riposte donc ensuite, exactement comme après une attaque — se soigner
+      // en plein combat est un vrai choix, plus un bonus gratuit par-dessus
+      // l'attaque du même tour.
+      if (state.run.phase === "encounter" && state.enemyMonster) {
+        const player = state.playerMonster;
+        const enemy = state.enemyMonster;
+        next = { ...next, isPlayerTurn: false, isAttacking: true };
+        this._enemyLater(() => ({
+          attacker: enemy,
+          defender: player,
+          // L'IA choisit sa riposte au moment d'agir, en connaissance du soin reçu.
+          move: this.controller.selectEnemyMove(enemy.moves, enemy, player, false),
+          attackerSide: "enemy",
+        }));
+        this._endAnimLater("isAttacking");
       }
 
       this._persistState(next);
@@ -675,8 +698,8 @@ export class BattleStore {
   };
 
   /**
-   * L'équipement se gère **hors combat uniquement** : les phases où c'est
-   * permis sont la carte (map) et la boutique (shop).
+   * L'équipement **et les reliques** se gèrent **hors combat uniquement** :
+   * les phases où c'est permis sont la carte (map) et la boutique (shop).
    */
   private _canManageEquipment(state: BattleState): boolean {
     return (
@@ -727,6 +750,100 @@ export class BattleStore {
         slot,
       );
       if (!result) return state;
+      const next: BattleState = {
+        ...state,
+        run: result.run,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /**
+   * Vend un article au comptoir : une potion de la sacoche (une unité par
+   * appel) ou une pièce de la **sacoche d'équipement** — 75 % du prix
+   * catalogue (`sellPrice`). Une pièce **portée** est refusée avec un message
+   * (« retirez-la d'abord ») et les **reliques** ne se vendent pas. L'action
+   * n'existe qu'en boutique (`run.phase === 'shop'`).
+   */
+  public sellShopItem = (entry: SellEntry) => {
+    this.store.update((state) => {
+      const run = state.run;
+      if (run.phase !== "shop" || !state.playerMonster) return state;
+
+      const catalogId = entry.consumable?.id ?? entry.equipment?.id ?? "";
+      const result = this.controller.sellItem(state.playerMonster, run, {
+        kind: entry.kind,
+        id: catalogId,
+      });
+      if (!result) return state;
+
+      const next: BattleState = {
+        ...state,
+        run: result.run,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      if (!result.refused) playSound("coin");
+      return next;
+    });
+  };
+
+  /**
+   * Porte une relique de la réserve (3 emplacements, réglage DQ). Hors combat
+   * uniquement, comme l'équipement : la relique n'agit qu'une fois portée.
+   */
+  public wearRelic = (relicId: string) => {
+    this.store.update((state) => {
+      if (!this._canManageEquipment(state) || !state.playerMonster) return state;
+      const result = this.controller.wearRelic(
+        state.playerMonster,
+        state.run,
+        relicId,
+      );
+      if (!result) return state;
+      const next: BattleState = {
+        ...state,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /** Retire une relique portée : elle retourne dans la réserve, intacte. */
+  public takeOffRelic = (relicId: string) => {
+    this.store.update((state) => {
+      if (!this._canManageEquipment(state) || !state.playerMonster) return state;
+      const result = this.controller.takeOffRelic(
+        state.playerMonster,
+        state.run,
+        relicId,
+      );
+      if (!result) return state;
+      const next: BattleState = {
+        ...state,
+        run: result.run,
+        logs: [...state.logs, ...result.logs],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
+
+  /**
+   * « Meilleur équipement » (最強装備 RPG Maker) : habille d'un geste la
+   * meilleure pièce possédée par emplacement et les 3 meilleures reliques de
+   * la réserve. Hors combat uniquement.
+   */
+  public optimizeEquipment = () => {
+    this.store.update((state) => {
+      if (!this._canManageEquipment(state) || !state.playerMonster) return state;
+      const result = this.controller.optimizeEquipment(
+        state.playerMonster,
+        state.run,
+      );
       const next: BattleState = {
         ...state,
         run: result.run,
@@ -827,9 +944,6 @@ export class BattleStore {
         return this._afterRelicDecision(sSkipped);
       }
 
-      const player = state.playerMonster;
-
-      this.controller.applyRelic(player, relic);
       // Le choix se porte sur UNE carte : reliques et pièces d'équipement
       // s'évaporent ensemble (offres mixées, réglage 2026-10).
       const run = this.controller.grantRelic(
@@ -845,7 +959,8 @@ export class BattleStore {
         isPlayerTurn: true,
         logs: [
           ...state.logs,
-          `✨ ${relic.icon} ${relic.name} : ${relic.description}`,
+          `✨ ${relic.icon} ${relic.name} rejoint la réserve : ${relic.description}`,
+          `🔱 Portée : ${state.playerMonster.wornRelics.length}/${RELIC_SLOT_COUNT} emplacement(s) occupé(s) — équipez-la hors combat.`,
         ],
         playerLastMove: null,
         enemyLastMove: null,
@@ -988,6 +1103,7 @@ export class BattleStore {
     };
     this._persistState(next);
     playSound("encounter");
+    startBattleMusic(true);
     return next;
   }
 
@@ -1078,6 +1194,8 @@ export class BattleStore {
   private _scheduleRoundEnd(winner: "player" | "enemy", isBoss?: boolean): void {
     if (this.roundEndScheduled) return;
     this.roundEndScheduled = true;
+    // Le combat est joué : on coupe le thème avant les jingles de fin.
+    stopBattleMusic();
     playSound(winner === "player" ? "victory" : "defeat");
     if (winner === "player" && isBoss) {
       fireCelebration("bossClear", ROUND_END_DELAY);
@@ -1161,11 +1279,13 @@ export class BattleStore {
   private _playerLater(makeOpts: () => PlayTurnOptions): void {
     this._later(() => {
       let leveledUp = false;
+      let levelUpSummary: LevelUpSummary | null = null;
       let roundWinner: "player" | "enemy" | null = null;
       this.store.update((state) => {
         if (state.winner) return state;
         const action = this.controller.playTurn(makeOpts());
         leveledUp = action.leveledUp;
+        levelUpSummary = action.levelUp;
         roundWinner = action.winner;
         let s: BattleState = {
           ...state,
@@ -1187,6 +1307,7 @@ export class BattleStore {
         // Si le coup a été fatal, la fenêtre de niveau s'ouvre après
         // l'animation de fin de round, pas dessus.
         const wait = roundWinner ? ROUND_END_DELAY : 0;
+        this.levelUpInfo.set(levelUpSummary);
         this._levelUpJuice();
         this._later(
           () => this.openMoveModal(true),
@@ -1270,6 +1391,7 @@ export class BattleStore {
   public closeMoveModal = (): void => {
     this.isMoveModalOpen.set(false);
     this.isLevelUpMovePrompt.set(false);
+    this.levelUpInfo.set(null);
   };
 
   public getAvailableMoves = (): Move[] => {
@@ -1294,6 +1416,9 @@ export class BattleStore {
 
   /** Annule tous les timers en vol (round, animations, feedback) — newRun/load/startRun. */
   private _clearTimers(): void {
+    // Coupe aussi la musique : le reset d'un run ne doit jamais laisser une
+    // boucle de combat orpheline derrière lui.
+    stopBattleMusic();
     this.pendingTimers.forEach((timer) => clearTimeout(timer));
     this.pendingTimers.clear();
     this.roundEndScheduled = false;

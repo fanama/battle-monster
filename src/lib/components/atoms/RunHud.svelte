@@ -9,6 +9,8 @@
   export let mapLayer: number;
   export let mapLayers: number;
   export let relics: Relic[];
+  /** Ids des reliques **portées** (réglage DQ) : elles passent en tête du HUD. */
+  export let wornRelicIds: string[] = [];
   export let inventory: InventorySlot[] = [];
   export let score: number;
   export let gold: number;
@@ -38,7 +40,13 @@
   $: region = REGIONS[regionIndex];
   $: dots = Array.from({ length: mapLayers }, (_, i) => i);
   $: totalPotions = (inventory ?? []).reduce((acc, slot) => acc + slot.quantity, 0);
-  $: visibleRelics = relics.slice(0, VISIBLE_RELICS);
+  // Les reliques portées (actives) passent devant, la réserve suit :
+  // l'échantillon du bandeau montre donc d'abord ce qui agit en combat.
+  $: wornSet = new Set(wornRelicIds);
+  $: sortedRelics = [...relics].sort(
+    (a, b) => Number(wornSet.has(b.id)) - Number(wornSet.has(a.id)),
+  );
+  $: visibleRelics = sortedRelics.slice(0, VISIBLE_RELICS);
   $: hiddenRelicCount = relics.length - visibleRelics.length;
 
   // Accent coloré par région — même source que l'arène de combat.
@@ -88,10 +96,13 @@
             data-relic-trigger={relic.id}
             on:click={() => (onOpenRelics ? onOpenRelics() : toggleRelicTooltip(relic.id))}
             class="inline-flex h-8 w-8 sm:h-6 sm:w-6 touch-manipulation cursor-help items-center justify-center rounded
-              border border-amber-200/40 bg-[#1b1a10]/85 text-sm transition-colors
+              border text-sm transition-colors
               group-hover:border-amber-200/80 group-hover:bg-[#252211]
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/50"
-            aria-label={`${relic.name} : ${relic.description}`}
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/50
+              {wornSet.has(relic.id)
+                ? 'border-amber-200/80 bg-[#252211]'
+                : 'border-sky-100/25 bg-[#0d1526]/85 opacity-60'}"
+            aria-label={`${wornSet.has(relic.id) ? 'Portée · ' : 'En réserve · '}${relic.name} : ${relic.description}`}
             aria-describedby={`relic-description-${relic.id}`}
             aria-expanded={expandedRelicId === relic.id}
             aria-controls={`relic-description-${relic.id}`}
@@ -108,7 +119,9 @@
               {relicIndex > (visibleRelics.length - 1) / 2 ? 'right-0' : 'left-0'}
               group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:visible group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
           >
-            <span class="block font-display text-xs font-bold text-amber-100">{relic.name}</span>
+            <span class="block font-display text-xs font-bold text-amber-100">
+              {wornSet.has(relic.id) ? '🔱 Portée · ' : 'Réserve · '}{relic.name}
+            </span>
             <span class="mt-1 block text-[11px] leading-relaxed text-sky-100/80">{relic.description}</span>
           </span>
         </span>

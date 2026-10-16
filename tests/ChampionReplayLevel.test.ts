@@ -39,7 +39,7 @@ describe('Rejeu d’un champion : niveau remis à 1', () => {
   test('le seuil d’XP est recalculé sur le nouveau niveau', () => {
     const m = leveledMonster(10);
     m.resetLevelTo(1);
-    // Formule du domaine : floor(80 × niveau − 40).
+    // Courbe d'EXP du domaine (RPG Maker) : le palier 1→2 vaut 40 EXP.
     expect(m.experienceToNextLevel).toBe(40);
   });
 

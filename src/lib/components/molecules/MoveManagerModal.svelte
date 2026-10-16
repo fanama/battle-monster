@@ -1,20 +1,39 @@
 <script lang="ts">
   import { dq } from "../../styles/style";
-  import type { Move } from "../../../core/entities/Move";
+  import type { Move, MonsterStat } from "../../../core/entities/Move";
   import type { Monster } from "../../../core/entities/Monster";
   import { TYPE_LABELS, STAT_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { MAX_MOVES } from "../../../core/entities/Monster";
+  import type { LevelUpSummary } from "../../../core/services/BattleEngine";
+  import { CHARGE_DAMAGE_MULTIPLIER } from "../../../core/services/BattleEngine";
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
 
   export let isOpen = false;
   export let isLevelUp = false;
+  export let levelUpInfo: LevelUpSummary | null = null;
   export let monster: Monster | null = null;
   export let availableMoves: Move[] = [];
   export let onSave: (selectedMoves: Move[]) => void;
   export let onClose: () => void;
 
   let selectedMoves: Move[] = [];
+
+  // Rapport de montée de niveau (façon RPG Maker) : ne liste que les stats
+  // réellement gagnées, dans l'ordre canonique de la fiche.
+  const STAT_ORDER: MonsterStat[] = [
+    "strength",
+    "speed",
+    "constitution",
+    "wisdom",
+    "instinct",
+    "charisma",
+  ];
+  $: statGains = levelUpInfo
+    ? STAT_ORDER.map((stat) => ({ stat, amount: levelUpInfo!.statGains[stat] ?? 0 })).filter(
+        (entry) => entry.amount > 0,
+      )
+    : [];
 
   $: if (isOpen && monster) {
     selectedMoves = [...monster.moves];
@@ -122,6 +141,39 @@
 
       <!-- Modal Body -->
       <div class="p-4 md:p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+        <!-- Rapport de montée de niveau (façon RPG Maker : gains + capacités) -->
+        {#if isLevelUp && levelUpInfo}
+          <div class="rounded-xl border border-amber-300/60 bg-[#0d1526]/93 overflow-hidden">
+            <div class="px-4 py-2.5 bg-gradient-to-r from-amber-900/70 to-amber-950/30 border-b border-amber-300/30">
+              <h3 class="font-display font-extrabold text-sm md:text-base uppercase tracking-wider text-amber-100">
+                ⭐ Niveau {levelUpInfo.level} atteint
+                {levelUpInfo.levels > 1 ? ` (×${levelUpInfo.levels})` : ""}
+              </h3>
+            </div>
+            <div class="px-4 py-3 flex flex-col gap-2">
+              <div class="flex flex-wrap gap-1.5">
+                {#each statGains as gain}
+                  <span
+                    class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-950/40 text-emerald-200"
+                  >
+                    +{gain.amount} {STAT_LABELS[gain.stat]}
+                  </span>
+                {/each}
+                {#if levelUpInfo.learnedMoves.length === 0}
+                  <span class="text-[11px] font-mono text-sky-200/55 italic">
+                    Aucune nouvelle capacité débloquée
+                  </span>
+                {/if}
+              </div>
+              {#if levelUpInfo.learnedMoves.length > 0}
+                <p class="text-[11px] font-mono text-amber-100">
+                  ✨ Appris : {levelUpInfo.learnedMoves.join(", ")}
+                </p>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         <!-- Section 1 : Attaques Actives / Équipées (Slots 1 à 4) -->
         <div>
           <div class="flex items-center justify-between mb-2.5">
@@ -176,6 +228,18 @@
                       {:else if isBuff}
                         <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 font-bold">
                           ⬆ +{equippedMove.statBoosts?.value} {STAT_LABELS[equippedMove.statBoosts!.stat]}
+                        </span>
+                      {/if}
+
+                      {#if equippedMove.guaranteedCrit}
+                        <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-bold" title="Coup mortel (Dragon Quest) : touche toujours, ignore la défense">
+                          🎯 Imparable
+                        </span>
+                      {/if}
+
+                      {#if equippedMove.charge}
+                        <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-bold" title="Charge : arme la prochaine attaque, ×{CHARGE_DAMAGE_MULTIPLIER} dégâts">
+                          ⚡ Charge ×{CHARGE_DAMAGE_MULTIPLIER}
                         </span>
                       {/if}
 
@@ -292,6 +356,18 @@
                           ⬆ +{move.statBoosts?.value} {STAT_LABELS[move.statBoosts!.stat]}
                         </span>
                       {/if}
+
+                    {#if move.guaranteedCrit}
+                      <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-bold" title="Coup mortel (Dragon Quest) : touche toujours, ignore la défense">
+                        🎯 Imparable
+                      </span>
+                    {/if}
+
+                    {#if move.charge}
+                      <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-bold" title="Charge : arme la prochaine attaque, ×{CHARGE_DAMAGE_MULTIPLIER} dégâts">
+                        ⚡ Charge ×{CHARGE_DAMAGE_MULTIPLIER}
+                      </span>
+                    {/if}
 
                     {#if move.maxCoolDown && move.maxCoolDown > 0}
                       <span class="px-1.5 py-0.5 rounded bg-sky-950 text-sky-300">

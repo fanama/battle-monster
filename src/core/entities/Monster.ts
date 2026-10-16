@@ -2,6 +2,15 @@ import type { MonsterStat, Move, MonsterType } from './Move';
 import type { ActiveStatus, StatusEffectType } from './StatusEffect';
 import type { Equipment, EquipmentSlot, EquipmentEffect } from './Equipment';
 import { EQUIPMENT_SLOTS, equipmentTotals } from './Equipment';
+import type { Relic } from './Relic';
+import {
+  RELIC_SLOT_COUNT,
+  relicDamagePercent as sumRelicDamagePercent,
+  relicLifestealPercent as sumRelicLifestealPercent,
+  relicHealStartPercent as sumRelicHealStartPercent,
+  relicExperiencePercent as sumRelicExperiencePercent,
+  relicMaxCritRange,
+} from './Relic';
 export type { ActiveStatus, StatusEffectType };
 
 /**
@@ -13,6 +22,16 @@ export function abilityModifier(stat: number): number {
 
 /** Rang du monstre (dnd : PNJ / minion / boss) — sert au calcul d'XP. */
 export type MonsterRank = 'normal' | 'boss';
+
+/**
+ * Diff chiffré d'un portage (convention DQ : voir le gain **avant** de
+ * valider). Tous les champs sont des écarts signés : `+2` de Force, `-1` de CA.
+ */
+export interface MonsterDelta {
+  stat: Partial<Record<MonsterStat, number>>;
+  ac: number;
+  maxHp: number;
+}
 
 /**
  * D&D hit dice par type (PV max = Dé de Vie + mod(Constitution)).
@@ -88,8 +107,9 @@ export const MAX_MOVES = 4;
 
 /**
  * Total de points de caractéristiques gagnés **par niveau**, identique pour
- * tous les types (invariant de `Monster.getStatGrowth`). Chaque paire de points
- * vaut +1 modificateur d'attribut : c'est le budget de progression commun.
+ * tous les types et à chaque palier (invariant des courbes de croissance,
+ * `GROWTH_CURVES`). Chaque paire de points vaut +1 modificateur d'attribut :
+ * c'est le budget de progression commun.
  */
 export const STAT_GROWTH_TOTAL = 9;
 
@@ -132,7 +152,74 @@ export function charismaHealBonus(charisma: number): number {
 }
 
 /**
- * Croissance de stats par type (« archetype »), en **points par niveau** :
+ * Niveau maximum d'un monstre — le « plafond de classe » façon RPG Maker.
+ *
+ * La progression réellement jouée s'arrête bien avant (les régions culminent
+ * vers le niveau 13-14) : cette borne est un garde-fou, pas un objectif.
+ */
+export const MAX_LEVEL = 99;
+
+/**
+ * Part des PV max rendue à chaque montée de niveau.
+ *
+ * RPG Maker ne soigne **pas** en montant de niveau (max PV monte, PV courants
+ * inchangés — d'où les plugins « Recover On Level Up »). On garde une petite
+ * restitution ({@link LEVEL_UP_HEAL_PERCENT} %) pour que la montée reste un
+ * moment de soulagement sans annuler la logique d'attrition du run.
+ */
+export const LEVEL_UP_HEAL_PERCENT = 25;
+
+/**
+ * Paramètres de la courbe d'EXP — modèle RPG Maker MZ (`Game_Actor.expForLevel`),
+ * qui remplace l'ancienne courbe linéaire du domaine (`80 × niveau − 40`).
+ *
+ *  - `base` : valeur de référence (baisse = toute la courbe baisse) ;
+ *  - `extra` : montant ajouté à **chaque** niveau (aplatit le début de courbe) ;
+ *  - `accA` : règle l'exposant de progression (`0.9 + accA / 250`) — c'est le
+ *    « Accélération A » de l'éditeur, il durcit surtout les hauts niveaux ;
+ *  - `accB` : règle la courbure de fin de courbe (« Accélération B »).
+ *
+ * Réglage (2026-10) : reproduit la **cadence** de l'ancienne courbe linéaire
+ * sur la plage jouée — ~40 EXP pour le palier 1→2 et ~6 700 EXP cumulés au
+ * niveau 14 — tout en adoptant la forme quadratique de RPG Maker (paliers qui
+ * s'allongent en fin de partie).
+ */
+export interface ExperienceCurve {
+  base: number;
+  extra: number;
+  accA: number;
+  accB: number;
+}
+
+export const EXPERIENCE_CURVE: ExperienceCurve = {
+  base: 14,
+  extra: 26,
+  accA: 25,
+  accB: 30,
+};
+
+/**
+ * EXP **cumulée** nécessaire pour atteindre `level` (formule RPG Maker MZ).
+ * `experienceForLevel(1) === 0` : le niveau 1 est le point de départ.
+ *
+ * L'EXP est stockée comme un **total** (et non comme un reliquat remis à zéro
+ * à chaque palier, comme avant) : l'UI affiche la part du niveau courant, et
+ * deux monstres de même niveau partagent le même socle d'EXP.
+ */
+export function experienceForLevel(
+  level: number,
+  curve: ExperienceCurve = EXPERIENCE_CURVE,
+): number {
+  const l = Math.max(1, Math.floor(level));
+  const exponent = 0.9 + curve.accA / 250;
+  const numerator = curve.base * Math.pow(l - 1, exponent) * l * (l + 1);
+  const denominator = 6 + Math.pow(l, 2) / 50 / curve.accB;
+  return Math.round(numerator / denominator + (l - 1) * curve.extra);
+}
+
+/**
+ * Vecteur de progression : points gagnés sur chaque caractéristique pour un
+ * palier donné.
  *
  *  - Force : toucher et dégâts physiques
  *  - Savoir : toucher, dégâts magiques et puissance des soins
@@ -140,41 +227,177 @@ export function charismaHealBonus(charisma: number): number {
  *  - Constitution : PV max
  *  - Instinct : perception martiale (chances de critique, regard du sprite)
  *  - Charisme : **croissance nulle par conception** — il ne s'obtient que par
- *    les reliques (dégâts magiques et soins). Les reliques qui en donnent
- *    seraient sinon inertes.
- *
- * **Deux invariants d'équilibrage :**
- *
- * 1. tous les types gagnent exactement {@link STAT_GROWTH_TOTAL} points par
- *    niveau — chaque paire de points vaut +1 modificateur d'attribut, donc un
- *    total différent est un avantage caché de ±1 mod par quelques niveaux
- *    (l'Électricité en gagnait 10 quand la Roche et le Normal s'en
- *    contenaient de 8) ;
- * 2. la même fonction sert **au champion et aux ennemis**
- *    (`RandomEnemyFactory`). Quand l'ennemi avait une croissance plate sur ses
- *    six caractéristiques, il gagnait de l'Instinct (donc de la plage de
- *    critique) et du Charisme (donc de l'amplification magique) que le joueur
- *    n'obtient jamais : à niveau 13 l'ennemi gagnait +34 % de magie et deux
- *    points de critique de plus par coup, ce qui rendait les derniers paliers
- *    injouables.
+ *    les reliques (dégâts magiques et soins).
  */
-export function statGrowthForType(type: MonsterType) {
-  switch (type) {
-    case 'fire':
-      return { strength: 3, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
-    case 'water':
-      return { strength: 2, speed: 1, constitution: 3, wisdom: 2, charisma: 0, instinct: 1 };
-    case 'grass':
-      return { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 1 };
-    case 'normal':
-      return { strength: 2, speed: 2, constitution: 2, wisdom: 2, charisma: 0, instinct: 1 };
-    case 'electric':
-      return { strength: 1, speed: 3, constitution: 2, wisdom: 2, charisma: 0, instinct: 1 };
-    case 'rock':
-      return { strength: 3, speed: 1, constitution: 3, wisdom: 1, charisma: 0, instinct: 1 };
-    default:
-      return { strength: 1, speed: 1, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 };
+export interface StatGrowth {
+  strength: number;
+  speed: number;
+  constitution: number;
+  wisdom: number;
+  charisma: number;
+  instinct: number;
+}
+
+/** Clés de caractéristiques, dans l'ordre d'affichage de la fiche. */
+export const STAT_GROWTH_KEYS: readonly (keyof StatGrowth)[] = [
+  'strength',
+  'speed',
+  'constitution',
+  'wisdom',
+  'charisma',
+  'instinct',
+] as const;
+
+/**
+ * Courbe de paramètre d'un type — modèle **RPG Maker « Generate Curve »** :
+ * un incrément au premier palier, un incrément au dernier, et un paramètre de
+ * courbure qui penche la progression tôt (précoce) ou tard (tardive).
+ *
+ * Les valeurs sont des **incréments par niveau** et non des valeurs absolues :
+ * le champion étant forgé avec des stats de niveau 1 choisies par le joueur,
+ * la courbe décrit la *croissance* ancrée sur ces stats (l'équivalent de la
+ * valeur au niveau 1, côté RPG Maker, est la stat de forge).
+ *
+ * **Invariant d'équilibrage conservé** : `start` et `end` totalisent chacun
+ * {@link STAT_GROWTH_TOTAL} points. La croissance d'un palier étant une
+ * interpolation linéaire des deux, la somme des six caractéristiques vaut
+ * exactement {@link STAT_GROWTH_TOTAL} à *chaque* niveau, quelle que soit la
+ * courbure : la courbe redistribue *quand* un type reçoit ses points, jamais
+ * leur budget total — aucun avantage caché en cours de run.
+ */
+export interface GrowthCurve {
+  /** Incrément appliqué au premier palier de progression (niveau 2). */
+  start: StatGrowth;
+  /** Incrément appliqué au dernier palier de la courbe. */
+  end: StatGrowth;
+  /** < 1 = croissance précoce (front-loadée), 1 = linéaire, > 1 = tardive. */
+  curvature: number;
+}
+
+/**
+ * Niveau auquel une courbe atteint son incrément final (`end`). Au-delà, la
+ * croissance reste bloquée sur `end` : la courbe est calibrée sur la
+ * progression **réellement jouée** (les régions s'arrêtent vers le niveau 13),
+ * pas sur le plafond théorique de {@link MAX_LEVEL}. Sans ce recalage, une
+ * courbe étalée sur 99 niveaux ne bougerait quasiment pas sur les 14 niveaux
+ * d'une run — la courbure serait invisible.
+ */
+export const GROWTH_CURVE_REFERENCE_LEVEL = 20;
+
+/**
+ * Courbes de croissance par type. Chaque couple `start`/`end` a la **même
+ * moyenne** que l'ancien incrément plat du type (ex. Feu `3/2/2/1/0/1`) : la
+ * courbure redistribue quand un type reçoit ses points (Feu frappe tôt, Roche
+ * et Eau encaissent tard), sans déplacer son budget. La moyenne est conservée
+ * pour ne pas rouvrir l'équilibrage déjà mesuré sur les incréments plats.
+ */
+export const GROWTH_CURVES: Record<MonsterType, GrowthCurve> = {
+  // Feu : offensive précoce, la Constitution rattrape en fin de partie.
+  fire: {
+    start: { strength: 4, speed: 3, constitution: 1, wisdom: 1, charisma: 0, instinct: 0 },
+    end: { strength: 2, speed: 1, constitution: 3, wisdom: 1, charisma: 0, instinct: 2 },
+    curvature: 0.8,
+  },
+  // Eau : gardien — encaisse d'abord, puis bascule sur la réserve de PV.
+  water: {
+    start: { strength: 2, speed: 1, constitution: 4, wisdom: 2, charisma: 0, instinct: 0 },
+    end: { strength: 2, speed: 1, constitution: 2, wisdom: 2, charisma: 0, instinct: 2 },
+    curvature: 1.15,
+  },
+  // Plante : mage — le Savoir arrive surtout sur la seconde moitié.
+  grass: {
+    start: { strength: 1, speed: 3, constitution: 2, wisdom: 2, charisma: 0, instinct: 1 },
+    end: { strength: 1, speed: 1, constitution: 2, wisdom: 4, charisma: 0, instinct: 1 },
+    curvature: 1.2,
+  },
+  // Normal : polyvalent, courbe quasi linéaire (glisse de l'offense au Savoir).
+  normal: {
+    start: { strength: 3, speed: 2, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 },
+    end: { strength: 1, speed: 2, constitution: 2, wisdom: 3, charisma: 0, instinct: 1 },
+    curvature: 1,
+  },
+  // Électricité : la Vitesse (donc la CA) arrive d'abord, la Force ensuite.
+  electric: {
+    start: { strength: 1, speed: 5, constitution: 1, wisdom: 1, charisma: 0, instinct: 1 },
+    end: { strength: 1, speed: 1, constitution: 3, wisdom: 3, charisma: 0, instinct: 1 },
+    curvature: 0.8,
+  },
+  // Roche : colosse — lent à démarrer, mur en fin de progression.
+  rock: {
+    start: { strength: 4, speed: 1, constitution: 2, wisdom: 1, charisma: 0, instinct: 1 },
+    end: { strength: 2, speed: 1, constitution: 4, wisdom: 1, charisma: 0, instinct: 1 },
+    curvature: 1.25,
+  },
+};
+
+/** Vecteur de croissance nul (`charisma` y est toujours à 0). */
+export function zeroGrowth(): StatGrowth {
+  return { strength: 0, speed: 0, constitution: 0, wisdom: 0, charisma: 0, instinct: 0 };
+}
+
+/** Ajoute `growth` à `stats` (mutation, sert à cumuler plusieurs paliers). */
+export function addGrowth(stats: StatGrowth, growth: StatGrowth): void {
+  stats.strength += growth.strength;
+  stats.speed += growth.speed;
+  stats.constitution += growth.constitution;
+  stats.wisdom += growth.wisdom;
+  stats.charisma += growth.charisma;
+  stats.instinct += growth.instinct;
+}
+
+/** Retire `growth` à `stats` (mutation) — paliers « non franchis » d'un ennemi. */
+export function subGrowth(stats: StatGrowth, growth: StatGrowth): void {
+  stats.strength -= growth.strength;
+  stats.speed -= growth.speed;
+  stats.constitution -= growth.constitution;
+  stats.wisdom -= growth.wisdom;
+  stats.charisma -= growth.charisma;
+  stats.instinct -= growth.instinct;
+}
+
+/**
+ * Incrément de statistiques appliqué au **niveau atteint** (passer au niveau `n`
+ * applique `statGrowthForLevel(type, n)`).
+ *
+ * Interpole la courbe `start → end` du type, puis arrondit **au plus fort
+ * reste** : les parties fractionnaires servent à distribuer les points
+ * manquants, si bien que la somme des six caractéristiques reste exactement
+ * {@link STAT_GROWTH_TOTAL} à chaque niveau (invariant de budget : deux points
+ * valent +1 modificateur).
+ */
+export function statGrowthForLevel(type: MonsterType, level: number): StatGrowth {
+  const curve = GROWTH_CURVES[type] ?? GROWTH_CURVES.normal;
+  const span = Math.max(1, GROWTH_CURVE_REFERENCE_LEVEL - 1);
+  const progress = Math.min(1, Math.max(0, (level - 1) / span));
+  const eased = Math.pow(progress, curve.curvature);
+
+  const raw = STAT_GROWTH_KEYS.map((stat) => {
+    const from = curve.start[stat];
+    const to = curve.end[stat];
+    return from + (to - from) * eased;
+  });
+
+  const values = raw.map((value) => Math.floor(value));
+  let remaining = STAT_GROWTH_TOTAL - values.reduce((sum, value) => sum + value, 0);
+  const byFraction = raw
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  let cursor = 0;
+  while (remaining > 0) {
+    values[byFraction[cursor % byFraction.length]!.index]!++;
+    remaining--;
+    cursor++;
   }
+
+  return {
+    strength: values[0]!,
+    speed: values[1]!,
+    constitution: values[2]!,
+    wisdom: values[3]!,
+    charisma: values[4]!,
+    instinct: values[5]!,
+  };
 }
 
 /**
@@ -183,8 +406,8 @@ export function statGrowthForType(type: MonsterType) {
  */
 export class Monster {
   public moves: Move[];
+  /** EXP **cumulée** depuis le niveau 1 (total, façon RPG Maker — pas un reliquat de palier). */
   public experience: number;
-  public experienceToNextLevel: number;
   public maxHp: number;
   public currentHp: number;
   /** Rang du monstre : 'boss' → XP accrue (dnd : 10/20/50). */
@@ -194,6 +417,12 @@ export class Monster {
   /** Statuts élémentaires actifs (Brûlure, Gel, Paralysie, Poison). */
   public statuses: ActiveStatus[] = [];
   /**
+   * Multiplicateur de **charge armée** (« ちからため »), 0 = aucune.
+   * Consommé par la prochaine attaque qui **touche** : un raté le laisse en
+   * place (la charge est tenue, pas dépensée).
+   */
+  public chargedStrike = 0;
+  /**
    * Équipements **portés** (un par emplacement, 5 slots façon DQ).
    * Une pièce hors de cette carte (dans la sacoche du run) est inactive.
    * Les stats & CA sont appliquées/désappliquées à l'acte d'équipement
@@ -201,6 +430,17 @@ export class Monster {
    * `equipment*Percent()` ci-dessous, **en addition des reliques**.
    */
   public equipped: Partial<Record<EquipmentSlot, Equipment>> = {};
+  /**
+   * Reliques **portées** (réglage DQ, 2026-10) : la réserve du run
+   * (`RunState.relics`) contient tout ce qui a été arraché aux monstres, mais
+   * **seules les reliques de cette liste agissent** — dans la limite de
+   * `RELIC_SLOT_COUNT` emplacements. Une relique en réserve n'a aucun effet,
+   * exactement comme une pièce d'équipement restée en sacoche.
+   *
+   * Stats & CA suivent l'acte de portage (`wearRelic`/`takeOffRelic`,
+   * inverses exacts) ; les passifs se lisent via `relic*Percent()`.
+   */
+  public wornRelics: Relic[] = [];
 
   constructor(
     public readonly id: string,
@@ -224,10 +464,67 @@ export class Monster {
       coolDown: 0
     }));
 
+    // Plafond de classe : un monstre ne peut pas naître au-delà de MAX_LEVEL.
+    this.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(this.level)));
     this.maxHp = this.calculateMaxHp();
     this.currentHp = this.maxHp;
-    this.experience = 0;
-    this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
+    // L'EXP est cumulée : naître au niveau N, c'est détenir l'EXP du niveau N.
+    this.experience = experienceForLevel(this.level);
+  }
+
+  /** EXP cumulée au début du niveau courant (RPG Maker `currentLevelExp`). */
+  public currentLevelExperience(): number {
+    return experienceForLevel(this.level);
+  }
+
+  /** EXP cumulée nécessaire pour atteindre le **niveau suivant** (RPG Maker `nextLevelExp`). */
+  public nextLevelExperience(): number {
+    return experienceForLevel(Math.min(this.level + 1, MAX_LEVEL));
+  }
+
+  /** EXP déjà engrangée **dans** le niveau courant (numérateur de la barre). */
+  public experienceInLevel(): number {
+    return Math.max(0, this.experience - this.currentLevelExperience());
+  }
+
+  /** Nombre d'EXP que couvre le niveau courant (dénominateur de la barre). */
+  public experienceLevelSpan(): number {
+    return Math.max(1, this.nextLevelExperience() - this.currentLevelExperience());
+  }
+
+  /** EXP **restantes** avant la prochaine montée (0 une fois le plafond atteint). */
+  get experienceToNextLevel(): number {
+    if (this.level >= MAX_LEVEL) return 0;
+    return Math.max(0, this.nextLevelExperience() - this.experience);
+  }
+
+  /** Le monstre a-t-il atteint le plafond de niveau ? */
+  get isMaxLevel(): boolean {
+    return this.level >= MAX_LEVEL;
+  }
+
+  // --- Charge (« ちからため ») ---
+
+  /** Arme la prochaine attaque d'un multiplicateur de dégâts. */
+  public armCharge(multiplier: number): void {
+    this.chargedStrike = Math.max(0, multiplier);
+  }
+
+  /** Consomme la charge et rend son multiplicateur (0 si aucune). */
+  public consumeCharge(): number {
+    const multiplier = this.chargedStrike;
+    this.chargedStrike = 0;
+    return multiplier;
+  }
+
+  /** La charge est-elle armée ? */
+  get isCharged(): boolean {
+    return this.chargedStrike > 0;
+  }
+
+  /** Désarme la charge sans l'appliquer (début de combat). */
+  public clearCharge(): void {
+    this.chargedStrike = 0;
   }
 
   /**
@@ -327,13 +624,41 @@ export class Monster {
    * échéant) est **déséquipée d'abord** — ses effets sont inversés exactement,
    * sous le poids de sa valeur (chaque boost est édité via une saisie secrète
    * testable : les stats s'ajoutent seulement via l'acte de portage).
-   * @returns la pièce délogée (null si l'emplacement était vide).
+   *
+   * **Règle Dragon Quest des armes à deux mains** : la pose est **refusée**
+   * (aucun effet, `null` renvoyé) pour un bouclier tant qu'une arme à deux
+   * mains est tenue. Le retrait de l'arme libère le bouclier.
+   *
+   * @returns la pièce délogée (null si l'emplacement était vide, ou si la pose
+   *          est refusée par la règle des deux mains).
    */
   equip(piece: Equipment): Equipment | null {
+    if (!this.canEquip(piece)) return null;
     const displaced = this.unequip(piece.slot);
     this.equipped[piece.slot] = piece;
     this._applyEquipmentEffect(piece.effect);
     return displaced;
+  }
+
+  /**
+   * La pièce peut-elle être portée ? Seule la règle des **armes à deux mains**
+   * (DQ) refuse quelque chose : le bouclier, tant que l'arme tenue l'est.
+   * Les appelants doivent consulter ce verdict AVANT d'appeler `equip` —
+   * `equip` refuse silencieusement un portage interdit.
+   */
+  canEquip(piece: Equipment): boolean {
+    if (piece.slot === 'shield') return !this.equipped.weapon?.twoHanded;
+    return true;
+  }
+
+  /**
+   * Emplacements vidés **de force** par la pose de cette pièce : porter une
+   * arme à deux mains chasse le bouclier (il retourne en sacoche), comme dans
+   * Dragon Quest où l'arme à deux mains libère la main du bouclier.
+   */
+  conflictingSlots(piece: Equipment): EquipmentSlot[] {
+    const bothHands = piece.slot === 'weapon' && piece.twoHanded === true;
+    return bothHands && this.equipped.shield ? ['shield'] : [];
   }
 
   /**
@@ -348,7 +673,15 @@ export class Monster {
     return piece;
   }
 
-  private _applyEquipmentEffect(effect: EquipmentEffect, direction: 1 | -1 = 1): void {
+  /**
+   * Applique (ou inverse) les bonus de stats & CA d'un effet porté — pièce
+   * d'équipement **ou** relique, les deux familles partageant la même forme
+   * `{ stat, acBonus }`. C'est ce qui rend le portage exactement inversible.
+   */
+  private _applyEquipmentEffect(
+    effect: Pick<EquipmentEffect, 'stat' | 'acBonus'>,
+    direction: 1 | -1 = 1,
+  ): void {
     if (effect.stat) {
       for (const [key, value] of Object.entries(effect.stat)) {
         if (value) this.boostStat(key as MonsterStat, value * direction);
@@ -357,6 +690,77 @@ export class Monster {
     if (effect.acBonus) {
       this.armorBonus += effect.acBonus * direction;
     }
+  }
+
+  // --- Reliques portées (réglage DQ : 3 emplacements) ---
+
+  /** Reliques actuellement portées (copie : la liste interne reste privée). */
+  getWornRelics(): Relic[] {
+    return [...this.wornRelics];
+  }
+
+  /** L'emplacement de relique est-il libre ? */
+  get relicSlotsFree(): number {
+    return Math.max(0, RELIC_SLOT_COUNT - this.wornRelics.length);
+  }
+
+  /**
+   * Porte une relique de la réserve. Refusée (false, aucun effet) si elle est
+   * déjà portée ou si les `RELIC_SLOT_COUNT` emplacements sont pris — c'est un
+   * choix : on retire avant de remplacer.
+   */
+  wearRelic(relic: Relic): boolean {
+    if (this.wornRelics.some(worn => worn.id === relic.id)) return false;
+    if (this.wornRelics.length >= RELIC_SLOT_COUNT) return false;
+    this.wornRelics = [...this.wornRelics, relic];
+    this._applyEquipmentEffect(relic.effect, 1);
+    return true;
+  }
+
+  /**
+   * Retire une relique portée et **inverse exactement** ses bonus de stats/CA.
+   * La relique retourne dans la réserve du run (jamais perdue).
+   */
+  takeOffRelic(relicId: string): Relic | null {
+    const relic = this.wornRelics.find(worn => worn.id === relicId);
+    if (!relic) return null;
+    this.wornRelics = this.wornRelics.filter(worn => worn.id !== relicId);
+    this._applyEquipmentEffect(relic.effect, -1);
+    return relic;
+  }
+
+  /** Retire TOUTES les reliques portées (début de run : chacun se ré-équipe). */
+  clearWornRelics(): Relic[] {
+    const removed = [...this.wornRelics];
+    for (const relic of removed) this.takeOffRelic(relic.id);
+    return removed;
+  }
+
+  // --- Passifs des reliques portées (plafonnés, cf. RELIC_EFFECT_CAPS) ---
+
+  /** « % de dégâts » cumulés des reliques **portées** (plafonné). */
+  relicDamagePercent(): number {
+    return sumRelicDamagePercent(this.wornRelics);
+  }
+
+  /** « % de vol de vie » cumulés des reliques **portées** (plafonné). */
+  relicLifestealPercent(): number {
+    return sumRelicLifestealPercent(this.wornRelics);
+  }
+
+  /** Plage de critiques la plus large des reliques **portées**. */
+  relicCritRange(): number {
+    return relicMaxCritRange(this.wornRelics);
+  }
+
+  /** « % d'EXP » cumulés des reliques **portées** (plafonné). */
+  relicExperiencePercent(): number {
+    return sumRelicExperiencePercent(this.wornRelics);
+  }
+
+  /** « % de soin de début de combat » cumulés des reliques **portées** (plafonné). */
+  relicHealStartPercent(): number {
+    return sumRelicHealStartPercent(this.wornRelics);
   }
 
   // --- Passifs d'équipement porté (lus en addition des reliques) ---
@@ -385,6 +789,50 @@ export class Monster {
   /** Somme des « % de soin de début de combat » de l'équipement porté. */
   equipmentHealStartPercent(): number {
     return equipmentTotals(this.equipped).healStartPercent ?? 0;
+  }
+
+  // --- Aperçu avant/après (convention DQ : voir le gain avant de valider) ---
+
+  /**
+   * Diff chiffré qu'apporterait une pose, **sans muter le monstre** : le
+   * monstre est cloné par snapshot, la pose y est jouée, seules les
+   * différences sont renvoyées. C'est la **vraie** CA qui est comparée
+   * (plafonds de vitesse et d'armure compris), pas une approximation — la
+   * pièce portée de l'emplacement est retirée au préalable, comme le fera
+   * `equip`.
+   */
+  previewEquip(piece: Equipment): MonsterDelta {
+    const clone = MonsterIO.fromSnapshot(MonsterIO.toSnapshot(this));
+    clone.unequip(piece.slot);
+    clone.equip(piece);
+    return this._deltaAgainst(clone);
+  }
+
+  /**
+   * Idem pour une relique. Zéro partout si les emplacements sont pleins (la
+   * relique ne serait pas portée) — c'est à l'interface de le dire.
+   */
+  previewRelic(relic: Relic): MonsterDelta {
+    const clone = MonsterIO.fromSnapshot(MonsterIO.toSnapshot(this));
+    clone.wearRelic(relic);
+    return this._deltaAgainst(clone);
+  }
+
+  private _deltaAgainst(other: Monster): MonsterDelta {
+    const stat: Partial<Record<MonsterStat, number>> = {};
+    const keys: MonsterStat[] = [
+      'strength',
+      'speed',
+      'constitution',
+      'charisma',
+      'wisdom',
+      'instinct',
+    ];
+    for (const key of keys) {
+      const delta = other[key] - this[key];
+      if (delta !== 0) stat[key] = delta;
+    }
+    return { stat, ac: other.getAC() - this.getAC(), maxHp: other.maxHp - this.maxHp };
   }
 
   // --- Gestion des Statuts Élémentaires ---
@@ -495,60 +943,61 @@ export class Monster {
   // --- Experience & Leveling Logic ---
 
   /**
-   * XP requise pour passer au niveau suivant : `80 × niveau - 40` (courbe
-   * **linéaire douce**, ~40 au niv. 1, 360 au niv. 5, 760 au niv. 10).
-   * L'ancienne courbe `100 × niveau^1.5` (1 118 XP au niv. 5) exigeait des
-   * dizaines de combats en début de run — trop raide (cf. rebalance §16 P1).
-   */
-  private calculateExperienceToNextLevel(level: number): number {
-    return Math.floor(80 * level - 40);
-  }
-
-  /**
    * Repart au niveau demandé sans toucher aux caractéristiques.
    *
    * Utilisé quand on rejoue avec un champion enregistré : le champion est
    * gravé tel qu'il était en fin de région (caractéristiques conservées), mais
-   * le run repart du niveau 1. L'expérience est remise à zéro et le seuil de
-   * montée recalculé ; les PV sont réétendus sur la nouvelle base de niveau.
+   * le run repart du niveau 1. L'expérience est remise à zéro (cumul du niveau
+   * 1) ; les PV sont réétendus sur la nouvelle base de niveau.
    *
    * Note : les PV max dépendent du niveau (`calculateMaxHp`) ; remettre le
    * niveau à 1 fait donc baisser la réserve d'un monstre dont les
    * caractéristiques restent celles de la fin de run — comportement voulu ici.
    */
   public resetLevelTo(level: number): void {
-    this.level = Math.max(1, Math.floor(level));
-    this.experience = 0;
-    this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
+    this.level = Math.min(MAX_LEVEL, Math.max(1, Math.floor(level)));
+    this.experience = experienceForLevel(this.level);
     this.maxHp = this.calculateMaxHp();
     this.currentHp = this.maxHp;
   }
 
   /**
-   * Adds experience and handles potential multiple level-ups.
+   * Ajoute de l'EXP **cumulée** et absorbe les montées de niveau en cascade.
+   *
+   * Rend, en plus des lignes de journal, le **total des points gagnés par
+   * caractéristique** et le **nombre de niveaux franchis** — de quoi alimenter
+   * le rapport de montée de niveau (façon RPG Maker, qui liste les gains).
    */
-  public gainExperience(amount: number): { leveledUp: boolean, logs: string[] } {
-    this.experience += amount;
-    const logs: string[] = [`${this.name} a gagné ${amount} points d'expérience !`];
+  public gainExperience(amount: number): {
+    leveledUp: boolean;
+    levels: number;
+    logs: string[];
+    statGains: StatGrowth;
+  } {
+    const gained = Math.max(0, Math.floor(amount));
+    this.experience += gained;
+    const logs: string[] = [`${this.name} a gagné ${gained} points d'expérience !`];
+    const statGains = zeroGrowth();
 
-    let leveledUp = false;
-    while (this.experience >= this.experienceToNextLevel) {
-      this.experience -= this.experienceToNextLevel;
-      this.levelUp();
-      leveledUp = true;
+    let levels = 0;
+    while (this.level < MAX_LEVEL && this.experience >= experienceForLevel(this.level + 1)) {
+      addGrowth(statGains, this.levelUp());
+      levels++;
       logs.push(`${this.name} passe au niveau ${this.level} !`);
     }
-    return { leveledUp, logs };
+
+    return { leveledUp: levels > 0, levels, logs, statGains };
   }
 
   /**
-   * Increases level and scales base stats + recomputes the PV pool.
+   * Monte d'un niveau : applique l'incrément **du palier atteint** (courbe de
+   * paramètre du type), recalcule les PV max et rend une part des PV
+   * ({@link LEVEL_UP_HEAL_PERCENT} % — RPG Maker ne soigne pas du tout).
+   * Rend le gain de caractéristiques, pour le rapport de montée de niveau.
    */
-  private levelUp(): void {
+  private levelUp(): StatGrowth {
     this.level++;
-    this.experienceToNextLevel = this.calculateExperienceToNextLevel(this.level);
-
-    const growth = this.getStatGrowth(this.type);
+    const growth = statGrowthForLevel(this.type, this.level);
 
     this.strength += growth.strength;
     this.speed += growth.speed;
@@ -558,11 +1007,9 @@ export class Monster {
     this.instinct += growth.instinct;
 
     this.maxHp = this.calculateMaxHp();
-    this.currentHp = this.maxHp; // Heal to full on level up
-  }
-
-  private getStatGrowth(type: MonsterType) {
-    return statGrowthForType(type);
+    const heal = Math.floor((this.maxHp * LEVEL_UP_HEAL_PERCENT) / 100);
+    this.currentHp = Math.min(this.maxHp, this.currentHp + heal);
+    return growth;
   }
 }
 
@@ -585,8 +1032,16 @@ export interface MonsterSnapshot {
   rank: MonsterRank;
   armorBonus: number;
   statuses?: ActiveStatus[];
+  /** Charge armée en cours (multiplicateur) — absente des sauvegardes antérieures. */
+  chargedStrike?: number;
   /** Équipements portés (capacités signature) : sérialisés tels quels. */
   equipped?: Partial<Record<EquipmentSlot, Equipment>>;
+  /**
+   * Reliques **portées** (réglage DQ, 3 emplacements) : sérialisées telles
+   * quelles. Leurs effets sont **déjà** comptés dans les stats ci-dessus —
+   * jamais re-appliqués à la reconstruction (même règle que l'équipement).
+   */
+  wornRelics?: Relic[];
 }
 
 export namespace MonsterIO {
@@ -614,7 +1069,9 @@ export namespace MonsterIO {
       rank: monster.rank,
       armorBonus: monster.armorBonus,
       statuses: monster.statuses.map(s => ({ ...s })),
+      chargedStrike: monster.chargedStrike,
       equipped: monster.equipped ?? {},
+      wornRelics: monster.wornRelics.map(relic => ({ ...relic })),
     };
   }
 
@@ -644,10 +1101,15 @@ export namespace MonsterIO {
     monster.armorBonus = snapshot.armorBonus ?? 0;
     monster.moves = snapshot.moves.map(move => ({ ...move }));
     monster.statuses = (snapshot.statuses ?? []).map(s => ({ ...s }));
+    monster.chargedStrike = snapshot.chargedStrike ?? 0;
     // Le portage est restauré TEL QUEL (stats & CA déjà incluses dans les
     // champs du snapshot — ne JAMAIS re-appliquer les effets ici, sinon
     // double comptabilisation à chaque chargement).
     monster.equipped = snapshot.equipped ? { ...snapshot.equipped } : {};
+    // Reliques portées : reprises telles quelles, **sans** re-appliquer leurs
+    // effets (déjà portés par les stats restaurées). Le plafond d'emplacements
+    // est réimposé, une sauvegarde incohérente ne peut pas dépasser la règle.
+    monster.wornRelics = (snapshot.wornRelics ?? []).slice(0, RELIC_SLOT_COUNT);
     return monster;
   }
 }

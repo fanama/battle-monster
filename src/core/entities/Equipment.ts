@@ -61,6 +61,14 @@ export interface Equipment {
   effect: EquipmentEffect;
   /** Prix en or en boutique (les drops restent gratuits). */
   price: number;
+  /**
+   * **Arme à deux mains** (règle Dragon Quest) : elle occupe les deux mains,
+   * donc le **bouclier est interdit** tant qu'elle est portée. La porter
+   * **déséquipe** le bouclier (retour en sacoche) ; porter un bouclier alors
+   * qu'une arme à deux mains est tenue est **refusé**.
+   * N'a de sens que sur `slot: 'weapon'`.
+   */
+  twoHanded?: boolean;
 }
 
 /**
@@ -115,6 +123,7 @@ export const EQUIPMENT_CATALOG: Equipment[] = [
     slot: 'weapon',
     effect: { stat: { strength: 4 }, acBonus: 2 },
     price: 110,
+    twoHanded: true,
   },
   {
     id: 'eq-hatchet',
@@ -133,15 +142,17 @@ export const EQUIPMENT_CATALOG: Equipment[] = [
     slot: 'weapon',
     effect: { stat: { speed: 1 }, critRange: 2 },
     price: 70,
+    twoHanded: true,
   },
   {
     id: 'eq-tide-trident',
     name: 'Trident des Marées',
-    description: '+3 Force · +1 Vitesse',
+    description: '+3 Force · +1 Vitesse (à deux mains)',
     icon: '🔱',
     slot: 'weapon',
     effect: { stat: { strength: 3, speed: 1 } },
     price: 90,
+    twoHanded: true,
   },
 
   // --- ARMURES ---
@@ -383,6 +394,57 @@ export function equipmentTotals(
     total.experiencePercent += piece.effect.experiencePercent ?? 0;
   }
   return total;
+}
+
+/**
+ * Score de puissance d'une pièce — base du bouton « Meilleur équipement »
+ * (最強装備 RPG Maker). Même barème **entier** que `relicScore` (les deux
+ * échelles restent indépendantes et équilibrées séparément) : 1 CA ≈ 3 points
+ * de caractéristique, 1 point de plage de critique vaut 4, les pourcentages
+ * la moitié d'un point de caractéristique, l'EXP un dixième.
+ */
+export function equipmentScore(piece: Equipment): number {
+  const e = piece.effect;
+  let score = 0;
+  if (e.stat) {
+    for (const value of Object.values(e.stat)) score += (value ?? 0) * 10;
+  }
+  score += (e.acBonus ?? 0) * 30;
+  score += (e.critRange ?? 0) * 40;
+  score += (e.damagePercent ?? 0) * 5;
+  score += (e.lifestealPercent ?? 0) * 5;
+  score += (e.healStartPercent ?? 0) * 2;
+  score += (e.experiencePercent ?? 0) * 1;
+  return score;
+}
+
+/**
+ * « Meilleur équipement » (最強装備 de RPG Maker, そうびの最適化 de DQ) :
+ * choisit, **emplacement par emplacement**, la pièce la plus puissante parmi
+ * celles possédées (sacoche + déjà portées) selon `equipmentScore`.
+ *
+ * Une pièce déjà portée fait partie des candidats : à score égal c'est elle
+ * qui l'emporte (l'égalité ne fait donc jamais tourner l'équipement pour
+ * rien, la comparaison garde l'ordre des candidats). La **règle des armes à
+ * deux mains** est appliquée en sortie : si la meilleure arme l'est, le
+ * bouclier n'est pas retenu (il restera en sacoche).
+ */
+export function bestLoadout(
+  owned: readonly Equipment[],
+  equipped: Partial<Record<EquipmentSlot, Equipment>> | undefined,
+): Partial<Record<EquipmentSlot, Equipment>> {
+  const chosen: Partial<Record<EquipmentSlot, Equipment>> = {};
+  for (const slot of EQUIPMENT_SLOTS) {
+    const candidates = [equipped?.[slot], ...owned].filter(
+      (piece): piece is Equipment => !!piece && piece.slot === slot,
+    );
+    if (candidates.length === 0) continue;
+    chosen[slot] = candidates.reduce((best, piece) =>
+      equipmentScore(piece) > equipmentScore(best) ? piece : best,
+    );
+  }
+  if (chosen.weapon?.twoHanded) delete chosen.shield;
+  return chosen;
 }
 
 /** Prix maximal du catalogue (plafond des budgets de drops élargis). */

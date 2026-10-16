@@ -1,6 +1,6 @@
 import type { Monster } from '../../core/entities/Monster';
 import type { MonsterType } from '../../core/entities/Move';
-import { statGrowthForType } from '../../core/entities/Monster';
+import { addGrowth, statGrowthForLevel, subGrowth, zeroGrowth } from '../../core/entities/Monster';
 import { CREATION_CHARISMA, CREATION_LEVEL, STAT_FLOOR } from '../../core/entities/MonsterCreation';
 import type { EnemyFactory, MoveProvider } from '../../core/services/ports';
 import { MoveRepository } from './MoveRepositories';
@@ -13,13 +13,13 @@ import {
 const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal', 'electric', 'rock'];
 
 /**
- * Modèle de caractéristiques d'un ennemi (cf. `statGrowthForType`).
+ * Modèle de caractéristiques d'un ennemi (cf. `statGrowthForLevel`).
  *
  * Avant, l'ennemi partait d'un tirage `8..14` multiplié par `1 + 0.15 × (niveau − 1)` :
  * une croissance **multiplicative** ancrée sur le niveau 1, et surtout **plate
  * sur les six caractéristiques**. Le champion, lui, est forgé au niveau
  * `CREATION_LEVEL` avec des caractéristiques plates et ne croît ensuite que de
- * `statGrowthForType` par niveau — laquelle laisse le **Charisme à zéro** et
+ * `statGrowthForLevel` par niveau — laquelle laisse le **Charisme à zéro** et
  * l'Instinct à +1. Les deux courbes divergeaient donc à tous les niveaux, et
  * l'ennemi emportait deux avantages que le joueur ne peut jamais obtenir :
  *
@@ -31,7 +31,7 @@ const ALL_TYPES: MonsterType[] = ['fire', 'water', 'grass', 'normal', 'electric'
  * Mesuré : 3-35 % de victoire en miroir avant correction.
  *
  * L'ennemi suit donc **exactement** la croissance du champion du même type :
- * `tirage(8..14) + croissance_du_type × (niveau − niveau de création)`, pondérée
+ * `tirage(8..14) + cumul de la courbe_du_type` sur les paliers franchis, pondérée
  * par la menace de la région (`statScale`) et bornée à `STAT_FLOOR`. Le
  * Charisme reste à sa valeur de création : c'est une stat de relique, pas une
  * stat de niveau.
@@ -149,14 +149,28 @@ export class RandomEnemyFactory implements EnemyFactory {
     // menace de la région (les premières régions génèrent des ennemis plus
     // faibles). Le Charisme est fixé : il ne vient que des reliques.
     const statScale = opts.statScale ?? DEFAULT_STAT_SCALE;
-    const growth = statGrowthForType(randomType);
-    const gainedLevels = targetLevel - CREATION_LEVEL;
+    // Croissance par **courbe de paramètre** du type : on cumule l'incrément de
+    // chaque palier franchi entre le niveau de création et le niveau cible —
+    // exactement ce qu'un champion du même type aurait gagné en montant les
+    // paliers un à un (`Monster.levelUp`).
+    const growth = zeroGrowth();
+    if (targetLevel > CREATION_LEVEL) {
+      for (let level = CREATION_LEVEL + 1; level <= targetLevel; level++) {
+        addGrowth(growth, statGrowthForLevel(randomType, level));
+      }
+    } else {
+      // En dessous du niveau de création : on retire les paliers non franchis
+      // (mêmes règles que le multiplicateur de niveau historique).
+      for (let level = CREATION_LEVEL; level > targetLevel; level--) {
+        subGrowth(growth, statGrowthForLevel(randomType, level));
+      }
+    }
     (Object.keys(newDef.stats) as Array<keyof typeof newDef.stats>).forEach(stat => {
       if (stat === 'charisma') {
         newDef.stats[stat] = CREATION_CHARISMA;
         return;
       }
-      const grown = newDef.stats[stat] + growth[stat] * gainedLevels;
+      const grown = newDef.stats[stat] + growth[stat];
       newDef.stats[stat] = Math.max(STAT_FLOOR, Math.floor(grown * statScale));
     });
 

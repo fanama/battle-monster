@@ -3,6 +3,7 @@
   import { STAT_LABELS, TYPE_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { typeEffectiveness } from "../../../core/services/effectiveness";
+  import { CHARGE_DAMAGE_MULTIPLIER } from "../../../core/services/BattleEngine";
   import { TYPE_ICONS } from "../../styles/typeColors";
   import { dq } from "../../styles/style";
   import { playSound } from "../../audio/gameAudio";
@@ -293,6 +294,18 @@
           {#if inspected.statBoosts}
             <span class={dq.badgeGood} title="Amélioration permanente de {STAT_LABELS[inspected.statBoosts.stat]}, cumulable">
               ⬆ +{inspected.statBoosts.value} {STAT_LABELS[inspected.statBoosts.stat]}
+            </span>
+          {/if}
+
+          {#if inspected.guaranteedCrit}
+            <span class={dq.badgeGood} title="Coup mortel (Dragon Quest) : aucun jet de toucher — touche toujours et ignore la défense de la victime">
+              🎯 Toujours touché
+            </span>
+          {/if}
+
+          {#if inspected.charge}
+            <span class={dq.badgeGood} title="Charge (« ちからため ») : arme la prochaine attaque, qui infligera ×{CHARGE_DAMAGE_MULTIPLIER} dégâts (consommée au premier coup qui touche)">
+              ⚡ Charge ×{CHARGE_DAMAGE_MULTIPLIER}
             </span>
           {/if}
 
