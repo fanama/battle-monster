@@ -1,4 +1,4 @@
-import type { MonsterStat } from './Move';
+import { STAT_LABELS, type MonsterStat } from './Move';
 
 /**
  * Équipement porté par le monstre (capacités signature 2026-10).
@@ -63,7 +63,12 @@ export interface Equipment {
   price: number;
 }
 
-/** Catalogue d'équipements : ~2-4 pièces par emplacement, du commun à la spéciale. */
+/**
+ * Catalogue d'équipements : 3 à 8 pièces par emplacement, du commun à la
+ * spéciale. Les **armes**, **armures** et **accessoires** sont les familles les
+ * plus fournies : la boutique en garantit une de chaque à chaque visite
+ * (cf. `buildEquipmentShopItems`), il faut donc du choix à tous les budgets.
+ */
 export const EQUIPMENT_CATALOG: Equipment[] = [
   // --- ARMES (contact & magie) ---
   {
@@ -111,6 +116,33 @@ export const EQUIPMENT_CATALOG: Equipment[] = [
     effect: { stat: { strength: 4 }, acBonus: 2 },
     price: 110,
   },
+  {
+    id: 'eq-hatchet',
+    name: 'Hachette du Bûcheron',
+    description: '+2 Force · +1 Constitution',
+    icon: '🪓',
+    slot: 'weapon',
+    effect: { stat: { strength: 2, constitution: 1 } },
+    price: 55,
+  },
+  {
+    id: 'eq-short-bow',
+    name: 'Arc de Chasse',
+    description: '+1 Vitesse · Critiques 19-20',
+    icon: '🏹',
+    slot: 'weapon',
+    effect: { stat: { speed: 1 }, critRange: 2 },
+    price: 70,
+  },
+  {
+    id: 'eq-tide-trident',
+    name: 'Trident des Marées',
+    description: '+3 Force · +1 Vitesse',
+    icon: '🔱',
+    slot: 'weapon',
+    effect: { stat: { strength: 3, speed: 1 } },
+    price: 90,
+  },
 
   // --- ARMURES ---
   {
@@ -148,6 +180,33 @@ export const EQUIPMENT_CATALOG: Equipment[] = [
     slot: 'armor',
     effect: { acBonus: 2, stat: { wisdom: 2 }, healStartPercent: 10 },
     price: 95,
+  },
+  {
+    id: 'eq-studded-vest',
+    name: 'Gilet Clouté',
+    description: '+1 CA · +1 Force',
+    icon: '🦺',
+    slot: 'armor',
+    effect: { acBonus: 1, stat: { strength: 1 } },
+    price: 50,
+  },
+  {
+    id: 'eq-chain-mail',
+    name: 'Cotte de Mailles',
+    description: '+2 CA · +1 Vitesse',
+    icon: '⛓️',
+    slot: 'armor',
+    effect: { acBonus: 2, stat: { speed: 1 } },
+    price: 70,
+  },
+  {
+    id: 'eq-colossus-cuirass',
+    name: 'Cuirasse du Colosse',
+    description: '+4 CA · +2 Constitution (⭐ rempart inébranlable)',
+    icon: '🗿',
+    slot: 'armor',
+    effect: { acBonus: 4, stat: { constitution: 2 } },
+    price: 110,
   },
 
   // --- CASQUES ---
@@ -263,6 +322,33 @@ export const EQUIPMENT_CATALOG: Equipment[] = [
     effect: { healStartPercent: 25, stat: { constitution: 1 } },
     price: 105,
   },
+  {
+    id: 'eq-ebony-amulet',
+    name: "Amulette d'Ébène",
+    description: '+1 Force · +1 Constitution',
+    icon: '📿',
+    slot: 'accessory',
+    effect: { stat: { strength: 1, constitution: 1 } },
+    price: 45,
+  },
+  {
+    id: 'eq-traveler-compass',
+    name: 'Boussole du Voyageur',
+    description: "+1 Vitesse · +10 % d'EXP",
+    icon: '🧭',
+    slot: 'accessory',
+    effect: { stat: { speed: 1 }, experiencePercent: 10 },
+    price: 55,
+  },
+  {
+    id: 'eq-golem-heart',
+    name: 'Cœur de Golem',
+    description: '+1 CA · Soin de départ +15 %',
+    icon: '🪨',
+    slot: 'accessory',
+    effect: { acBonus: 1, healStartPercent: 15 },
+    price: 85,
+  },
 ];
 
 /** Somme des effets de toutes les pièces portées (les seules actives). */
@@ -299,10 +385,88 @@ export function equipmentTotals(
   return total;
 }
 
+/** Prix maximal du catalogue (plafond des budgets de drops élargis). */
+const CATALOG_MAX_PRICE = Math.max(...EQUIPMENT_CATALOG.map(p => p.price));
+
+/**
+ * Échelle de puissance des **drops** selon le **niveau de l'ennemi vaincu**
+ * (choix joueur 2026-10 : « l'équipement gagné doit avoir plus d'effet si
+ * l'ennemi est haut niveau ») : les pièces tombées sur un ennemi haut niveau
+ * sont **amplifiées**, jusqu'à **×2** au niveau 16. Sous le niveau 8, aucune
+ * amplification : le catalogue d'origine reste intact.
+ */
+export function equipmentLevelScale(enemyLevel: number): number {
+  return Math.min(2, 1 + Math.max(0, enemyLevel - 8) * 0.125);
+}
+
+/** Queue « (⭐ …) » d'une description : signature des pièces spéciales. */
+const SPECIAL_TAIL = /\s*\(⭐[^)]*\)\s*$/;
+
+/**
+ * Recompose une description à partir des effets (après amplification), en
+ * conservant la signature « (⭐ …) » des pièces spéciales.
+ */
+export function describeEquipmentEffect(effect: EquipmentEffect, original = ''): string {
+  const parts: string[] = [];
+  if (effect.stat) {
+    for (const key of Object.keys(effect.stat) as MonsterStat[]) {
+      const value = effect.stat[key]!;
+      if (value) parts.push(`+${value} ${STAT_LABELS[key]}`);
+    }
+  }
+  if (effect.acBonus) parts.push(`+${effect.acBonus} CA`);
+  if (effect.critRange) parts.push(`Critiques ${21 - effect.critRange}-20`);
+  if (effect.lifestealPercent) parts.push(`Vol de vie ${effect.lifestealPercent} %`);
+  if (effect.damagePercent) parts.push(`+${effect.damagePercent} % de dégâts`);
+  if (effect.healStartPercent) parts.push(`Soin de départ +${effect.healStartPercent} %`);
+  if (effect.experiencePercent) parts.push(`+${effect.experiencePercent} % d'EXP`);
+  const special = original.match(SPECIAL_TAIL)?.[0]?.trim();
+  return special ? `${parts.join(' · ')} ${special}` : parts.join(' · ');
+}
+
+/**
+ * Amplifie une pièce selon le niveau de l'ennemi vaincu : stats, CA et
+ * pourcentages suivent l'échelle (jamais arrondis à 0). La **plage de critiques
+ * reste discrète** (un ×2 donnerait 17-20, hors échelle du jeu). L'id est
+ * conservé (anti-doublon sacoche/boutique inchangé) ; le nom porte un ✦ et la
+ * description est recomposée pour afficher les vrais chiffres.
+ */
+export function scaleEquipment(piece: Equipment, enemyLevel: number): Equipment {
+  const scale = equipmentLevelScale(enemyLevel);
+  if (scale <= 1) return piece;
+  const boosted = (value: number) => Math.max(1, Math.round(value * scale));
+  const effect: EquipmentEffect = {};
+  if (piece.effect.stat) {
+    const stat: Partial<Record<MonsterStat, number>> = {};
+    for (const [key, value] of Object.entries(piece.effect.stat)) {
+      stat[key as MonsterStat] = boosted(value!);
+    }
+    effect.stat = stat;
+  }
+  if (piece.effect.acBonus) effect.acBonus = boosted(piece.effect.acBonus);
+  if (piece.effect.lifestealPercent) effect.lifestealPercent = boosted(piece.effect.lifestealPercent);
+  if (piece.effect.damagePercent) effect.damagePercent = boosted(piece.effect.damagePercent);
+  // La plage de critiques est un mécanique discret (19-20, 18-20…) : jamais
+  // amplifiée.
+  if (piece.effect.critRange) effect.critRange = piece.effect.critRange;
+  if (piece.effect.healStartPercent) effect.healStartPercent = boosted(piece.effect.healStartPercent);
+  if (piece.effect.experiencePercent) effect.experiencePercent = boosted(piece.effect.experiencePercent);
+  return {
+    ...piece,
+    name: `${piece.name} ✦`,
+    effect,
+    description: describeEquipmentEffect(effect, piece.description),
+  };
+}
+
 /**
  * Tire une pièce d'équipement pour un drop (combat sauvage) ou un butin de
- * boss, adapté à la région : le poly entier, mais pondéré par la profondeur
- * du run (plus la région est tardive, plus les pièces chères tombent).
+ * boss, adapté à la région **et au niveau de l'ennemi vaincu** : le poly
+ * entier, pondéré par la profondeur du run (plus la région est tardive, plus
+ * les pièces chères tombent), puis élargi vers le haut du catalogue pour les
+ * ennemis haut niveau (budget + 10 💰 par niveau au-dessus de 8). La pièce
+ * est ensuite **amplifiée** selon ce même niveau (`scaleEquipment`, jusqu'à
+ * ×2 sur les effets). La boutique, elle, vend le catalogue d'origine.
  *
  * **Anti-doublon (régler crash `each_key_duplicate`)** : `excludeIds` liste les
  * pièces déjà possédées (sacoche + portées) — elles sont retirées du poly.
@@ -315,15 +479,22 @@ export function rollEquipmentDrop(
   regionIndex: number,
   random: () => number = Math.random,
   excludeIds: readonly string[] = [],
+  enemyLevel = 0,
 ): Equipment {
   // Prix lissés : région 1 → ≤ 65, région 2 → ≤ 80, région 3 → ≤ 95, région 4 → tout.
-  const maxPrice = [65, 80, 95, Infinity][Math.min(3, Math.max(0, regionIndex))]!;
+  const regionCap = [65, 80, 95, Infinity][Math.min(3, Math.max(0, regionIndex))]!;
+  // Un ennemi haut niveau ouvre le poly vers les pièces chères (paliers de
+  // prix plus hauts), plafonné au prix maximal du catalogue.
+  const maxPrice = Math.min(CATALOG_MAX_PRICE, regionCap + Math.max(0, enemyLevel - 8) * 10);
   const owned = new Set(excludeIds);
   const uniquePoly = EQUIPMENT_CATALOG.filter(p => !owned.has(p.id) && p.price <= maxPrice);
   const pool = uniquePoly.length > 0
     ? uniquePoly
     : EQUIPMENT_CATALOG.filter(p => p.price <= maxPrice);
-  return pool[Math.floor(random() * pool.length)] ?? EQUIPMENT_CATALOG[0]!;
+  return scaleEquipment(
+    pool[Math.floor(random() * pool.length)] ?? EQUIPMENT_CATALOG[0]!,
+    enemyLevel,
+  );
 }
 
 /**

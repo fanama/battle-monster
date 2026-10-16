@@ -2,7 +2,6 @@
   import { container } from "./lib/container";
   import MonsterDisplayer from "./lib/components/molecules/MonsterDisplayer.svelte";
   import Logs from "./lib/components/molecules/Logs.svelte";
-  import MoveDisplayer from "./lib/components/atoms/MoveDisplayer.svelte";
   import FighterHud from "./lib/components/atoms/FighterHud.svelte";
   import RunHud from "./lib/components/atoms/RunHud.svelte";
   import RunTabs from "./lib/components/atoms/RunTabs.svelte";
@@ -19,7 +18,10 @@
   import { EQUIPMENT_SLOT_LABELS, type EquipmentSlot } from "./core/entities/Equipment";
   import InventoryModal from "./lib/components/molecules/InventoryModal.svelte";
   import Home from "./lib/components/molecules/Home.svelte";
-  import { styles } from "./lib/styles/style";
+  import ArenaSpellLayer from "./lib/components/molecules/ArenaSpellLayer.svelte";
+  import ArenaEnvironment from "./lib/components/molecules/ArenaEnvironment.svelte";
+  import CommandWindow from "./lib/components/molecules/CommandWindow.svelte";
+  import { dq, styles } from "./lib/styles/style";
   import { REGION_COLORS } from "./lib/styles/regionColors";
   import { tabForPhase, type RunTab, type RunTabId } from "./lib/runTabs";
   import { celebration } from "./lib/stores/juiceStore";
@@ -28,10 +30,13 @@
   import type { Monster } from "./core/entities/Monster";
   import type { RunPhase } from "./core/entities/BattleState";
   import { REGIONS } from "./core/entities/Region";
+  import { TYPE_LABELS } from "./core/entities/Move";
+  import { TYPE_ICONS } from "./lib/styles/typeColors";
 
   const battleStore = container.store;
   const savedRun = battleStore.savedRun;
   const savedChampions = battleStore.savedChampions;
+  const unlockedTypes = battleStore.unlockedTypes;
   const isMoveModalOpen = battleStore.isMoveModalOpen;
   const isLevelUpMovePrompt = battleStore.isLevelUpMovePrompt;
 
@@ -163,7 +168,7 @@
   exactement la fenêtre, sans débordement ni en largeur ni en hauteur.
   Seul le panneau actif défile.
 -->
-<div class="h-dvh w-full max-w-full overflow-hidden flex flex-col bg-[#141210] text-stone-200">
+<div class="h-dvh w-full max-w-full overflow-hidden flex flex-col bg-[#0b1020] text-sky-50">
   <!-- HEADER PERSISTANT SUR TOUTES LES PAGES (Home, Map, Arène, Shop, etc.) -->
   <Header
     {phase}
@@ -198,6 +203,7 @@
         onStartRun={(monster: Monster) => {
           battleStore.startRun(monster);
         }}
+        unlockedTypes={$unlockedTypes}
       />
 
       <!-- FOOTER (écran titre) -->
@@ -215,13 +221,13 @@
       <div
         class="flex flex-col items-center justify-center gap-4 text-center py-10 px-4 flex-1"
       >
-        <p class="text-4xl font-serif font-extrabold tracking-widest text-rose-500 uppercase drop-shadow">
-          Partie Terminée
+        <p class="font-display text-3xl sm:text-4xl font-extrabold tracking-[0.2em] text-rose-200 uppercase">
+          Partie terminée
         </p>
-        <div class="text-stone-300 space-y-1 font-mono text-sm">
+        <div class={`${dq.window} w-full max-w-sm px-4 py-3 space-y-1 text-sm text-sky-100/85 ${dq.body}`}>
           <p>⚔️ {player?.name} (niv. {player?.level})</p>
           <p>🗺️ Arrivé en {region.name}</p>
-          <p>🎖️ Score final : <span class="text-amber-300">★ {run.score}</span></p>
+          <p>🎖️ Score final : <span class="text-amber-100">★ {run.score}</span></p>
           <p>🃏 Reliques : {run.relics.map(r => r.icon).join(' ') || 'aucune'}</p>
         </div>
         <button
@@ -243,12 +249,12 @@
       <div
         class="flex flex-col items-center justify-center gap-4 text-center py-10 px-4 flex-1"
       >
-        <p class="text-4xl sm:text-5xl font-serif font-extrabold tracking-widest text-amber-300 uppercase drop-shadow-[0_0_20px_rgba(251,191,36,0.6)]">
+        <p class="font-display text-3xl sm:text-5xl font-extrabold tracking-[0.2em] text-amber-100 uppercase">
           🏆 Champion !
         </p>
-        <p class="text-stone-300 font-mono text-sm">
-          Les 4 régions sont conquises. Score : <span class="text-amber-300">★ {run.score}</span>
-          · Niveau atteint : <span class="text-amber-300">{player?.level}</span>
+        <p class={`${dq.window} w-full max-w-sm px-4 py-3 text-sm text-sky-100/85`}>
+          Les 4 régions sont conquises. Score : <span class="text-amber-100">★ {run.score}</span>
+          · Niveau atteint : <span class="text-amber-100">{player?.level}</span>
         </p>
         <button
           class="{styles.buttons.base} {styles.buttons.primary}"
@@ -315,26 +321,14 @@
                   style="background: linear-gradient(180deg, rgba(2,6,23,0.5) 0%, rgba(2,6,23,0.15) 55%, rgba(0,0,0,0) 100%)"
                 ></div>
 
-                <!-- Ligne d'horizon : bleu nuit lumineux façon Dragon Quest -->
-                <div
-                  class="absolute inset-x-0"
-                  style="bottom: 62%; height: 1px; background: linear-gradient(90deg, rgba(125,211,252,0) 0%, rgba(147,197,253,0.5) 40%, rgba(254,249,195,0.55) 50%, rgba(147,197,253,0.5) 60%, rgba(125,211,252,0) 100%); box-shadow: 0 0 12px rgba(125,211,252,0.35)"
-                ></div>
+                <!-- Décor 3D : sol bleu nuit, grille, piliers et horizon lumineux
+                     (calque WebGL statique, horizon aligné sur bottom: 62%) -->
+                <ArenaEnvironment />
 
-                <!-- Sol en dégradé bleu nuit + geyseur lumineux au centre -->
-                <div
-                  class="absolute inset-x-0 bottom-0 h-[62%]"
-                  style="background: linear-gradient(180deg, rgba(15,23,42,0.28) 0%, rgba(2,6,23,0.55) 45%, rgba(0,0,0,0.78) 100%)"
-                ></div>
+                <!-- Geyseur lumineux au centre du sol -->
                 <div
                   class="absolute inset-0"
                   style="background: radial-gradient(ellipse 58% 42% at 50% 76%, rgba(56,189,248,0.16) 0%, rgba(56,189,248,0.05) 45%, transparent 72%)"
-                ></div>
-
-                <!-- Lignes de sol en perspective (bleutées DQ) -->
-                <div
-                  class="absolute inset-0"
-                  style="background-image: repeating-linear-gradient(to bottom, rgba(147,197,253,0.09) 0 1px, transparent 1px 9%); background-size: 100% 38%"
                 ></div>
 
                 <!-- Vignette DQ : bords assombris façon encadré de combat -->
@@ -349,10 +343,10 @@
 
               {#if $battleStore.isBossFight}
                 <div
-                  class="absolute top-2 left-1/2 -translate-x-1/2 z-20 font-serif font-bold uppercase
-                    tracking-widest text-amber-100 text-xs sm:text-sm md:text-base animate-pulse
-                    border-2 border-amber-300/70 bg-gradient-to-b from-rose-800 to-rose-900
-                    rounded-md px-2 py-0.5 sm:px-3 sm:py-1 shadow-[0_0_12px_rgba(251,191,36,0.45)]"
+                  class="absolute top-2 left-1/2 -translate-x-1/2 z-20
+                    font-display font-extrabold uppercase tracking-[0.18em] text-rose-100
+                    text-[10px] sm:text-xs md:text-sm
+                    rounded-md border border-rose-300/40 bg-[#2a1520]/90 px-2 py-0.5 sm:px-3 sm:py-1"
                 >
                   👑 Boss de région
                 </div>
@@ -383,32 +377,45 @@
                   <!-- Bandeau de fin de round : reste affiché pendant
                        ROUND_END_DELAY, le temps que l'animation se joue. -->
                   {#if $battleStore.winner}
+                    <!-- Bandeau de fin : une fenêtre DQ, pas du texte en lueur. -->
                     <div
                       class="absolute inset-0 z-40 flex items-center justify-center
-                        bg-black/25 backdrop-blur-[1px] pointer-events-none"
+                        bg-black/40 pointer-events-none"
                     >
-                      <p
-                        class="font-serif font-black uppercase tracking-[0.25em]
-                          text-4xl sm:text-6xl animate-pulse drop-shadow-lg
-                          {$battleStore.winner === 'player'
-                            ? 'text-amber-300 [text-shadow:0_0_24px_rgba(251,191,36,0.7)]'
-                            : 'text-rose-400 [text-shadow:0_0_24px_rgba(244,63,94,0.7)]'}"
-                      >
-                        {$battleStore.winner === 'player' ? 'Victoire' : 'Défaite'}
-                      </p>
+                      <div class={`${dq.window} pop-in px-6 py-3`}>
+                        <p
+                          class="font-display text-xl sm:text-2xl font-extrabold uppercase tracking-[0.22em]
+                            {$battleStore.winner === 'player' ? 'text-amber-100' : 'text-rose-200'}"
+                        >
+                          {$battleStore.winner === 'player' ? 'Victoire !' : 'Défaite…'}
+                        </p>
+                      </div>
                     </div>
                   {/if}
                 </div>
+
+                <!-- Calque 3D des sorts : au-dessus des combattants (z-20),
+                     sous le HUD (z-30). Il projette les attaques à distance
+                     d'un camp vers l'autre — projectile élémentaire, gerbe
+                     d'impact — et les canalisations de soin / buff. -->
+                <ArenaSpellLayer
+                  isPlayerAttacking={$battleStore.isAttacking}
+                  isEnemyAttacking={$battleStore.isEnemyAttacking}
+                  playerLastMove={$battleStore.playerLastMove}
+                  enemyLastMove={$battleStore.enemyLastMove}
+                  playerFeedback={$battleStore.playerFeedback}
+                  enemyFeedback={$battleStore.enemyFeedback}
+                />
               {:else if phase !== 'relic' && phase !== 'regionClear'}
                 <div class="w-full flex-1 flex flex-col items-center justify-center gap-3 text-center py-6">
                   <span class="text-4xl">🗺️</span>
-                  <p class="text-stone-400 font-mono text-xs">
+                  <p class="text-sky-200/65 font-mono text-xs">
                     Aucune rencontre en cours — choisissez votre prochaine destination.
                   </p>
                   <button
                     type="button"
                     on:click={() => (activeTab = 'map')}
-                    class="px-3 py-1.5 rounded-lg border border-amber-500/60 bg-amber-950/40 text-amber-300 text-xs font-mono font-bold hover:bg-amber-900/50 transition-colors cursor-pointer"
+                    class="px-3 py-1.5 rounded-lg border border-amber-200/50 bg-[#1b1a10]/60 text-amber-100 text-xs font-mono font-bold hover:bg-amber-900/50 transition-colors cursor-pointer"
                   >
                     Ouvrir la carte →
                   </button>
@@ -426,14 +433,38 @@
               {:else if phase === "regionClear"}
                 <div
                   class="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 rounded-lg
-                    bg-black/80 backdrop-blur-sm p-4 text-center"
+                    bg-[#050a14]/88 backdrop-blur-[2px] p-4 text-center"
                 >
-                  <p class="text-2xl sm:text-3xl font-serif font-bold tracking-widest text-amber-300 uppercase drop-shadow">
+                  <p class="font-display text-xl sm:text-3xl font-extrabold tracking-[0.2em] text-amber-100 uppercase">
                     ⚔️ {region.name} conquise !
                   </p>
-                  <p class="text-stone-300 font-mono text-sm">
+                  <p class={`${dq.window} px-4 py-2 text-sm text-sky-100/85`}>
                     Score : ★ {run.score} · Niveau : {player?.level}
                   </p>
+
+                  <!-- Élément révélé par le boss : le champion en cours peut l'adopter. -->
+                  {#if run.unlockedThisRegion && run.unlockedThisRegion.length > 0}
+                    <div class={`${dq.window} flex max-w-md flex-col items-center gap-2 px-4 py-3`}>
+                      <p class="font-display font-extrabold text-sm uppercase tracking-wider text-amber-100">🔓 Élément révélé</p>
+                      <p class="text-[11px] text-sky-100/70">
+                        Adoptez-le pour le reste de la run (le panel est reconstruit) — ou
+                        conservez-le pour vos prochains champions.
+                      </p>
+                      <div class="flex flex-wrap justify-center gap-2">
+                        {#each run.unlockedThisRegion as type}
+                          <button
+                            class="cursor-pointer rounded-md border border-amber-200/50 bg-[#16233a]
+                              px-3 py-1.5 font-display text-xs font-extrabold uppercase tracking-[0.15em] text-amber-100
+                              transition-colors hover:bg-[#1d2d49] active:scale-95"
+                            on:click={() => battleStore.adoptUnlockedType(type)}
+                          >
+                            {TYPE_ICONS[type]} Adopter {TYPE_LABELS[type]}
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+
                   <button
                     class="{styles.buttons.base} {styles.buttons.primary}"
                     on:click={() => battleStore.advanceRegion()}
@@ -445,53 +476,29 @@
             </div>
           </div>
 
-          <!-- Barre d'action : toujours visible, collée en bas (thumb reach). -->
+          <!-- Fenêtre de commande : toujours visible, collée en bas (thumb reach).
+               Tout ce qui se faisait dans la barre d'action — capacités, sacoche,
+               grimoire, faiblesses — passe par le menu en deux temps. -->
           {#if !forcedTab}
             <div
               class="shrink-0 px-2 sm:px-3 pb-[env(safe-area-inset-bottom)] flex flex-col gap-2"
             >
-              <div class={styles.actionBar.container}>
-                <div class={styles.actionBar.textureOverlay}></div>
-
-                {#if phase === "encounter" && !$battleStore.winner && player}
-                  {#each player.moves as move, i}
-                    <MoveDisplayer
-                      {move}
-                      targetType={$battleStore.enemyMonster?.type ?? null}
-                      disabled={!$battleStore.isPlayerTurn || !!$battleStore.winner || $battleStore.isAttacking || $battleStore.isEnemyAttacking}
-                      onClick={() => battleStore.attack(i)}
-                    />
-                  {/each}
-                {:else}
-                  <p class="relative z-10 col-span-2 flex items-center justify-center text-center
-                    font-mono text-xs text-stone-400 px-2 py-3">
+              {#if phase === "encounter" && !$battleStore.winner && player}
+                <CommandWindow
+                  moves={player.moves}
+                  targetType={$battleStore.enemyMonster?.type ?? null}
+                  disabled={!$battleStore.isPlayerTurn || $battleStore.isAttacking || $battleStore.isEnemyAttacking}
+                  potions={totalPotions}
+                  onAttack={(index) => battleStore.attack(index)}
+                  onOpenInventory={() => (isInventoryOpen = true)}
+                  onOpenMoves={() => battleStore.openMoveModal(false)}
+                  onOpenCodex={() => openCodex("elements")}
+                />
+              {:else}
+                <div class={`${dq.window} px-3 py-3`}>
+                  <p class="text-center font-mono text-xs text-sky-100/60">
                     {phase === "map" ? "Choisissez un nœud sur la carte pour entrer en combat." : "Aucun combat en cours."}
                   </p>
-                {/if}
-              </div>
-
-              {#if phase === "encounter" && !$battleStore.winner && player}
-                <div class="flex items-center gap-2">
-                  <button
-                    type="button"
-                    on:click={() => (isInventoryOpen = true)}
-                    class="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl border border-amber-500/50 bg-stone-900/90
-                      hover:bg-amber-950/40 text-amber-200 text-[11px] sm:text-xs font-mono font-bold transition-all
-                      flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95"
-                  >
-                    <span>🎒</span>
-                    <span class="truncate">Sacoche ({totalPotions})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    on:click={() => openCodex('elements')}
-                    class="shrink-0 px-2.5 py-1.5 rounded-xl border border-stone-700 bg-stone-900/90
-                      text-stone-300 text-[11px] sm:text-xs font-mono hover:bg-stone-800 transition-all cursor-pointer"
-                    title="Faiblesses & Statuts"
-                  >
-                    📖 <span class="hidden sm:inline">Faiblesses</span>
-                  </button>
                 </div>
               {/if}
             </div>
@@ -528,9 +535,9 @@
           <button
             type="button"
             on:click={() => battleStore.openMoveModal(false)}
-            class="w-full py-2.5 px-3 rounded-xl font-serif font-bold text-xs sm:text-sm uppercase tracking-wider
-              border border-violet-500/60 bg-gradient-to-r from-violet-950/80 to-purple-900/70 hover:from-violet-900 hover:to-purple-800
-              text-violet-200 hover:text-white shadow-[0_0_15px_rgba(168,85,247,0.25)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+            class="w-full py-2.5 px-3 rounded-lg font-display font-extrabold text-xs sm:text-sm uppercase tracking-[0.18em]
+              border border-sky-100/25 bg-[#16233a] hover:bg-[#1d2d49] text-sky-50
+              transition-colors flex items-center justify-center gap-2 cursor-pointer"
             title="Ouvrir le grimoire pour configurer vos attaques"
           >
             <span>📜</span>
@@ -542,9 +549,9 @@
           <button
             type="button"
             on:click={() => (isInventoryOpen = true)}
-            class="w-full py-2.5 px-3 rounded-xl font-mono font-bold text-xs
-              border border-amber-500/50 bg-stone-900/90 hover:bg-amber-950/40 text-amber-200
-              transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            class="w-full py-2.5 px-3 rounded-lg font-display font-extrabold text-xs uppercase tracking-[0.18em]
+              border border-amber-200/40 bg-[#16233a] hover:bg-[#1d2d49] text-amber-100
+              transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-95"
           >
             <span>🎒</span>
             <span>Sacoche ({totalPotions})</span>
@@ -555,9 +562,9 @@
               type="button"
               on:click={() => (isEquipmentOpen = true)}
               disabled={!canManageEquipment}
-              class="w-full py-2.5 px-3 rounded-xl font-mono font-bold text-xs
-                border border-emerald-500/50 bg-stone-900/90 hover:bg-emerald-950/40 text-emerald-200
-                transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95
+              class="w-full py-2.5 px-3 rounded-lg font-display font-extrabold text-xs uppercase tracking-[0.18em]
+                border border-emerald-200/35 bg-[#16233a] hover:bg-[#1d2d49] text-emerald-100
+                transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-95
                 disabled:opacity-40 disabled:cursor-not-allowed"
               title="Porter ou retirer des pièces d'équipement (hors combat uniquement)"
             >
@@ -790,11 +797,6 @@
   :global(*::after) {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-  }
-
-  :global(.pattern-dots) {
-    background-image: radial-gradient(rgba(251, 191, 36, 0.5) 1px, transparent 1px);
-    background-size: 12px 12px;
   }
 
   /* ==================== Décor Dragon Quest ==================== */

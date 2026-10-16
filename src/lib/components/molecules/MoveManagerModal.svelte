@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dq } from "../../styles/style";
   import type { Move } from "../../../core/entities/Move";
   import type { Monster } from "../../../core/entities/Monster";
   import { TYPE_LABELS, STAT_LABELS, moveAccuracyBonus } from "../../../core/entities/Move";
@@ -75,7 +76,7 @@
     <!-- Backdrop button -->
     <button
       type="button"
-      class="fixed inset-0 w-full h-full bg-black/80 backdrop-blur-md cursor-default transition-opacity"
+      class="fixed inset-0 w-full h-full bg-[#050a14]/85 backdrop-blur-[2px] cursor-default transition-opacity"
       on:click={onClose}
       aria-label="Fermer le menu des attaques"></button>
 
@@ -84,26 +85,25 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="moves-modal-title"
-      class="relative z-10 w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl pop-in border-2 border-violet-500/60
-        bg-[#171513] text-stone-200 shadow-[0_10px_35px_rgba(0,0,0,0.95)] overflow-hidden">
+      class={`relative z-10 w-full max-w-4xl max-h-[90dvh] flex flex-col pop-in overflow-hidden ${dq.window} text-sky-100/90`}>
       <!-- Modal Header -->
-      <div class="px-4 sm:px-5 py-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-900/80">
+      <div class="px-4 sm:px-5 py-4 border-b border-sky-100/15 flex items-center justify-between gap-2 bg-sky-100/[0.06]">
         <div class="flex items-center gap-3 min-w-0">
-          <div class="w-10 h-10 shrink-0 rounded-xl bg-violet-950/80 border border-violet-500/50 flex items-center justify-center text-xl shadow-inner">
+          <div class="w-10 h-10 shrink-0 rounded-lg border border-sky-100/25 bg-[#16233a] flex items-center justify-center text-xl">
             {isLevelUp ? '🎉' : '📜'}
           </div>
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h2
                 id="moves-modal-title"
-                class="font-serif font-black text-base sm:text-lg md:text-xl uppercase tracking-wider text-amber-300">
+                class="font-display font-extrabold text-base sm:text-lg md:text-xl uppercase tracking-wider text-amber-100">
                 {isLevelUp ? 'Montée de Niveau !' : 'Grimoire des Capacités'}
               </h2>
-              <span class="text-[10px] sm:text-xs font-mono font-bold px-2 py-0.5 rounded-full border border-stone-700 bg-stone-800 text-stone-300 shrink-0">
+              <span class={`shrink-0 ${dq.badge}`}>
                 {monster.name} · Niv. {monster.level}
               </span>
             </div>
-            <p class="text-[11px] sm:text-xs font-mono text-stone-400 mt-0.5">
+            <p class="text-[11px] sm:text-xs font-mono text-sky-200/60 mt-0.5">
               {isLevelUp
                 ? 'Choisissez les attaques à équiper parmi votre arsenal débloqué (1 à 4).'
                 : 'Configurez et ordonnez votre set de combat actif.'}
@@ -114,7 +114,7 @@
         <button
           type="button"
           on:click={onClose}
-          class="w-8 h-8 shrink-0 rounded-lg border border-stone-700 bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
+          class="w-8 h-8 shrink-0 rounded-md border border-sky-100/25 bg-[#16233a] hover:bg-[#1d2d49] text-sky-100/70 hover:text-white flex items-center justify-center text-sm transition-colors cursor-pointer"
           aria-label="Fermer">
           ✕
         </button>
@@ -125,11 +125,11 @@
         <!-- Section 1 : Attaques Actives / Équipées (Slots 1 à 4) -->
         <div>
           <div class="flex items-center justify-between mb-2.5">
-            <h3 class="font-serif font-bold text-sm md:text-base text-amber-200 uppercase tracking-wider flex items-center gap-2">
+            <h3 class="font-display font-bold text-sm md:text-base text-amber-100 uppercase tracking-wider flex items-center gap-2">
               <span>⚔️</span>
               <span>Attaques Équipées ({selectedMoves.length}/{MAX_MOVES})</span>
             </h3>
-            <span class="text-[11px] font-mono text-stone-400">
+            <span class="text-[11px] font-mono text-sky-200/65">
               {selectedMoves.length === 1 ? '1 capacité minimale requise' : 'Cliquez pour réordonner ou retirer'}
             </span>
           </div>
@@ -143,13 +143,13 @@
                 {@const isHeal = equippedMove.isHeal}
                 {@const isBuff = Boolean(equippedMove.statBoosts)}
                 <div
-                  class="relative flex flex-col justify-between p-3 rounded-xl border-2 {tc.borderStrong} bg-stone-900/90 shadow-md transition-all">
+                  class="relative flex flex-col justify-between p-3 rounded-lg border {tc.borderStrong} bg-[#070d18]/70 transition-colors">
                   <!-- Filet haut -->
                   <span class="absolute top-0 inset-x-0 h-1 {tc.gradient} rounded-t-xl"></span>
 
                   <div class="flex flex-col gap-1.5">
                     <div class="flex items-center justify-between gap-1">
-                      <span class="text-[10px] font-mono font-bold text-amber-400 bg-black/40 px-1.5 py-0.5 rounded">
+                      <span class="text-[10px] font-mono font-bold text-amber-100 bg-black/40 px-1.5 py-0.5 rounded">
                         #{idx + 1}
                       </span>
                       <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full border {tc.badge}">
@@ -157,16 +157,16 @@
                       </span>
                     </div>
 
-                    <h4 class="font-serif font-bold text-sm text-stone-100 truncate mt-1">
+                    <h4 class="font-display font-bold text-sm text-sky-50 truncate mt-1">
                       {equippedMove.name}
                     </h4>
 
                     <div class="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
                       {#if equippedMove.power > 0}
-                        <span class="px-1.5 py-0.5 rounded bg-black/40 text-amber-300 font-bold">
+                        <span class="px-1.5 py-0.5 rounded bg-black/40 text-amber-100 font-bold">
                           ⚡ P.{equippedMove.power}
                         </span>
-                        <span class="px-1.5 py-0.5 rounded bg-black/40 {isPhys ? 'text-red-300' : 'text-violet-300'}">
+                        <span class="px-1.5 py-0.5 rounded bg-black/40 {isPhys ? 'text-rose-200' : 'text-sky-200'}">
                           {isPhys ? '⚔ Physique' : '✨ Magie'}
                         </span>
                       {:else if isHeal}
@@ -195,13 +195,13 @@
                   </div>
 
                   <!-- Boutons d'ordre & retrait -->
-                  <div class="flex items-center justify-between gap-1 mt-3 pt-2 border-t border-stone-800">
+                  <div class="flex items-center justify-between gap-1 mt-3 pt-2 border-t border-sky-100/15">
                     <div class="flex items-center gap-1">
                       <button
                         type="button"
                         disabled={idx === 0}
                         on:click={() => moveUp(idx)}
-                        class="px-1.5 py-0.5 rounded border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
+                        class="px-1.5 py-0.5 rounded border border-sky-100/20 bg-[#16233a] hover:bg-[#1d2d49] text-sky-100/80 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
                         title="Monter">
                         ←
                       </button>
@@ -209,7 +209,7 @@
                         type="button"
                         disabled={idx === selectedMoves.length - 1}
                         on:click={() => moveDown(idx)}
-                        class="px-1.5 py-0.5 rounded border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
+                        class="px-1.5 py-0.5 rounded border border-sky-100/20 bg-[#16233a] hover:bg-[#1d2d49] text-sky-100/80 disabled:opacity-30 disabled:pointer-events-none text-xs cursor-pointer"
                         title="Descendre">
                         →
                       </button>
@@ -226,9 +226,9 @@
                 </div>
               {:else}
                 <!-- Slot Vide -->
-                <div class="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-stone-800 bg-stone-900/30 text-stone-600 min-h-[140px]">
+                <div class="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-sky-100/15 bg-[#0d1526]/30 text-sky-200/40 min-h-[140px]">
                   <span class="text-xs font-mono font-bold">Emplacement #{idx + 1}</span>
-                  <span class="text-[11px] mt-1 text-stone-500 italic">Vide</span>
+                  <span class="text-[11px] mt-1 text-sky-200/50 italic">Vide</span>
                 </div>
               {/if}
             {/each}
@@ -238,11 +238,11 @@
         <!-- Section 2 : Toutes les Capacités Débloquées -->
         <div>
           <div class="flex items-center justify-between mb-2.5">
-            <h3 class="font-serif font-bold text-sm md:text-base text-violet-300 uppercase tracking-wider flex items-center gap-2">
+            <h3 class="font-display font-bold text-sm md:text-base text-sky-100 uppercase tracking-wider flex items-center gap-2">
               <span>📜</span>
               <span>Grimoire des Capacités Disponibles ({availableMoves.length})</span>
             </h3>
-            <span class="text-[11px] font-mono text-stone-400">
+            <span class="text-[11px] font-mono text-sky-200/65">
               Débloquées au fil de vos montées de niveau
             </span>
           </div>
@@ -256,27 +256,27 @@
               {@const isBuff = Boolean(move.statBoosts)}
               {@const accBonus = moveAccuracyBonus(move)}
               <div
-                class="flex flex-col justify-between p-3.5 rounded-xl border transition-all {equipped ? 'border-amber-500/70 bg-stone-900/90 shadow-md' : 'border-stone-800 bg-stone-900/40 hover:border-stone-700'}">
+                class="flex flex-col justify-between p-3.5 rounded-xl border transition-all {equipped ? 'border-amber-500/70 bg-[#0d1526]/93 shadow-md' : 'border-sky-100/15 bg-[#070d18]/40 hover:border-sky-100/20'}">
                 <div>
                   <div class="flex items-center justify-between gap-1">
                     <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border {tc.badge}">
                       {TYPE_ICONS[move.type]} {TYPE_LABELS[move.type]}
                     </span>
-                    <span class="text-[10px] font-mono text-stone-400">
+                    <span class="text-[10px] font-mono text-sky-200/65">
                       Niv. {move.level}
                     </span>
                   </div>
 
-                  <h4 class="font-serif font-bold text-base text-stone-100 mt-2">
+                  <h4 class="font-display font-bold text-base text-sky-50 mt-2">
                     {move.name}
                   </h4>
 
                   <div class="flex flex-wrap items-center gap-1.5 mt-2 text-[11px] font-mono">
                     {#if move.power > 0}
-                      <span class="px-1.5 py-0.5 rounded bg-black/40 text-amber-300 font-bold">
+                      <span class="px-1.5 py-0.5 rounded bg-black/40 text-amber-100 font-bold">
                         ⚡ P.{move.power}
                       </span>
-                      <span class="px-1.5 py-0.5 rounded bg-black/40 {isPhys ? 'text-red-300' : 'text-violet-300'}">
+                      <span class="px-1.5 py-0.5 rounded bg-black/40 {isPhys ? 'text-rose-200' : 'text-sky-200'}">
                         {isPhys ? '⚔ Physique' : '✨ Magie'}
                       </span>
                       {#if accBonus > 0}
@@ -308,9 +308,9 @@
                   </div>
                 </div>
 
-                <div class="mt-3.5 pt-2.5 border-t border-stone-800 flex items-center justify-between">
+                <div class="mt-3.5 pt-2.5 border-t border-sky-100/15 flex items-center justify-between">
                   {#if equipped}
-                    <span class="text-xs font-serif font-bold text-amber-400 flex items-center gap-1">
+                    <span class="text-xs font-display font-bold text-amber-100 flex items-center gap-1">
                       <span>✓</span>
                       <span>Équipée</span>
                     </span>
@@ -318,16 +318,16 @@
                       type="button"
                       disabled={selectedMoves.length <= 1}
                       on:click={() => toggleEquip(move)}
-                      class="px-2.5 py-1 rounded-lg border border-stone-700 bg-stone-800 hover:bg-rose-950 hover:border-rose-600/50 hover:text-rose-300 text-stone-300 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer">
+                      class="px-2.5 py-1 rounded-lg border border-sky-100/20 bg-[#16233a] hover:bg-rose-950 hover:border-rose-600/50 hover:text-rose-300 text-sky-100/80 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer">
                       Retirer
                     </button>
                   {:else}
-                    <span class="text-xs font-mono text-stone-500">Disponible</span>
+                    <span class="text-xs font-mono text-sky-200/50">Disponible</span>
                     <button
                       type="button"
                       on:click={() => toggleEquip(move)}
-                      class="px-3 py-1 rounded-lg font-serif font-bold text-xs uppercase tracking-wider
-                        border border-violet-500/50 bg-violet-950/60 hover:bg-violet-900/80 text-violet-200 transition-all cursor-pointer shadow-sm">
+                      class="px-3 py-1 rounded-lg font-display font-bold text-xs uppercase tracking-wider
+                        border border-sky-100/25 bg-[#16233a] hover:bg-[#1d2d49] text-sky-50 transition-all cursor-pointer shadow-sm">
                       + Équiper
                     </button>
                   {/if}
@@ -339,8 +339,8 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="px-5 py-3.5 border-t border-stone-800 flex items-center justify-between bg-stone-900/90">
-        <div class="text-xs font-mono text-stone-400">
+      <div class="px-5 py-3.5 border-t border-sky-100/15 flex items-center justify-between bg-[#0d1526]/93">
+        <div class="text-xs font-mono text-sky-200/65">
           {selectedMoves.length} / {MAX_MOVES} attaques sélectionnées
         </div>
 
@@ -348,7 +348,7 @@
           <button
             type="button"
             on:click={onClose}
-            class="px-4 py-2 rounded-xl font-serif text-xs uppercase tracking-wider text-stone-400 hover:text-stone-200 transition-colors cursor-pointer">
+            class="px-4 py-2 rounded-xl font-display text-xs uppercase tracking-wider text-sky-200/65 hover:text-sky-50 transition-colors cursor-pointer">
             Fermer
           </button>
 
@@ -356,8 +356,8 @@
             type="button"
             disabled={selectedMoves.length === 0}
             on:click={handleConfirm}
-            class="px-5 py-2 rounded-xl font-serif font-bold text-xs uppercase tracking-wider
-              bg-gradient-to-r from-amber-400 to-amber-600 text-stone-950 border border-amber-300
+            class="px-5 py-2 rounded-xl font-display font-bold text-xs uppercase tracking-wider
+              bg-[#1b2440] text-amber-100 border border-amber-300
               hover:brightness-110 active:scale-95 transition-all shadow-[0_0_12px_rgba(251,191,36,0.3)] disabled:opacity-40 disabled:pointer-events-none cursor-pointer">
             💾 Valider mes Attaques
           </button>

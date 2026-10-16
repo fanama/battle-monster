@@ -214,7 +214,14 @@ export interface BodyPartMesh {
   colors: number[];
 }
 
-function addSphere(
+/**
+ * Ajoute une sphère (lat/long) à un maillage.
+ *
+ * Exportée : la couche d'effets de sort (`spellVfx.ts`) la réutilise plutôt que
+ * de redupliquer une génération de sphère — l'enroulement des faces (CCW vu de
+ * l'extérieur) et l'orientation des normales sont déjà verrouillés ici.
+ */
+export function addSphere(
   mesh: BodyPartMesh,
   cx: number,
   cy: number,
@@ -447,8 +454,21 @@ export interface RigPart {
   mesh: BodyPartMesh;
 }
 
+/**
+ * Espèce d'un rig : les **monstres** gardent le maillage d'origine ; le
+ * **champion (humain)** utilise un corps humain revêtu de son équipement.
+ * Les deux partagent strictement les mêmes articulations (`JOINT_IDS`) et les
+ * mêmes pivots : les poses d'action, le lissage et la composition parent →
+ * enfant du renderer fonctionnent à l'identique des deux côtés.
+ */
+export type RigSpecies = 'monster' | 'human';
+
+/** Emplacements d'équipement visibles sur le rig humain. */
+export type GearSlot = 'weapon' | 'armor' | 'helm' | 'shield' | 'accessory';
+
 export interface Rig {
   type: MonsterType;
+  species: RigSpecies;
   isBoss: boolean;
   quality: RigQuality;
   parts: RigPart[];
@@ -473,6 +493,61 @@ function ctxFor(quality: RigQuality): BuildCtx {
 const S = (side: 'L' | 'R') => (side === 'L' ? 1 : -1);
 
 /**
+ * Assombrit une couleur de la palette. Sert aux **détails du visage**
+ * (sourcils, bouche, truffe) : on garde la teinte du corps pour que
+ * l'expression reste dans la palette élémentaire du personnage.
+ */
+function shade(
+  color: [number, number, number],
+  factor: number,
+): [number, number, number] {
+  return [color[0] * factor, color[1] * factor, color[2] * factor];
+}
+
+/**
+ * **Œil d'anime** — la fabrique partagée par le monstre et le champion, pour
+ * que les deux rigs lisent le même langage de visage (gros yeux, double
+ * reflet, sourcil). Coordonnées locales du segment `head` ; `side` (±1)
+ * miroite l'œil gauche / droit, `brow` à `null` supprime le sourcil.
+ */
+function addAnimeEye(
+  mesh: BodyPartMesh,
+  B: number,
+  side: number,
+  x: number,
+  y: number,
+  z: number,
+  rx: number,
+  ry: number,
+  rz: number,
+  iris: [number, number, number],
+  brow: [number, number, number] | null,
+) {
+  const cx = side * x;
+  // Sclère blanche
+  addSphere(mesh, cx, y, z, rx, ry, rz, [1, 1, 1], B, B);
+  // Iris (couleur du type) : disque bombé posé SUR la sclère, qui remplit
+  // presque toute la hauteur de l'œil (œil d'anime). Il doit franchement
+  // dépasser (centre avancé, faible profondeur), sinon ses bords s'enfoncent
+  // dans la sclère et l'œil reste blanc avec un minuscule point de couleur.
+  addSphere(mesh, cx, y - ry * 0.04, z + rz * 0.75, rx * 0.62, ry * 0.8, rz * 0.4, iris, B, B);
+  // Pupille (même logique, au-dessus de l'iris)
+  addSphere(mesh, cx, y - ry * 0.04, z + rz * 0.92, rx * 0.38, ry * 0.48, rz * 0.34, [0.06, 0.06, 0.08], B, B);
+  // Reflet unique (lecture simple du regard)
+  addSphere(mesh, cx * 0.84, y + ry * 0.3, z + rz * 1.08, rx * 0.3, ry * 0.32, rz * 0.24, [1, 1, 1], B, B);
+  // Paupière supérieure marquée (trait d'encre, signature manga) : fin, contenu
+  // dans la largeur de l'œil (un trait plus large formait un bandeau), calé sur
+  // le BORD HAUT de l'œil (sinon la sclère dépassait au-dessus du trait) et
+  // posé DEVANT le haut de l'iris (sinon l'iris le masque).
+  addSphere(mesh, cx, y + ry * 0.86, z + rz * 0.55, rx * 0.98, ry * 0.15, rz * 0.5, [0.06, 0.06, 0.08], B, B);
+  if (brow) {
+    // Sourcil posé sur le front, franchement devant le crâne (sinon enterré),
+    // nettement au-dessus de la paupière (sinon les deux traits se confondent).
+    addSphere(mesh, cx, y + ry * 1.18, z + rz * 0.05, rx * 1.05, ry * 0.17, rz * 0.3, brow, B, B);
+  }
+}
+
+/**
  * Construit le rig complet d'un type. Les coordonnées des volumes sont les
  * coordonnées du mesh fusionné d'origine, **translatées dans l'espace local
  * de chaque pivot** — pose zéro = garde d'origine.
@@ -490,190 +565,451 @@ export function buildRig(
   const newMesh = (): BodyPartMesh => ({ positions: [], normals: [], colors: [] });
 
   // ============================ TORSO ============================
-  // Pivot : le centre du buste dans le mesh d'origine, soit (0, -0.02, 0).
+  // Pivot : le centre du buste, soit (0, 0, 0). Proportions **chibi** : le
+  // buste est court et rond (peluche) et les épaules resserrées, pour que la
+  // grosse tête domine la silhouette.
   {
     const m = newMesh();
-    // Bassin (sous le buste)
-    addSphere(m, 0, -0.28, 0, 0.26, 0.18, 0.19, p.body, B, B);
-    // Torse (au pivot)
-    addSphere(m, 0, 0, 0, 0.32, 0.34, 0.21, p.body, B, B);
+    // Bassin rebondi (sous le buste)
+    addSphere(m, 0, -0.22, 0, 0.25, 0.16, 0.19, p.body, B, B);
+    // Buste rond (au pivot) : plus large que haut
+    addSphere(m, 0, 0.03, 0, 0.30, 0.26, 0.23, p.body, B, B);
     // Ventre clair en saillie avant
-    addSphere(m, 0, -0.04, 0.14, 0.22, 0.24, 0.13, p.belly, B, B);
-    // Cou (montant, la tête s'articule à son sommet)
-    addCylinder(m, 0, 0.28, 0, 0, 0.38, 0, 0.10, p.body, c.cyl);
-    // Épaules (marques visuelles des pivots de bras)
-    addSphere(m, -0.28, 0.18, 0, 0.11, 0.115, 0.105, p.body, B, B);
-    addSphere(m, 0.28, 0.18, 0, 0.11, 0.115, 0.105, p.body, B, B);
+    addSphere(m, 0, -0.02, 0.14, 0.21, 0.22, 0.13, p.belly, B, B);
+    // Cou court (montant, la tête s'articule à son sommet)
+    addCylinder(m, 0, 0.23, 0, 0, 0.33, 0, 0.10, p.body, c.cyl);
+    // Épaules (marques visuelles des pivots de bras) — resserrées : la tête
+    // chibi reste la partie la plus large de la silhouette.
+    addSphere(m, -0.26, 0.12, 0, 0.10, 0.10, 0.095, p.body, B, B);
+    addSphere(m, 0.26, 0.12, 0, 0.10, 0.10, 0.095, p.body, B, B);
     // Hanches (marques visuelles des pivots de jambes)
-    addSphere(m, -0.13, -0.32, 0, 0.105, 0.105, 0.10, p.body, B, B);
-    addSphere(m, 0.13, -0.32, 0, 0.105, 0.105, 0.10, p.body, B, B);
+    addSphere(m, -0.13, -0.27, 0, 0.10, 0.10, 0.095, p.body, B, B);
+    addSphere(m, 0.13, -0.27, 0, 0.10, 0.10, 0.095, p.body, B, B);
 
     // Appendices dorsaux / caudaux, fixés au tronc (pas d'articulation dédiée).
+    // Tous **rabattus vers l'arrière** (−z) et raccourcis : la tête chibi reste
+    // dégagée et la silhouette ronde.
     if (type === 'fire') {
-      addCone(m, -0.22, 0.14, -0.18, -0.66, 0.56, -0.40, 0.12, [0.0, 0.75, 0.65], c.cone);
-      addCone(m, 0.22, 0.14, -0.18, 0.66, 0.56, -0.40, 0.12, [0.0, 0.75, 0.65], c.cone);
-      addCylinder(m, 0, -0.28, -0.18, 0, -0.14, -0.58, 0.08, p.body, c.cyl);
-      addSphere(m, 0, -0.08, -0.64, 0.14, 0.17, 0.14, p.accent, B, B);
-      addSphere(m, 0, -0.06, -0.64, 0.085, 0.105, 0.085, [1.0, 0.95, 0.5], B, B);
+      addCone(m, -0.20, 0.10, -0.18, -0.54, 0.42, -0.38, 0.11, [0.0, 0.75, 0.65], c.cone);
+      addCone(m, 0.20, 0.10, -0.18, 0.54, 0.42, -0.38, 0.11, [0.0, 0.75, 0.65], c.cone);
+      addCylinder(m, 0, -0.22, -0.18, 0, -0.10, -0.50, 0.075, p.body, c.cyl);
+      addSphere(m, 0, -0.05, -0.55, 0.13, 0.16, 0.13, p.accent, B, B);
+      addSphere(m, 0, -0.03, -0.55, 0.08, 0.10, 0.08, [1.0, 0.95, 0.5], B, B);
     } else if (type === 'water') {
-      addCylinder(m, 0, -0.28, -0.18, 0, -0.14, -0.58, 0.07, p.body, c.cyl);
-      addCone(m, 0, -0.14, -0.58, -0.23, -0.04, -0.76, 0.09, p.accent, c.cone);
-      addCone(m, 0, -0.14, -0.58, 0.23, -0.04, -0.76, 0.09, p.accent, c.cone);
+      addCylinder(m, 0, -0.22, -0.18, 0, -0.10, -0.50, 0.065, p.body, c.cyl);
+      addCone(m, 0, -0.10, -0.50, -0.21, -0.02, -0.66, 0.085, p.accent, c.cone);
+      addCone(m, 0, -0.10, -0.50, 0.21, -0.02, -0.66, 0.085, p.accent, c.cone);
     } else if (type === 'grass') {
-      addSphere(m, 0, 0.12, -0.22, 0.21, 0.23, 0.20, p.accent, B, B);
-      addSphere(m, 0, 0.22, -0.24, 0.11, 0.11, 0.11, [1.0, 0.9, 0.95], B, B);
+      addSphere(m, 0, 0.10, -0.22, 0.20, 0.22, 0.19, p.accent, B, B);
+      addSphere(m, 0, 0.19, -0.24, 0.10, 0.10, 0.10, [1.0, 0.9, 0.95], B, B);
     } else if (type === 'electric') {
-      addCylinder(m, 0, -0.32, -0.18, 0.18, -0.12, -0.50, 0.07, p.body, c.cyl);
-      addCone(m, 0.18, -0.12, -0.50, 0.31, 0.28, -0.64, 0.11, p.body, c.cone);
+      addCylinder(m, 0, -0.24, -0.18, 0.16, -0.08, -0.44, 0.065, p.body, c.cyl);
+      addCone(m, 0.16, -0.08, -0.44, 0.27, 0.24, -0.56, 0.10, p.body, c.cone);
     } else if (type === 'rock') {
-      addCone(m, 0, 0.14, -0.20, 0, 0.42, -0.38, 0.14, p.accent, c.cone);
+      addCone(m, 0, 0.10, -0.20, 0, 0.34, -0.36, 0.13, p.accent, c.cone);
     } else {
       // normal : collerette duveteuse + queue touffue
-      addSphere(m, 0, 0.24, 0.10, 0.26, 0.13, 0.18, p.belly, B, B);
-      addSphere(m, 0, -0.28, -0.44, 0.21, 0.26, 0.21, p.body, B, B);
-      addSphere(m, 0, -0.14, -0.56, 0.12, 0.14, 0.12, p.belly, B, B);
+      addSphere(m, 0, 0.22, 0.08, 0.25, 0.12, 0.17, p.belly, B, B);
+      addSphere(m, 0, -0.24, -0.40, 0.20, 0.24, 0.20, p.body, B, B);
+      addSphere(m, 0, -0.12, -0.52, 0.11, 0.13, 0.11, p.belly, B, B);
     }
 
-    parts.push({ id: 'torso', parent: 'root', pivot: [0, -0.02, 0], mesh: m });
+    parts.push({ id: 'torso', parent: 'root', pivot: [0, 0, 0], mesh: m });
   }
 
   // ============================ HEAD ============================
-  // Pivot : le sommet du cou dans le torse local, soit (0, 0.38, 0).
+  // Pivot : le sommet du cou dans le torse local, soit (0, 0.32, 0).
+  // **Grosse tête chibi** (≈ 45 % de la figure) avec un vrai visage : museau,
+  // truffe, bouche souriante, joues et grands yeux d'anime sourcillés.
   {
     const m = newMesh();
-    // Crâne
-    addSphere(m, 0, 0.18, 0, 0.30, 0.32, 0.28, p.body, B, B);
-    // Nez
-    addSphere(m, 0, 0.12, 0.26, 0.045, 0.038, 0.04, [0.25, 0.15, 0.18], B, B);
-    // Yeux anime : sclérotique, iris, pupille, double reflet
-    for (const s of [-1, 1]) {
-      addSphere(m, s * 0.11, 0.22, 0.24, 0.105, 0.125, 0.09, [1, 1, 1], B, B);
-      addSphere(m, s * 0.11, 0.22, 0.28, 0.075, 0.105, 0.06, p.eye, B, B);
-      addSphere(m, s * 0.11, 0.22, 0.30, 0.045, 0.065, 0.045, [0.06, 0.06, 0.08], B, B);
-      addSphere(m, s * 0.09, 0.265, 0.325, 0.035, 0.045, 0.03, [1, 1, 1], B, B);
-      addSphere(m, s * 0.125, 0.185, 0.315, 0.02, 0.028, 0.022, [1, 1, 1], B, B);
+    const brow = shade(p.body, 0.40);
+    const mouth = shade(p.body, 0.28);
+    // Crâne surdimensionné
+    addSphere(m, 0, 0.22, 0, 0.40, 0.36, 0.34, p.body, B, B);
+    // Museau court et arrondi
+    addSphere(m, 0, 0.12, 0.27, 0.105, 0.09, 0.08, p.belly, B, B);
+    // Truffe
+    addSphere(m, 0, 0.145, 0.335, 0.05, 0.04, 0.04, mouth, B, B);
+    // Bouche en « 3 » : lèvre supérieure plus grande que l'inférieure
+    addSphere(m, 0, 0.062, 0.30, 0.075, 0.024, 0.032, mouth, B, B);
+    addSphere(m, 0, 0.038, 0.30, 0.055, 0.02, 0.026, mouth, B, B);
+    // Grands yeux d'anime expressifs (sclère, iris, pupille, double reflet, sourcil)
+    for (const s of [-1, 1] as const) {
+      addAnimeEye(m, B, s, 0.15, 0.25, 0.29, 0.135, 0.155, 0.10, p.eye, brow);
     }
     // Joues
     if (type === 'electric') {
-      addSphere(m, -0.22, 0.12, 0.21, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2], B, B);
-      addSphere(m, 0.22, 0.12, 0.21, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2], B, B);
+      addSphere(m, -0.245, 0.11, 0.20, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2], B, B);
+      addSphere(m, 0.245, 0.11, 0.20, 0.075, 0.075, 0.06, [0.95, 0.15, 0.2], B, B);
     } else {
-      addSphere(m, -0.21, 0.12, 0.21, 0.06, 0.05, 0.045, [1.0, 0.45, 0.55], B, B);
-      addSphere(m, 0.21, 0.12, 0.21, 0.06, 0.05, 0.045, [1.0, 0.45, 0.55], B, B);
+      addSphere(m, -0.245, 0.10, 0.20, 0.085, 0.065, 0.05, [1.0, 0.45, 0.55], B, B);
+      addSphere(m, 0.245, 0.10, 0.20, 0.085, 0.065, 0.05, [1.0, 0.45, 0.55], B, B);
     }
 
-    // Cornes / oreilles / ouïes / feuille selon le type (anatomie du crâne).
+    // Cornes / oreilles / ouïes / feuille selon le type : **petites et
+    // rabattues vers l'arrière**, pour que le crâne reste rond (lecture chibi)
+    // et que rien ne sorte du cadre caméra.
     if (type === 'fire') {
-      addCone(m, -0.20, 0.42, -0.02, -0.34, 0.70, -0.18, 0.1, p.accent, c.cone);
-      addCone(m, 0.20, 0.42, -0.02, 0.34, 0.70, -0.18, 0.1, p.accent, c.cone);
+      addCone(m, -0.18, 0.36, -0.04, -0.27, 0.52, -0.20, 0.075, p.accent, c.cone);
+      addCone(m, 0.18, 0.36, -0.04, 0.27, 0.52, -0.20, 0.075, p.accent, c.cone);
     } else if (type === 'water') {
-      addCone(m, -0.26, 0.16, -0.02, -0.52, 0.22, -0.08, 0.1, p.accent, c.cone);
-      addCone(m, 0.26, 0.16, -0.02, 0.52, 0.22, -0.08, 0.1, p.accent, c.cone);
+      addCone(m, -0.24, 0.12, -0.02, -0.42, 0.19, -0.10, 0.085, p.accent, c.cone);
+      addCone(m, 0.24, 0.12, -0.02, 0.42, 0.19, -0.10, 0.085, p.accent, c.cone);
     } else if (type === 'grass') {
-      addCone(m, 0, 0.46, 0, 0, 0.74, -0.12, 0.12, p.accent, c.cone);
+      addCone(m, 0, 0.42, 0, 0, 0.58, -0.12, 0.10, p.accent, c.cone);
     } else if (type === 'electric') {
-      addCone(m, -0.20, 0.42, 0, -0.36, 0.76, -0.06, 0.1, p.body, c.cone);
-      addCone(m, -0.30, 0.62, -0.05, -0.36, 0.76, -0.06, 0.08, [0.12, 0.12, 0.12], c.cone);
-      addCone(m, 0.20, 0.42, 0, 0.36, 0.76, -0.06, 0.1, p.body, c.cone);
-      addCone(m, 0.30, 0.62, -0.05, 0.36, 0.76, -0.06, 0.08, [0.12, 0.12, 0.12], c.cone);
+      addCone(m, -0.17, 0.36, 0, -0.28, 0.54, -0.08, 0.085, p.body, c.cone);
+      addCone(m, -0.235, 0.47, -0.04, -0.28, 0.54, -0.08, 0.065, [0.12, 0.12, 0.12], c.cone);
+      addCone(m, 0.17, 0.36, 0, 0.28, 0.54, -0.08, 0.085, p.body, c.cone);
+      addCone(m, 0.235, 0.47, -0.04, 0.28, 0.54, -0.08, 0.065, [0.12, 0.12, 0.12], c.cone);
     } else if (type === 'rock') {
-      addCone(m, -0.19, 0.42, 0, -0.31, 0.70, -0.08, 0.12, p.accent, c.cone);
-      addCone(m, 0.19, 0.42, 0, 0.31, 0.70, -0.08, 0.12, p.accent, c.cone);
+      addCone(m, -0.17, 0.36, 0, -0.25, 0.52, -0.08, 0.10, p.accent, c.cone);
+      addCone(m, 0.17, 0.36, 0, 0.25, 0.52, -0.08, 0.10, p.accent, c.cone);
     } else {
-      addCone(m, -0.20, 0.42, 0, -0.38, 0.74, -0.04, 0.12, p.body, c.cone);
-      addCone(m, 0.20, 0.42, 0, 0.38, 0.74, -0.04, 0.12, p.body, c.cone);
+      addCone(m, -0.17, 0.36, 0, -0.28, 0.58, -0.05, 0.095, p.body, c.cone);
+      addCone(m, 0.17, 0.36, 0, 0.28, 0.58, -0.05, 0.095, p.body, c.cone);
     }
 
-    // Couronne du boss (posée sur le crâne)
+    // Couronne du boss : **bandeau large** posé sur le crâne + trois pointes
+    // basses (l'ancienne couronne haute dépassait du cadre chibi).
     if (isBoss) {
-      addCylinder(m, 0, 0.48, 0.04, 0, 0.54, 0.04, 0.22, [1.0, 0.85, 0.0], c.cyl);
-      addCone(m, -0.17, 0.54, 0.04, -0.19, 0.72, 0.04, 0.06, [1.0, 0.85, 0.0], c.cone);
-      addCone(m, 0, 0.54, 0.13, 0, 0.78, 0.13, 0.07, [1.0, 0.85, 0.0], c.cone);
-      addCone(m, 0.17, 0.54, 0.04, 0.19, 0.72, 0.04, 0.06, [1.0, 0.85, 0.0], c.cone);
+      addCylinder(m, 0, 0.40, 0.02, 0, 0.45, 0.02, 0.38, [1.0, 0.85, 0.0], c.cyl);
+      addCone(m, -0.17, 0.45, 0.02, -0.19, 0.56, 0.02, 0.06, [1.0, 0.85, 0.0], c.cone);
+      addCone(m, 0, 0.45, 0.10, 0, 0.58, 0.10, 0.07, [1.0, 0.85, 0.0], c.cone);
+      addCone(m, 0.17, 0.45, 0.02, 0.19, 0.56, 0.02, 0.06, [1.0, 0.85, 0.0], c.cone);
     }
 
-    parts.push({ id: 'head', parent: 'torso', pivot: [0, 0.38, 0], mesh: m });
+    parts.push({ id: 'head', parent: 'torso', pivot: [0, 0.32, 0], mesh: m });
   }
 
   // ============================ BRAS ============================
-  // Pivot au socket d'épaule, dans le torse local (±0.29, 0.16, 0.02).
+  // Pivot au socket d'épaule, dans le torse local (±0.26, 0.12, 0).
+  // Membres **courts et trapus**, poings ronds : proportions chibi.
   for (const side of ['L', 'R'] as const) {
     const s = S(side);
     const upper: BodyPartMesh = { positions: [], normals: [], colors: [] };
-    // Bras (épaule → coude, descend et s'écarte)
+    // Bras (épaule → coude, descend en s'écartant à peine)
     addCylinder(
       upper,
-      0, -0.04, 0,
-      s * 0.13, -0.22, 0.04,
-      0.078, p.body, c.cyl,
+      0, -0.02, 0,
+      s * 0.09, -0.15, 0.03,
+      0.072, p.body, c.cyl,
     );
     parts.push({
       id: `armU.${side}`,
       parent: 'torso',
-      pivot: [s * 0.29, 0.16, 0.02],
+      pivot: [s * 0.26, 0.12, 0],
       mesh: upper,
     });
 
     // Avant-bras + coude + poing : pivot au coude, dans l'espace du bras.
     const fore: BodyPartMesh = { positions: [], normals: [], colors: [] };
-    addSphere(fore, 0, 0, 0, 0.08, 0.08, 0.077, p.body, B, B); // coude
+    addSphere(fore, 0, 0, 0, 0.078, 0.078, 0.075, p.body, B, B); // coude
     // Avant-bras remontant en garde vers l'intérieur
     addCylinder(
       fore,
-      s * 0.01, 0.03, 0,
-      s * 0.14, 0.22, 0.06,
-      0.066, p.body, c.cyl,
+      s * 0.01, 0.02, 0,
+      s * 0.09, 0.16, 0.05,
+      0.062, p.body, c.cyl,
     );
     // Poing (garde haute : à hauteur du menton, devant la face)
-    addSphere(fore, s * 0.16, 0.26, 0.07, 0.085, 0.085, 0.08, p.body, B, B);
+    addSphere(fore, s * 0.10, 0.20, 0.06, 0.085, 0.085, 0.08, p.body, B, B);
     parts.push({
       id: `fore.${side}`,
       parent: `armU.${side}`,
-      pivot: [s * 0.13, -0.22, 0.04],
+      pivot: [s * 0.09, -0.15, 0.03],
       mesh: fore,
     });
   }
 
   // ============================ JAMBES ============================
-  // Pivot à la hanche, dans l'espace racine (±0.13, -0.34, 0).
+  // Pivot à la hanche, dans l'espace racine (±0.13, -0.27, 0).
+  // Jambes **courtes** et pieds **ronds et larges** : un appui de peluche.
   for (const side of ['L', 'R'] as const) {
     const s = S(side);
     const legU: BodyPartMesh = { positions: [], normals: [], colors: [] };
-    // Cuisse (hanche → genou, assise élargie)
+    // Cuisse (hanche → genou, assise large)
     addCylinder(
       legU,
-      0, -0.02, 0,
-      s * 0.12, -0.19, 0.02,
-      0.098, p.body, c.cyl,
+      0, -0.01, 0,
+      s * 0.09, -0.13, 0.02,
+      0.092, p.body, c.cyl,
     );
     parts.push({
       id: `legU.${side}`,
       parent: 'root',
-      pivot: [s * 0.13, -0.34, 0],
+      pivot: [s * 0.13, -0.27, 0],
       mesh: legU,
     });
 
     // Tibia + genou + pied : pivot au genou.
     const shin: BodyPartMesh = { positions: [], normals: [], colors: [] };
-    addSphere(shin, 0, -0.005, 0, 0.09, 0.085, 0.085, p.body, B, B); // genou
+    addSphere(shin, 0, -0.005, 0, 0.088, 0.086, 0.086, p.body, B, B); // genou
     addCylinder(
       shin,
-      0, -0.02, 0,
-      s * 0.03, -0.18, -0.01,
-      0.082, p.body, c.cyl,
+      0, -0.01, 0,
+      s * 0.02, -0.12, -0.01,
+      0.08, p.body, c.cyl,
     );
-    addSphere(shin, s * 0.03, -0.24, 0.05, 0.115, 0.07, 0.16, p.body, B, B); // pied
+    addSphere(shin, s * 0.02, -0.20, 0.05, 0.115, 0.078, 0.155, p.body, B, B); // pied
     parts.push({
       id: `shin.${side}`,
       parent: `legU.${side}`,
-      pivot: [s * 0.12, -0.19, 0.02],
+      pivot: [s * 0.09, -0.13, 0.02],
       mesh: shin,
     });
   }
 
   return {
     type,
+    species: 'monster',
     isBoss,
+    quality,
+    parts,
+    vertexCount: parts.reduce((n, part) => n + part.mesh.positions.length / 3, 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Champion humain : corps nu + pièces d'équipement visibles
+// ---------------------------------------------------------------------------
+
+/**
+ * Palette du champion humain : peau, cheveux, tissu, cuir, acier et or.
+ * Le **type élémentaire** du champion ne colore pas la peau (il reste humain)
+ * mais la **bordure de tunique et la cape** (`ELEMENT_COLORS[type].accent`),
+ * ce qui conserve l'identité visuelle des 6 types tout en lisant comme un
+ * humain « teinté » par son élément.
+ */
+export const HUMAN_COLORS = {
+  skin: [0.86, 0.68, 0.55] as [number, number, number],
+  skinShade: [0.74, 0.55, 0.43] as [number, number, number],
+  hair: [0.28, 0.20, 0.14] as [number, number, number],
+  cloth: [0.14, 0.20, 0.40] as [number, number, number],
+  leather: [0.26, 0.20, 0.22] as [number, number, number],
+  boot: [0.12, 0.13, 0.22] as [number, number, number],
+  metal: [0.72, 0.75, 0.80] as [number, number, number],
+  metalDark: [0.47, 0.51, 0.57] as [number, number, number],
+  gold: [0.90, 0.74, 0.28] as [number, number, number],
+};
+
+export interface HumanRigOptions {
+  /** Type élémentaire du champion (teinte de tunique / cape / sceau). */
+  type: MonsterType;
+  quality?: RigQuality;
+  /** Emplacements d'équipement **portés** (dessine la pièce correspondante). */
+  gear?: readonly GearSlot[];
+}
+
+/**
+ * Construit le rig du **champion humain**, en **chibi animé façon Dragon Ball** :
+ * grosse tête (près de la moitié de la figure) coiffée de **cheveux en pointes**,
+ * **grands yeux d'anime** (sclère, iris, pupille, reflet, sourcil), membres
+ * courts et trapus. La tunique, la cape et les bottes existantes sont conservées
+ * (teintées par le type élémentaire).
+ *
+ * Les pièces d'équipement réellement portées se greffent toujours au maillage :
+ * arme en main droite, bouclier au bras gauche, plastron sur le torse, casque
+ * sur la tête, amulette au cou.
+ *
+ * **Même squelette que le monstre** (les 10 articulations, mêmes identifiants ;
+ * seuls les pivots et volumes sont reproportionnés) : aucune pièce n'est un
+ * segment articulé de plus (l'équipement est soudé aux segments existants),
+ * donc les actions et le lissage du renderer s'appliquent sans changement. Le
+ * chibi tient dans le même budget caméra que l'ancien humain : la tête reste
+ * sous le bord haut du cadre et les pieds au-dessus du sol.
+ */
+export function buildHumanRig(options: HumanRigOptions): Rig {
+  const { type, quality = 'high' } = options;
+  const gear = new Set<GearSlot>(options.gear ?? []);
+  const c = ctxFor(quality);
+  const element = ELEMENT_COLORS[type] ?? ELEMENT_COLORS.normal;
+  const H = HUMAN_COLORS;
+  const trim = element.accent;
+  const B = c.bands;
+  const parts: RigPart[] = [];
+
+  const newMesh = (): BodyPartMesh => ({ positions: [], normals: [], colors: [] });
+
+  // ============================ TORSE (chibi : trapu) ============================
+  {
+    const m = newMesh();
+    // Bassin (haut-de-chausses de cuir)
+    addSphere(m, 0, -0.30, 0, 0.22, 0.14, 0.17, H.leather, B, B);
+    // Torse court et trapu vêtu d'une tunique (proportions du modèle chibi)
+    addSphere(m, 0, 0, 0, 0.28, 0.25, 0.20, H.cloth, B, B);
+    // Bande de tunique à la teinte élémentaire (identité du type conservée)
+    addSphere(m, 0, 0, 0.16, 0.13, 0.23, 0.06, trim, B, B);
+    // Cape dans le dos (teinte élémentaire)
+    addSphere(m, 0, 0.06, -0.19, 0.23, 0.27, 0.08, trim, B, B);
+    // Cou court
+    addCylinder(m, 0, 0.22, 0, 0, 0.30, 0, 0.085, H.skin, c.cyl);
+    // Épaules (marques visuelles des pivots de bras)
+    addSphere(m, -0.25, 0.10, 0, 0.09, 0.09, 0.085, H.cloth, B, B);
+    addSphere(m, 0.25, 0.10, 0, 0.09, 0.09, 0.085, H.cloth, B, B);
+    // Hanches (marques visuelles des pivots de jambes)
+    addSphere(m, -0.115, -0.34, 0, 0.09, 0.09, 0.085, H.leather, B, B);
+    addSphere(m, 0.115, -0.34, 0, 0.09, 0.09, 0.085, H.leather, B, B);
+    // Ceinture
+    addSphere(m, 0, -0.20, 0, 0.25, 0.05, 0.19, H.leather, B, B);
+
+    // --- Armure : pièces **rapportées** et lisibles (construction kit) ---
+    if (gear.has('armor')) {
+      // Plastron bombé
+      addSphere(m, 0, 0.02, 0.04, 0.315, 0.30, 0.235, H.metal, B, B);
+      // Gorgerin (col d'acier)
+      addCylinder(m, 0, 0.20, 0.02, 0, 0.27, 0.02, 0.125, H.metalDark, c.cyl);
+      // Épaulières : deux coques détachées du plastron
+      addSphere(m, -0.30, 0.12, 0.03, 0.145, 0.14, 0.145, H.metal, B, B);
+      addSphere(m, 0.30, 0.12, 0.03, 0.145, 0.14, 0.145, H.metal, B, B);
+      // Tassettes (lames de jupe)
+      addSphere(m, -0.16, -0.30, 0.05, 0.11, 0.09, 0.13, H.metalDark, B, B);
+      addSphere(m, 0.16, -0.30, 0.05, 0.11, 0.09, 0.13, H.metalDark, B, B);
+    }
+
+    // --- Accessoire (amulette + chaîne) ---
+    if (gear.has('accessory')) {
+      addSphere(m, 0, -0.02, 0.19, 0.05, 0.05, 0.045, H.gold, B, B);
+      addCylinder(m, -0.12, 0.20, 0.02, 0.12, 0.20, 0.02, 0.016, H.gold, c.cyl);
+    }
+
+    parts.push({ id: 'torso', parent: 'root', pivot: [0, 0, 0], mesh: m });
+  }
+
+  // ============================ TÊTE (chibi : grosse tête d'anime) ============================
+  {
+    const m = newMesh();
+    // Crâne surdimensionné (près de la moitié de la figure, aussi large que le torse)
+    addSphere(m, 0, 0.22, 0, 0.38, 0.35, 0.34, H.skin, B, B);
+    // Oreilles (à fleur du crâne élargi, elles doivent dépasser)
+    addSphere(m, -0.375, 0.20, 0.02, 0.05, 0.07, 0.04, H.skin, B, B);
+    addSphere(m, 0.375, 0.20, 0.02, 0.05, 0.07, 0.04, H.skin, B, B);
+    // Nez fin (pointe discrète, pas un museau)
+    addSphere(m, 0, 0.155, 0.305, 0.034, 0.04, 0.042, H.skinShade, B, B);
+    // Bouche en « 3 » : lèvre supérieure plus grande que l'inférieure
+    addSphere(m, 0, 0.075, 0.30, 0.055, 0.018, 0.028, H.skinShade, B, B);
+    addSphere(m, 0, 0.052, 0.30, 0.042, 0.015, 0.024, H.skinShade, B, B);
+    // Joues (marque d'anime, fines et hautes, sous les yeux)
+    for (const s of [-1, 1]) {
+      addSphere(m, s * 0.225, 0.125, 0.225, 0.062, 0.046, 0.045, [1.0, 0.45, 0.55], B, B);
+    }
+    // Yeux d'anime : même fabrique que le monstre (sclère, iris élémentaire,
+    // pupille, double reflet, sourcil), pour un langage de visage commun aux
+    // deux espèces. Taille réduite et écart augmenté : le visage reste lisible
+    // (le trait d'encre de la paupière ne forme plus un bandeau).
+    for (const s of [-1, 1] as const) {
+      addAnimeEye(m, B, s, 0.16, 0.235, 0.265, 0.095, 0.115, 0.075, element.eye, H.hair);
+    }
+
+    // --- Cheveux : grosse crinière de **mèches** façon Dragon Ball ---
+    // La calotte coiffe le haut et l'arrière du crâne (z ≤ 0.20) : le visage
+    // reste dégagé, les mèches percent au-dessus et autour d'elle.
+    addSphere(m, 0, 0.40, -0.10, 0.40, 0.23, 0.30, H.hair, B, B);
+    // Pointes (base, pointe, rayon) : crête centrale haute, mèches latérales
+    // évasées, mèches arrière et deux pointes basses qui encadrent le visage.
+    const SPIKES: Array<[number, number, number, number, number, number, number]> = [
+      [0, 0.52, -0.06, 0, 0.665, -0.02, 0.115],
+      [-0.12, 0.54, 0.08, -0.17, 0.655, 0.12, 0.10],
+      [0.12, 0.54, 0.08, 0.17, 0.655, 0.12, 0.10],
+      [-0.22, 0.52, 0.02, -0.38, 0.645, -0.04, 0.105],
+      [0.22, 0.52, 0.02, 0.38, 0.645, -0.04, 0.105],
+      [-0.33, 0.42, -0.08, -0.55, 0.53, -0.16, 0.10],
+      [0.33, 0.42, -0.08, 0.55, 0.53, -0.16, 0.10],
+      [-0.20, 0.50, -0.20, -0.34, 0.63, -0.34, 0.10],
+      [0.20, 0.50, -0.20, 0.34, 0.63, -0.34, 0.10],
+      [-0.08, 0.52, -0.26, -0.12, 0.65, -0.42, 0.10],
+      [0.08, 0.52, -0.26, 0.12, 0.65, -0.42, 0.10],
+      [-0.34, 0.34, 0.02, -0.58, 0.44, -0.08, 0.095],
+      [0.34, 0.34, 0.02, 0.58, 0.44, -0.08, 0.095],
+      [-0.28, 0.28, -0.14, -0.52, 0.34, -0.30, 0.09],
+      [0.28, 0.28, -0.14, 0.52, 0.34, -0.30, 0.09],
+    ];
+    for (const [bx, by, bz, tx, ty, tz, r] of SPIKES) {
+      addCone(m, bx, by, bz, tx, ty, tz, r, H.hair, c.cone);
+    }
+    // Mèches de frange : pendent sur le front (une centrale entre les sourcils,
+    // deux par côté jusqu'aux tempes), en avant du crâne pour être visibles.
+    const BANGS: Array<[number, number, number, number, number, number]> = [
+      [0, 0.52, 0.12, 0, 0.36, 0.325],
+      [-0.11, 0.51, 0.12, -0.15, 0.395, 0.295],
+      [0.11, 0.51, 0.12, 0.15, 0.395, 0.295],
+      [-0.21, 0.48, 0.10, -0.30, 0.43, 0.25],
+      [0.21, 0.48, 0.10, 0.30, 0.43, 0.25],
+    ];
+    for (const [bx, by, bz, tx, ty, tz] of BANGS) {
+      addCone(m, bx, by, bz, tx, ty, tz, 0.055, H.hair, c.cone);
+    }
+
+    // --- Casque : calotte coiffant la crinière + garde-joues + nasal + cimier ---
+    if (gear.has('helm')) {
+      // La calotte doit contenir les pointes (sinon elles la transpercent).
+      addSphere(m, 0, 0.38, -0.02, 0.43, 0.28, 0.33, H.metal, B, B);
+      // Garde-joues (pièces latérales, signent le casque)
+      addSphere(m, -0.31, 0.22, 0.08, 0.075, 0.14, 0.16, H.metalDark, B, B);
+      addSphere(m, 0.31, 0.22, 0.08, 0.075, 0.14, 0.16, H.metalDark, B, B);
+      // Nasal
+      addCylinder(m, 0, 0.34, 0.30, 0, 0.10, 0.30, 0.03, H.metalDark, c.cyl);
+      // Cimier doré : petite crête dressée sur le haut du casque
+      addCone(m, 0, 0.62, 0.10, 0, 0.665, 0.22, 0.05, H.gold, c.cone);
+    }
+
+    parts.push({ id: 'head', parent: 'torso', pivot: [0, 0.30, 0], mesh: m });
+  }
+
+  // ============================ BRAS (chibi : courts et trapus) ============================
+  for (const side of ['L', 'R'] as const) {
+    const s = S(side);
+
+    // Manche courte (tunique) puis bras nu.
+    const upper = newMesh();
+    addCylinder(upper, 0, -0.02, 0, s * 0.07, -0.10, 0.01, 0.082, H.cloth, c.cyl);
+    addCylinder(upper, s * 0.07, -0.10, 0.01, s * 0.08, -0.16, 0.02, 0.07, H.skin, c.cyl);
+    parts.push({ id: `armU.${side}`, parent: 'torso', pivot: [s * 0.27, 0.06, 0], mesh: upper });
+
+    // Avant-bras (bracelet de cuir) + poing remonté en garde.
+    const fore = newMesh();
+    addSphere(fore, 0, 0, 0, 0.075, 0.075, 0.072, H.skin, B, B);
+    addCylinder(fore, s * 0.01, 0.01, 0, s * 0.05, 0.10, 0.05, 0.065, H.skin, c.cyl);
+    addCylinder(fore, s * 0.01, 0.02, 0.01, s * 0.04, 0.07, 0.03, 0.075, H.leather, c.cyl);
+    addSphere(fore, s * 0.06, 0.13, 0.06, 0.08, 0.08, 0.075, H.skin, B, B);
+
+    // --- Arme (main droite) : garde, lame, pointe, pommeau ---
+    if (side === 'R' && gear.has('weapon')) {
+      addSphere(fore, s * 0.06, 0.15, 0.06, 0.09, 0.035, 0.08, H.metalDark, B, B);
+      addCylinder(fore, s * 0.06, 0.19, 0.07, s * 0.10, 0.55, 0.10, 0.032, H.metal, c.cyl);
+      addCone(fore, s * 0.10, 0.55, 0.10, s * 0.11, 0.64, 0.11, 0.032, H.metal, c.cone);
+      addSphere(fore, s * 0.06, 0.11, 0.06, 0.045, 0.045, 0.045, H.gold, B, B);
+    }
+
+    // --- Bouclier (bras gauche) : écu + umbo ---
+    if (side === 'L' && gear.has('shield')) {
+      addSphere(fore, s * 0.05, 0.06, 0.14, 0.18, 0.22, 0.06, H.metal, B, B);
+      addSphere(fore, s * 0.05, 0.06, 0.19, 0.05, 0.05, 0.03, H.gold, B, B);
+    }
+
+    parts.push({ id: `fore.${side}`, parent: `armU.${side}`, pivot: [s * 0.08, -0.16, 0.02], mesh: fore });
+  }
+
+  // ============================ JAMBES (chibi : courtes, gros pieds) ============================
+  for (const side of ['L', 'R'] as const) {
+    const s = S(side);
+
+    const legU = newMesh();
+    addCylinder(legU, 0, -0.01, 0, s * 0.07, -0.16, 0.02, 0.088, H.cloth, c.cyl);
+    parts.push({ id: `legU.${side}`, parent: 'root', pivot: [s * 0.115, -0.34, 0], mesh: legU });
+
+    const shin = newMesh();
+    addSphere(shin, 0, -0.005, 0, 0.085, 0.082, 0.082, H.cloth, B, B);
+    addCylinder(shin, 0, -0.01, 0, s * 0.02, -0.14, -0.01, 0.078, H.cloth, c.cyl);
+    addSphere(shin, s * 0.02, -0.20, 0.05, 0.105, 0.075, 0.15, H.boot, B, B);
+    parts.push({ id: `shin.${side}`, parent: `legU.${side}`, pivot: [s * 0.07, -0.16, 0.02], mesh: shin });
+  }
+
+  return {
+    type,
+    species: 'human',
+    isBoss: false,
     quality,
     parts,
     vertexCount: parts.reduce((n, part) => n + part.mesh.positions.length / 3, 0),
@@ -707,54 +1043,77 @@ export interface RigActionSpec {
  * avant avec rx **négatif** ; l'avant-bras (+y) se tend avec rx **positif**
  * ~2.9 (extension le long du bras) ; crouch = legU− / shin+ / dy−. */
 export const RIG_ACTIONS: Record<RigActionKind, RigActionSpec> = {
-  // Coup physique : armement du poing, extension franche, recul.
+  // Coup physique : VRAI mouvement de combat — enroulement du buste,
+  // poing droit chambré, grande enjambée avant, frappe tendue à bout de bras
+  // (synchrone avec le sommet de la ruée CSS à 46 %), puis récupération.
+  // Les jambes font le travail : appui arrière qui pousse, genou avant plié.
   melee: {
     duration: 620,
     keyframes: [
       { t: 0, joints: {}, dy: 0 },
+      // Armement : buste enroulé loin du coup, poing chambré près du menton,
+      // jambes chargées (genou avant levé, poids sur la jambe arrière).
       {
-        t: 0.2,
+        t: 0.16,
         joints: {
-          torso: [0, -0.3, 0], head: [-0.05, 0, 0],
-          'armU.L': [-0.45, 0, 0.1], 'armU.R': [-0.25, 0, -0.1],
-          'fore.L': [0.8, 0, 0], 'fore.R': [0.9, 0, 0],
-          'legU.L': [-0.1, 0, 0], 'legU.R': [-0.1, 0, 0],
-          'shin.L': [0.15, 0, 0], 'shin.R': [0.15, 0, 0],
+          torso: [0, -0.5, 0], head: [-0.05, 0.2, 0],
+          'armU.R': [-0.7, 0, -0.3], 'fore.R': [1.7, 0, 0],
+          'armU.L': [-0.95, 0, 0.25], 'fore.L': [2.1, 0, 0],
+          'legU.L': [-0.35, 0, 0], 'legU.R': [0.22, 0, 0],
+          'shin.L': [0.55, 0, 0], 'shin.R': [0.4, 0, 0],
         },
-        dy: -0.03,
+        dy: -0.09,
       },
+      // Foulée : grande enjambée avant, jambe arrière tendue qui pousse,
+      // le buste entame sa rotation vers la cible.
       {
         t: 0.34,
         joints: {
-          torso: [0.06, 0.22, 0], head: [-0.05, 0, 0],
-          'armU.L': [-1.35, 0, 0], 'armU.R': [-0.2, 0, -0.08],
-          'fore.L': [2.9, 0, 0], 'fore.R': [1.0, 0, 0],
-          'legU.L': [-0.15, 0, 0], 'legU.R': [-0.1, 0, 0],
-          'shin.L': [0.2, 0, 0], 'shin.R': [0.15, 0, 0],
+          torso: [0.08, 0.45, 0], head: [-0.1, -0.15, 0],
+          'armU.R': [-1.35, 0, -0.15], 'fore.R': [2.5, 0, 0],
+          'armU.L': [-0.55, 0, 0.4], 'fore.L': [1.5, 0, 0],
+          'legU.L': [-0.7, 0, 0], 'legU.R': [0.38, 0, 0],
+          'shin.L': [0.9, 0, 0], 'shin.R': [0.28, 0, 0],
         },
-        dy: 0,
+        dy: -0.05,
       },
+      // Impact (sommet de la ruée CSS) : bras tendu au maximum, buste lancé,
+      // les deux appuis ancrés au sol en fente.
       {
-        t: 0.52,
+        t: 0.46,
         joints: {
-          torso: [0.1, 0.14, 0], head: [-0.04, 0, 0],
-          'armU.L': [-1.05, 0, -0.05], 'armU.R': [-0.25, 0, -0.08],
-          'fore.L': [2.2, 0, 0], 'fore.R': [1.1, 0, 0],
-          'legU.L': [-0.12, 0, 0], 'legU.R': [-0.1, 0, 0],
-          'shin.L': [0.18, 0, 0], 'shin.R': [0.15, 0, 0],
+          torso: [0.12, 0.55, 0], head: [-0.08, -0.18, 0],
+          'armU.R': [-1.7, 0, -0.1], 'fore.R': [3.05, 0, 0],
+          'armU.L': [-0.35, 0, 0.5], 'fore.L': [1.15, 0, 0],
+          'legU.L': [-0.8, 0, 0], 'legU.R': [0.42, 0, 0],
+          'shin.L': [1.0, 0, 0], 'shin.R': [0.2, 0, 0],
         },
-        dy: -0.01,
+        dy: -0.04,
       },
+      // Poursuite : le bras continue sa course, le buste se replie, la fente
+      // se resserre.
       {
-        t: 0.78,
+        t: 0.62,
         joints: {
-          torso: [0.02, -0.05, 0], head: [0, 0, 0],
-          'armU.L': [-0.45, 0, 0.05], 'armU.R': [-0.2, 0, 0],
-          'fore.L': [1.3, 0, 0], 'fore.R': [0.9, 0, 0],
-          'legU.L': [-0.05, 0, 0], 'legU.R': [-0.05, 0, 0],
-          'shin.L': [0.08, 0, 0], 'shin.R': [0.08, 0, 0],
+          torso: [0.16, 0.35, 0], head: [-0.04, -0.08, 0],
+          'armU.R': [-1.35, 0, -0.05], 'fore.R': [2.55, 0, 0],
+          'armU.L': [-0.5, 0, 0.35], 'fore.L': [1.35, 0, 0],
+          'legU.L': [-0.6, 0, 0], 'legU.R': [0.32, 0, 0],
+          'shin.L': [0.85, 0, 0], 'shin.R': [0.3, 0, 0],
         },
-        dy: -0.01,
+        dy: -0.05,
+      },
+      // Récupération : les appuis se resserrent, la garde remonte.
+      {
+        t: 0.82,
+        joints: {
+          torso: [0.05, -0.1, 0], head: [0, 0, 0],
+          'armU.R': [-0.55, 0, -0.12], 'fore.R': [1.55, 0, 0],
+          'armU.L': [-0.5, 0, 0.18], 'fore.L': [1.45, 0, 0],
+          'legU.L': [-0.22, 0, 0], 'legU.R': [0.12, 0, 0],
+          'shin.L': [0.38, 0, 0], 'shin.R': [0.22, 0, 0],
+        },
+        dy: -0.02,
       },
       { t: 1, joints: {}, dy: 0 },
     ],
@@ -771,10 +1130,10 @@ export const RIG_ACTIONS: Record<RigActionKind, RigActionSpec> = {
           torso: [-0.12, 0, 0], head: [-0.07, 0, 0],
           'armU.L': [-0.35, 0, 0.08], 'armU.R': [-0.35, 0, -0.08],
           'fore.L': [1.25, 0, 0], 'fore.R': [1.25, 0, 0],
-          'legU.L': [-0.08, 0, 0], 'legU.R': [-0.08, 0, 0],
-          'shin.L': [0.12, 0, 0], 'shin.R': [0.12, 0, 0],
+          'legU.L': [-0.18, 0, 0], 'legU.R': [0.12, 0, 0],
+          'shin.L': [0.3, 0, 0], 'shin.R': [0.25, 0, 0],
         },
-        dy: -0.03,
+        dy: -0.045,
       },
       {
         t: 0.48,
@@ -782,10 +1141,10 @@ export const RIG_ACTIONS: Record<RigActionKind, RigActionSpec> = {
           torso: [0.1, 0, 0], head: [-0.02, 0, 0],
           'armU.L': [-0.95, 0, 0.12], 'armU.R': [-0.95, 0, -0.12],
           'fore.L': [2.5, 0, 0], 'fore.R': [2.5, 0, 0],
-          'legU.L': [-0.14, 0, 0], 'legU.R': [-0.14, 0, 0],
-          'shin.L': [0.2, 0, 0], 'shin.R': [0.2, 0, 0],
+          'legU.L': [-0.32, 0, 0], 'legU.R': [0.22, 0, 0],
+          'shin.L': [0.5, 0, 0], 'shin.R': [0.32, 0, 0],
         },
-        dy: 0,
+        dy: -0.03,
       },
       {
         t: 0.68,
@@ -793,8 +1152,10 @@ export const RIG_ACTIONS: Record<RigActionKind, RigActionSpec> = {
           torso: [0.06, 0, 0], head: [-0.02, 0, 0],
           'armU.L': [-0.8, 0, 0.1], 'armU.R': [-0.8, 0, -0.1],
           'fore.L': [2.2, 0, 0], 'fore.R': [2.2, 0, 0],
+          'legU.L': [-0.25, 0, 0], 'legU.R': [0.18, 0, 0],
+          'shin.L': [0.42, 0, 0], 'shin.R': [0.28, 0, 0],
         },
-        dy: -0.01,
+        dy: -0.02,
       },
       {
         t: 0.86,
@@ -802,8 +1163,8 @@ export const RIG_ACTIONS: Record<RigActionKind, RigActionSpec> = {
           torso: [0, 0, 0], head: [0, 0, 0],
           'armU.L': [-0.35, 0, 0.05], 'armU.R': [-0.35, 0, -0.05],
           'fore.L': [1.2, 0, 0], 'fore.R': [1.2, 0, 0],
-          'legU.L': [-0.05, 0, 0], 'legU.R': [-0.05, 0, 0],
-          'shin.L': [0.08, 0, 0], 'shin.R': [0.08, 0, 0],
+          'legU.L': [-0.1, 0, 0], 'legU.R': [0.06, 0, 0],
+          'shin.L': [0.16, 0, 0], 'shin.R': [0.1, 0, 0],
         },
         dy: -0.01,
       },

@@ -3,6 +3,7 @@
   import { TYPE_LABELS } from "../../../core/entities/Move";
   import { TYPE_ICONS } from "../../styles/typeColors";
   import { playSound } from "../../audio/gameAudio";
+  import { dq } from "../../styles/style";
 
   export let map: RegionMap | null;
   export let currentLayer: number;
@@ -78,12 +79,8 @@
   $: H = bossY + 52;
 </script>
 
-<div
-  class="flex flex-col items-center rounded-lg border-4 border-stone-600
-    bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950
-    p-2 md:p-3 mb-3 md:mb-4 shadow-xl overflow-x-clip"
->
-  <p class="font-serif font-bold tracking-widest text-amber-200 uppercase text-xs md:text-sm mb-1">
+<div class={`${dq.window} flex flex-col items-center p-2 md:p-3 mb-3 md:mb-4 overflow-x-clip`}>
+  <p class="font-display font-extrabold tracking-[0.18em] text-amber-100 uppercase text-xs md:text-sm mb-1">
     🗺️ Choisissez votre destination
   </p>
 
@@ -117,17 +114,16 @@
         </feMerge>
       </filter>
       <pattern id="map-dots" width="14" height="14" patternUnits="userSpaceOnUse">
-        <circle cx="2" cy="2" r="1" fill="rgba(251,191,36,0.10)" />
+        <circle cx="2" cy="2" r="1" fill="rgba(186,230,253,0.09)" />
       </pattern>
     </defs>
 
-    <rect width="100%" height="100%" fill="#1c1917" rx="10" />
+    <rect width="100%" height="100%" fill="#070d18" rx="10" />
     <rect width="100%" height="100%" fill="url(#map-dots)" rx="10" />
 
     <!-- Numéros de couches -->
     {#each rows as _, ri}
-      <text x="16" y={TOP + ri * ROW_GAP + 6} text-anchor="middle" font-size="10" font-family="monospace"
-        class="{ri < currentLayer ? 'fill-emerald-500' : ri === currentLayer ? 'fill-amber-300 font-bold' : 'fill-stone-600'}">
+      <text x="16" y={TOP + ri * ROW_GAP + 6} text-anchor="middle" font-size="10" font-family="monospace"          class="{ri < currentLayer ? 'fill-emerald-400' : ri === currentLayer ? 'fill-amber-300 font-bold' : 'fill-slate-600'}">
         {ri + 1}
       </text>
     {/each}
@@ -139,7 +135,7 @@
           ? 'stroke-emerald-400'
           : link.cls === 'avail'
             ? 'stroke-amber-300/60'
-            : 'stroke-stone-600/25'}" />
+            : 'stroke-slate-500/25'}" />
     {/each}
 
     <!-- Nœuds -->
@@ -172,8 +168,8 @@
               font-weight={chosen ? "bold" : "normal"} opacity={chosen ? 1 : 0.5}>✓</text>
           {:else}
             <circle cx={x} cy={y} r={R}
-              fill={available ? meta.grad : "#292524"}
-              stroke={available ? meta.stroke : "#57534e"}
+              fill={available ? meta.grad : "#1b2434"}
+              stroke={available ? meta.stroke : "#3b4a63"}
               stroke-width="2.5"
               opacity={available ? 1 : 0.45}
               class="{available ? 'map-node-disc' : current ? 'cursor-not-allowed' : ''}" />
@@ -202,7 +198,7 @@
     </g>
   </svg>
 
-  <p class="mt-1 text-[10px] md:text-xs text-stone-400 font-mono">
+  <p class="mt-1 text-[10px] md:text-xs text-sky-200/60 font-mono">
     {currentLayer + 1} / {rows.length} — nœuds reliés à votre position ({reachable.size} choix{reachable.size > 1 ? "s" : ""})
   </p>
 </div>

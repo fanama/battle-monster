@@ -3,8 +3,10 @@ import {
   EQUIPMENT_CATALOG,
   EQUIPMENT_SLOTS,
   EQUIPMENT_SLOT_LABELS,
+  equipmentLevelScale,
   equipmentTotals,
   rollEquipmentDrop,
+  scaleEquipment,
   type Equipment,
 } from '../src/core/entities/Equipment';
 import { Monster, MonsterIO } from '../src/core/entities/Monster';
@@ -13,6 +15,7 @@ import { BattleController } from '../src/core/services/BattleController';
 import { BattleEngine } from '../src/core/services/BattleEngine';
 import { MoveRepository } from '../src/infra/repositories/MoveRepositories';
 import {
+  SHOP_SLOT_PRIORITY,
   buildEquipmentShopItems,
   rollShopStock,
 } from '../src/core/entities/Relic';
@@ -66,6 +69,20 @@ describe("Catalogue d'équipements", () => {
       expect(EQUIPMENT_SLOT_LABELS[slot]).toBeTruthy();
       expect(EQUIPMENT_CATALOG.some(p => p.slot === slot)).toBe(true);
     }
+  });
+
+  test('armes, armures et accessoires : du choix dans chaque famille à tous les budgets', () => {
+    // Le rayon Forge garantit une pièce de chacune de ces trois familles : à la
+    // première région (budget ≤ 65) comme aux suivantes, il doit y avoir du
+    // choix dans chaque famille, sinon la vitrine serait figée.
+    for (const slot of SHOP_SLOT_PRIORITY) {
+      for (const maxPrice of [65, 80, 95, Infinity]) {
+        const pool = EQUIPMENT_CATALOG.filter(p => p.slot === slot && p.price <= maxPrice);
+        expect(pool.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+    // Les identifiants restent uniques (clés d'affichage et anti-doublon).
+    expect(new Set(EQUIPMENT_CATALOG.map(p => p.id)).size).toBe(EQUIPMENT_CATALOG.length);
   });
 
   test('equipmentTotals cumule les pièces portées (et rien d\'autre)', () => {
@@ -223,6 +240,74 @@ describe('Portage transmis par le monstre', () => {
   });
 });
 
+describe('Drops selon le niveau de l\'ennemi — haut niveau = plus d\'effet', () => {
+  test('l\'échelle de puissance monte avec le niveau, jusqu\'à ×2', () => {
+    // Sous le niveau 8 : aucune amplification (catalogue d'origine intact).
+    expect(equipmentLevelScale(4)).toBe(1);
+    expect(equipmentLevelScale(8)).toBe(1);
+    // Monte régulièrement, plafonnée à ×2 (niveau 16+).
+    expect(equipmentLevelScale(12)).toBeCloseTo(1.5, 5);
+    expect(equipmentLevelScale(16)).toBe(2);
+    expect(equipmentLevelScale(30)).toBe(2);
+  });
+
+  test('les effets sont amplifiés et la description affiche les vrais chiffres', () => {
+    const blade = EQUIPMENT_CATALOG.find(p => p.id === 'eq-fang-blade')!; // +2 Force · vol de vie 5 %
+    const boosted = scaleEquipment(blade, 16);
+    expect(boosted.effect.stat!.strength).toBe(4);
+    expect(boosted.effect.lifestealPercent).toBe(10);
+    expect(boosted.description).toContain('+4 Force');
+    expect(boosted.description).toContain('Vol de vie 10 %');
+    // La pièce amplifiée est marquée, mais garde son id : l'anti-doublon
+    // sacoche/boutique reste valable.
+    expect(boosted.name).not.toBe(blade.name);
+    expect(boosted.id).toBe(blade.id);
+  });
+
+  test('la plage de critiques reste discrète (jamais amplifiée)', () => {
+    const fang = EQUIPMENT_CATALOG.find(p => p.id === 'eq-storm-fang')!; // critiques 19-20
+    const boosted = scaleEquipment(fang, 16);
+    expect(boosted.effect.critRange).toBe(2);
+    // Les autres effets de la même pièce sont bien gonflés.
+    expect(boosted.effect.stat!.strength).toBe(6);
+  });
+
+  test('un ennemi bas niveau laisse le catalogue d\'origine intact', () => {
+    const blade = EQUIPMENT_CATALOG.find(p => p.id === 'eq-fang-blade')!;
+    const kept = scaleEquipment(blade, 6);
+    expect(kept).toBe(blade);
+    expect(kept.description).toBe(blade.description);
+  });
+
+  test('un ennemi haut niveau élargit le poly vers les pièces chères', () => {
+    // Région 0 (≤ 65 💰) : inchangée tant que l'ennemi reste sous le niveau 8.
+    for (let i = 0; i < 30; i++) {
+      expect(rollEquipmentDrop(0).price).toBeLessThanOrEqual(65);
+    }
+    expect(rollEquipmentDrop(0, () => 0.999, [], 8).price).toBeLessThanOrEqual(65);
+    // Au niveau 16, le budget régional s'ouvre vers le haut du catalogue.
+    const high = rollEquipmentDrop(0, () => 0.999, [], 16);
+    expect(high.price).toBeGreaterThan(65);
+    // …et la pièce est amplifiée (×2).
+    expect(high.name).toContain('✦');
+  });
+
+  test('le drop amplifié traverse la victoire (ennemi haut niveau)', () => {
+    // `random` vit dans l'objet unique de dépendances du contrôleur.
+    const ctrl = new BattleController({ random: () => 0 } as never);
+    const run = ctrl.handlePlayerVictory({
+      player: freshMonster(),
+      enemy: new Monster('e', 'Sauvage', 'grass', 16, 12, 12, 12, 12, 12, 12, []),
+      run: freshRun(),
+      isBossFight: false,
+    });
+    // Le premier item du poly est « Pointe-Brûle » (+1 Force) → +2 amplifié.
+    const dropped = run.run.equipmentBag![0]!;
+    expect(dropped.effect.stat!.strength).toBe(2);
+    expect(dropped.name).toContain('✦');
+  });
+});
+
 describe('Provenances des pièces', () => {
   test('drops de sauvages : le poly s\'étend avec la profondeur de la région', () => {
     for (let i = 0; i < 40; i++) {
@@ -236,7 +321,7 @@ describe('Provenances des pièces', () => {
   });
 
   test('boutique : rayon Forge & Équipements par région (articles vendus en sacoche)', () => {
-    const stock = rollShopStock(1, undefined, 2, 3);
+    const stock = rollShopStock(undefined, 2, 3);
     const gear = stock.filter(i => i.kind === 'equipment');
     expect(gear.length).toBe(3);
     for (const item of gear) {
@@ -249,6 +334,54 @@ describe('Provenances des pièces', () => {
       for (const bought of buildEquipmentShopItems(0, 2)) {
         expect(bought.equipment!.price).toBeLessThanOrEqual(65);
       }
+    }
+  });
+
+  test('boutique : une arme, une armure et un accessoire TOUJOURS en vitrine', () => {
+    for (const regionIndex of [0, 1, 2, 3]) {
+      for (let i = 0; i < 30; i++) {
+        const shelf = buildEquipmentShopItems(regionIndex, 3);
+        const slots = shelf.map(s => s.equipment!.slot);
+        // Garde-fou : exactement une pièce de chaque famille prioritaire.
+        expect(slots).toEqual([...SHOP_SLOT_PRIORITY]);
+        // Aucune pièce en double, et toutes dans le budget de la région.
+        expect(new Set(shelf.map(s => s.id)).size).toBe(shelf.length);
+        const maxPrice = [65, 80, 95, Infinity][regionIndex]!;
+        for (const item of shelf) {
+          expect(item.equipment!.price).toBeLessThanOrEqual(maxPrice);
+          expect(item.kind).toBe('equipment');
+        }
+      }
+    }
+  });
+
+  test('boutique : le rayon standard compte 4 pièces (trois familles + 1 au choix)', () => {
+    for (let i = 0; i < 30; i++) {
+      const stock = rollShopStock(undefined, 2, 4);
+      const gear = stock.filter(i => i.kind === 'equipment');
+      expect(gear.length).toBe(4);
+      const slots = gear.map(s => s.equipment!.slot);
+      // Les trois familles garanties sont présentes…
+      for (const slot of SHOP_SLOT_PRIORITY) {
+        expect(slots).toContain(slot);
+      }
+      // …et la quatrième pièce complète le rayon (n'importe quel emplacement),
+      // sans jamais dupliquer une pièce déjà en vitrine.
+      expect(new Set(gear.map(s => s.id)).size).toBe(4);
+    }
+  });
+
+  test('boutique : anti-doublon — le possédé est exclu du rayon forge', () => {
+    const owned = EQUIPMENT_CATALOG.filter(p => p.slot === 'weapon').map(p => p.id);
+    for (let i = 0; i < 20; i++) {
+      const shelf = buildEquipmentShopItems(3, 4, undefined, owned);
+      for (const item of shelf) {
+        expect(item.equipment!.slot).not.toBe('weapon');
+      }
+      // Les autres familles restent servies.
+      const slots = shelf.map(s => s.equipment!.slot);
+      expect(slots).toContain('armor');
+      expect(slots).toContain('accessory');
     }
   });
 });

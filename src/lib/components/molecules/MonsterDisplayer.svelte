@@ -12,6 +12,8 @@
   import { TYPE_COLORS, TYPE_ICONS } from "../../styles/typeColors";
   import type { CombatFeedback } from "../../../core/services/BattleEngine";
   import type { StageAction } from "../../renderers/MonsterWebGLRenderer";
+  import { attackFamily } from "../../renderers/spellVfx";
+  import { spellVfxReady } from "../../stores/vfxStore";
 
   export let monster: Monster | null | undefined;
   export let isPlayer: boolean;
@@ -57,14 +59,12 @@
    *  - `ranged`  : attaque magique à distance — recul de préparation puis
    *                 projection du bras (le coup part sans contact)
    *  - `utility` : soin ou buff — canalisation sur place, sans déplacement
+   *
+   * La règle est **partagée** avec la couche d'effets 3D (`attackFamily`, dans
+   * `spellVfx.ts`) : la pose articulée et le projectile élémentaire ne peuvent
+   * pas diverger.
    */
-  $: attackKind = !isAttacking || !lastMove
-    ? null
-    : lastMove.power === 0
-      ? 'utility'
-      : lastMove.isPhysical
-        ? 'melee'
-        : 'ranged';
+  $: attackKind = !isAttacking || !lastMove ? null : attackFamily(lastMove);
   $: moveType = lastMove?.type ?? monster?.type ?? 'normal';
 
   /**
@@ -144,7 +144,7 @@
     {#if isAttacking && lastMove}
       <div
         class="absolute -top-3 z-40 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border-2
-          border-amber-300 bg-stone-950/95 font-serif font-black text-[10px] sm:text-xs text-amber-200
+          border-amber-300 bg-[#0d1526]/95 font-display font-black text-[10px] sm:text-xs text-amber-100
           shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-attack-pulse flex items-center gap-1 sm:gap-1.5 whitespace-nowrap"
       >
         <span>{TYPE_ICONS[lastMove.type]}</span>
@@ -199,8 +199,12 @@
       <div class={monsterStyles.spriteSection.overlay}></div>
     {/if}
     <!-- PROJECTILE : attaque à distance — l'orbe traverse l'arène du corps du
-         lanceur vers la zone adverse (voir keyframes projectile-*). -->
-    {#if variant === 'stage' && attackKind === 'ranged' && isAttacking}
+         lanceur vers la zone adverse (voir keyframes projectile-*).
+         C'est désormais le **repli** sans WebGL : quand le calque d'effets 3D
+         de l'arène est actif (`spellVfxReady`), c'est lui qui projette le sort
+         — un vrai projectile WebGL qui relie les deux combattants, chose que
+         cet orbe ne peut pas faire (chaque canvas est rogné à sa boîte). -->
+    {#if variant === 'stage' && attackKind === 'ranged' && isAttacking && !$spellVfxReady}
       <div
         class="projectile-fx absolute z-[45] pointer-events-none h-3 w-3 "
         class:projectile-fx-player={isPlayer}
@@ -302,11 +306,11 @@
         <div class="px-1 mt-0.5">
           <div class="flex justify-between items-center mb-0.5">
             <span class="text-xs font-bold text-sky-300">EXP</span>
-            <span class="text-xs text-stone-400">
+            <span class="text-xs text-sky-200/65">
               {monster.experience} / {monster.experienceToNextLevel}
             </span>
           </div>
-          <div class="w-full bg-stone-700 rounded-full h-2 shadow-inner overflow-hidden relative">
+          <div class="w-full bg-[#1d2d49] rounded-full h-2 shadow-inner overflow-hidden relative">
             <div
               class="h-2 rounded-full bg-gradient-to-r from-sky-600 to-cyan-400 transition-[width] duration-700 ease-out relative"
               style="width: {Math.min(
@@ -320,7 +324,7 @@
         </div>
       {/if}
 
-      <div class="mt-0.5 flex items-center gap-1 uppercase tracking-widest text-[9px] md:text-[10px] font-bold text-stone-500">
+      <div class="mt-0.5 flex items-center gap-1 uppercase tracking-widest text-[9px] md:text-[10px] font-bold text-sky-200/50">
         <span class="w-1.5 h-1.5 rounded-full {tc.dot}"></span> Attaques
       </div>
 
@@ -330,7 +334,7 @@
             <span class="w-1.5 h-1.5 rounded-full shrink-0 {TYPE_COLORS[move.type].dot}"></span>
             <span class="truncate font-medium">{move.name}</span>
             {#if move.coolDown && move.coolDown > 0}
-              <span class="ml-auto shrink-0 text-amber-400 font-bold" title="En recharge">
+              <span class="ml-auto shrink-0 text-amber-100 font-bold" title="En recharge">
                 ⏳{move.coolDown}
               </span>
             {/if}
@@ -349,20 +353,20 @@
         </button>
 
         {#if showStats}
-          <div class="mt-1 px-2 py-1.5 bg-black/30 rounded-md border border-stone-700/60">
+          <div class="mt-1 px-2 py-1.5 bg-black/30 rounded-md border border-sky-100/15">
             {#each stats as stat}
               <div class="flex justify-between items-center text-xs py-0.5">
-                <span class="text-stone-400">{STAT_LABELS[stat]}</span>
+                <span class="text-sky-200/65">{STAT_LABELS[stat]}</span>
                 <span class="font-mono">
                   {monster[stat]}
-                  <span class="text-stone-500">
+                  <span class="text-sky-200/50">
                     ({abilityModifier(monster[stat]) >= 0 ? '+' : ''}{abilityModifier(monster[stat])})
                   </span>
                 </span>
               </div>
             {/each}
-            <div class="flex justify-between items-center text-xs py-0.5 border-t border-stone-700/60 mt-1 pt-1">
-              <span class="text-stone-400">CA</span>
+            <div class="flex justify-between items-center text-xs py-0.5 border-t border-sky-100/15 mt-1 pt-1">
+              <span class="text-sky-200/65">CA</span>
               <span class="font-mono">{monster.getAC()}</span>
             </div>
           </div>
@@ -372,7 +376,7 @@
     {/if}
   {:else}
     <div
-      class="flex h-full items-center justify-center text-stone-500 opacity-50"
+      class="flex h-full items-center justify-center text-sky-200/50 opacity-50"
     >
       <span class="text-sm">En attente d'un combattant...</span>
     </div>
@@ -438,23 +442,25 @@
     z-index: 25;
   }
 
-  /* Petit-armement en arrière, puis charge franche : au sommet de la charge
-     le corps est propulsé à ~46 % de son conteneur, soit jusqu'au contact de
-     l'adversaire (les deux camps chargent symétriquement, les corps se
-     croisent au port). Le recul réarme ensuite la garde. */
+  /* Petit-armement en arrière (le corps s'incline vers l'arrière), puis
+     RUÉE franche : au sommet (46 %) le corps est propulsé à ~56 % de son
+     conteneur, jusqu'au contact de l'adversaire (les deux camps chargent
+     symétriquement, les corps se croisent au port), penché vers l'avant. Le
+     recul réarme ensuite la garde. En phase avec le rig 3D : la fente des
+     jambes et le poing tendu culminent au même palier 46 %. */
   @keyframes melee-player {
     0% { transform: translateX(0) scale(1); }
-    18% { transform: translateX(-7px) scale(0.97); }
-    46% { transform: translateX(clamp(38px, 46%, 84px)) scale(1.08); }
-    72% { transform: translateX(-3px) scale(1); }
+    18% { transform: translateX(-10px) scale(0.94) rotate(-2deg); }
+    46% { transform: translateX(clamp(46px, 56%, 104px)) scale(1.12) rotate(4deg); }
+    72% { transform: translateX(-4px) scale(1) rotate(-1deg); }
     100% { transform: translateX(0) scale(1); }
   }
 
   @keyframes melee-enemy {
     0% { transform: translateX(0) scale(1); }
-    18% { transform: translateX(7px) scale(0.97); }
-    46% { transform: translateX(clamp(-84px, -46%, -38px)) scale(1.08); }
-    72% { transform: translateX(3px) scale(1); }
+    18% { transform: translateX(10px) scale(0.94) rotate(2deg); }
+    46% { transform: translateX(clamp(-104px, -56%, -46px)) scale(1.12) rotate(-4deg); }
+    72% { transform: translateX(4px) scale(1) rotate(1deg); }
     100% { transform: translateX(0) scale(1); }
   }
 

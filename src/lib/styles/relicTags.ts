@@ -23,7 +23,7 @@ export function relicTag(relic: Relic): RelicTag {
   if (e.stat?.constitution)
     return { label: 'Constitution', chip: 'text-emerald-200 border-emerald-500/50 bg-emerald-950/60', card: 'border-emerald-500/60 hover:border-emerald-400 hover:shadow-[0_0_16px_rgba(52,211,153,0.35)]' };
   if (e.stat?.wisdom)
-    return { label: 'Savoir', chip: 'text-violet-200 border-violet-500/50 bg-violet-950/60', card: 'border-violet-500/60 hover:border-violet-400 hover:shadow-[0_0_16px_rgba(167,139,250,0.35)]' };
+    return { label: 'Savoir', chip: 'text-sky-100 border-sky-100/30 bg-sky-100/10', card: 'border-sky-100/25' };
   if (e.stat?.instinct)
     return { label: 'Instinct', chip: 'text-amber-200 border-amber-500/50 bg-amber-950/60', card: 'border-amber-500/60 hover:border-amber-400 hover:shadow-[0_0_16px_rgba(251,191,36,0.35)]' };
   if (e.acBonus)
@@ -38,5 +38,5 @@ export function relicTag(relic: Relic): RelicTag {
     return { label: 'Critique', chip: 'text-yellow-200 border-yellow-500/50 bg-yellow-950/60', card: 'border-yellow-500/60 hover:border-yellow-300 hover:shadow-[0_0_16px_rgba(253,224,71,0.35)]' };
   if (e.experiencePercent)
     return { label: 'Expérience', chip: 'text-cyan-200 border-cyan-500/50 bg-cyan-950/60', card: 'border-cyan-500/60 hover:border-cyan-300 hover:shadow-[0_0_16px_rgba(103,232,249,0.35)]' };
-  return { label: 'Relique', chip: 'text-stone-200 border-stone-500/50 bg-stone-800/60', card: 'border-stone-500/60 hover:border-stone-400 hover:shadow-[0_0_16px_rgba(168,162,158,0.35)]' };
+  return { label: 'Relique', chip: 'text-sky-100 border-sky-100/25 bg-[#16233a]', card: 'border-sky-100/20' };
 }

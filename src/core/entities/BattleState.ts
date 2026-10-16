@@ -1,6 +1,6 @@
 import type { CombatFeedback } from '../services/BattleEngine';
 import type { Monster } from './Monster';
-import type { Move } from './Move';
+import type { Move, MonsterType } from './Move';
 import type { Relic, ShopItem } from './Relic';
 import type { RegionMap } from './RegionMap';
 import type { InventorySlot } from './Consumable';
@@ -52,6 +52,13 @@ export interface RunState {
    * tout ce qui traîne ici n'a aucun effet.
    */
   equipmentBag: Equipment[];
+  /**
+   * Éléments **révélés par le dernier boss vaincu** (nouveaux uniquement) :
+   * le champion en cours peut en **adopter un** pendant l'écran de fin de
+   * région. Vidé au démarrage d'une région ; vide si le boss ne débloquait
+   * rien de neuf (boss déjà battu lors d'un run précédent).
+   */
+  unlockedThisRegion: MonsterType[];
 }
 
 /** État complet du combat + run — interface unique partagée par le store et le contrôleur. */

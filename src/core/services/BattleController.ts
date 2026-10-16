@@ -13,8 +13,8 @@ import {
   type EquipmentSlot,
 } from '../entities/Equipment';
 import {
-  rollRelicOffers,
-  rollRareRelicOffers,
+  rollMonsterPowerOffers,
+  rollRareMonsterPowerOffers,
   relicHealStartPercent,
   type Relic,
 } from '../entities/Relic';
@@ -766,6 +766,32 @@ export class BattleController {
     };
   }
 
+  /**
+   * Reforge le champion dans un **nouvel élément** — adoption en fin de région,
+   * après qu'un boss a révélé un type. Les statistiques, l'expérience, les PV
+   * courants, l'armure, les statuts et l'**équipement** sont conservés ; le
+   * **panel** est reconstruit depuis le catalogue du nouveau type (les 4
+   * capacités éligibles les mieux notées, barème `moveScore` du level-up).
+   * Un même type renvoie le monstre inchangé.
+   *
+   * La reforge passe par un snapshot (`MonsterIO`) — exactement le chemin de
+   * sérialisation d'une sauvegarde : rien n'est perdu, et l'équipement reste
+   * des données (ses effets sont déjà inclus dans les stats copiées, donc
+   * jamais comptés deux fois).
+   */
+  retypeChampion(player: Monster, newType: MonsterType): Monster {
+    if (player.type === newType) return player;
+    const snapshot = MonsterIO.toSnapshot(player);
+    snapshot.type = newType;
+    const eligible = this.moveProvider.getMovesForMonster({ type: newType, level: player.level });
+    const picks = [...eligible]
+      .sort((a, b) => moveScore(b) - moveScore(a))
+      .slice(0, MAX_MOVES)
+      .map((move) => ({ ...move, coolDown: 0 }));
+    if (picks.length > 0) snapshot.moves = picks;
+    return MonsterIO.fromSnapshot(snapshot);
+  }
+
   // --- Sacoche d'équipements & portage (capacités signature) ---
 
   /**
@@ -851,7 +877,7 @@ export class BattleController {
       // pièces déjà possédées (sacoche + portées).
       const bossTaken: string[] = this._ownedEquipmentIds(player, run);
       for (let i = 0; i < 2; i++) {
-        const piece = rollEquipmentDrop(run.regionIndex, this.random, bossTaken);
+        const piece = rollEquipmentDrop(run.regionIndex, this.random, bossTaken, enemy.level);
         bossTaken.push(piece.id);
         run = this.addEquipmentToBag(run, piece);
         logs.push(`🎁 Le boss laisse ${piece.icon} ${piece.name} !`);
@@ -868,10 +894,16 @@ export class BattleController {
       } else {
         run.phase = 'relic';
         // Offres mixtes : 2 reliques rares (anti-doublon, le possédé exclu)
-        // + 1 pièce d'équipement au choix.
-        run.relicOffers = rollRareRelicOffers(2, this.random, run.relics.map(r => r.id));
-        run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, bossTaken)];
-        logs.push('🎁 Butin rare : une relique ou une pièce au choix !');
+        // + 1 pièce d'équipement au choix. Les reliques sont **le pouvoir du
+        // boss vaincu** (rethémées à son nom).
+        run.relicOffers = rollRareMonsterPowerOffers(
+          { name: enemy.name, type: enemy.type },
+          2,
+          this.random,
+          run.relics.map(r => r.id),
+        );
+        run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, bossTaken, enemy.level)];
+        logs.push(`🎁 Pouvoir de ${enemy.name} : une relique ou une pièce au choix !`);
       }
       return { run, logs };
     }
@@ -886,15 +918,25 @@ export class BattleController {
     // Offres mixtes (réglage 2026-10, choix joueur) : 2 reliques + 1 pièce
     // d'équipement à choisir. Anti-doublon : le possédé est exclu.
     const taken: string[] = this._ownedEquipmentIds(player, run);
-    run.relicOffers = rollRelicOffers(2, this.random, run.relics.map(r => r.id));
+    // Les offres de reliques sont **le pouvoir du monstre vaincu** : elles
+    // gardent leurs effets (catalogue inchangé) mais sont rethémées à son nom.
+    run.relicOffers = rollMonsterPowerOffers(
+      { name: enemy.name, type: enemy.type },
+      2,
+      this.random,
+      run.relics.map(r => r.id),
+    );
     logs.push(`🧪 ${player.name} récupère ${heal} PV.`);
     logs.push(`💰 +${goldReward} or.`);
+    logs.push(`✨ ${enemy.name} vaincu : son pouvoir est à vous.`);
 
     // Drop GARANTI d'équipement : une pièce à la fin de chaque combat
     // (réglage 2026-10, choix joueur). Elle rejoint la sacoche — inactive
-    // tant que non portée. La QUALITÉ suit le budget de la région.
+    // tant que non portée. La QUALITÉ suit le budget de la région ET le
+    // niveau de l'ennemi vaincu : un ennemi haut niveau élargit le poly vers
+    // les pièces chères et amplifie leurs effets (jusqu'à ×2).
     {
-      const dropped = rollEquipmentDrop(run.regionIndex, this.random, taken);
+      const dropped = rollEquipmentDrop(run.regionIndex, this.random, taken, enemy.level);
       taken.push(dropped.id);
       run = this.addEquipmentToBag(run, dropped);
       logs.push(`🎁 Le sauvage égoutte ${dropped.icon} ${dropped.name} !`);
@@ -902,7 +944,7 @@ export class BattleController {
 
     // La pièce offerte s'ajoute APRÈS le drop en sacoche : le bucket `taken`
     // inclut le garanti, offrant et garanti ne peuvent jamais se doubler.
-    run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, taken)];
+    run.equipOffers = [rollEquipmentDrop(run.regionIndex, this.random, taken, enemy.level)];
 
     return { run, logs };
   }

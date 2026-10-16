@@ -4,6 +4,8 @@
   import { relicTag } from "../../styles/relicTags";
   import type { Equipment } from "../../../core/entities/Equipment";
   import { EQUIPMENT_SLOT_LABELS } from "../../../core/entities/Equipment";
+  import { TYPE_ICONS } from "../../styles/typeColors";
+  import { dq } from "../../styles/style";
 
   /**
    * Choix de butin après victoire (offres mixées, réglage 2026-10) :
@@ -52,14 +54,15 @@
 
 <div
   class="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 rounded-lg
-    bg-black/80 backdrop-blur-sm p-4 text-center"
+    bg-[#050a14]/90 backdrop-blur-[2px] p-4 text-center"
 >
-  <p class="text-2xl font-serif font-bold tracking-widest text-amber-300 uppercase drop-shadow">
-    ⭐ Objet trouvé !
+  <p class="font-display text-xl sm:text-2xl font-extrabold tracking-[0.18em] text-amber-100 uppercase">
+    ⚡ Pouvoir des monstres vaincus !
   </p>
-  <p class="text-sm text-stone-400">
-    Choisissez une seule carte : une relique (permanente pour la run) ou une
-    pièce d'équipement (à porter depuis l'onglet Champion) — ou passez.
+  <p class="text-sm text-sky-100/70">
+    Le monstre terrassé abandonne son pouvoir. Choisissez une seule carte : une
+    relique (le pouvoir du monstre, permanent pour la run) ou une pièce
+    d'équipement (à porter depuis l'onglet Champion) — ou passez.
   </p>
 
   <div
@@ -72,23 +75,32 @@
       <button
         on:click={() => onPickRelic(relic)}
         title="{relic.name} — {lines.map((line) => `${line.label} ${line.value}`).join(' · ')}"
-        class="group flex flex-col items-center gap-1 rounded-xl border-2 min-w-0
-          bg-gradient-to-b from-stone-800 to-stone-900 p-2 md:p-3
-          transition-all duration-200 hover:-translate-y-1 active:scale-95 {tag.card}"
+        class={`group flex flex-col items-center gap-1 min-w-0 p-2 md:p-3 ${dq.window}
+          transition-transform duration-200 hover:-translate-y-1 active:scale-95 ${tag.card}`}
       >
-        <span class="text-3xl md:text-4xl drop-shadow group-hover:scale-110 transition-transform">
+        <span class="text-3xl md:text-4xl group-hover:scale-110 transition-transform">
           {relic.icon}
         </span>
-        <span class="font-bold text-amber-100 text-[11px] md:text-sm leading-tight drop-shadow truncate max-w-full">
+        <span class="font-display font-bold text-amber-100 text-[11px] md:text-sm leading-tight truncate max-w-full">
           {relic.name}
         </span>
+
+        {#if relic.powerOf}
+          <span
+            class="text-[9px] md:text-[10px] font-mono font-bold text-amber-100 bg-[#1b1a10]/80
+              border border-amber-200/40 rounded px-1 leading-[14px] truncate max-w-full"
+            title="Pouvoir arraché à {relic.powerOf.name}"
+          >
+            ⚡ Pouvoir de {relic.powerOf.name} {TYPE_ICONS[relic.powerOf.type]}
+          </span>
+        {/if}
 
         <!-- Effets chiffrés : l'information utile pour choisir, lisible sur mobile -->
         <span class="flex flex-wrap justify-center gap-0.5">
           {#each lines as line (line.label)}
             <span
-              class="text-[9px] md:text-[10px] font-mono font-bold text-amber-200 bg-stone-950/70
-                border border-stone-700/80 rounded px-1 leading-[14px] truncate max-w-full"
+              class="text-[9px] md:text-[10px] font-mono font-bold text-amber-100 bg-[#070d18]/80
+                border border-sky-100/20 rounded px-1 leading-[14px] truncate max-w-full"
             >
               {line.label} {line.value}
             </span>
@@ -101,25 +113,24 @@
       <button
         on:click={() => onPickEquip(piece)}
         title="{piece.name} — {equipLines(piece).join(' · ')}"
-        class="group flex flex-col items-center gap-1 rounded-xl border-2 min-w-0
-          bg-gradient-to-b from-sky-950 to-stone-900 p-2 md:p-3 border-sky-500/60
-          transition-all duration-200 hover:-translate-y-1 hover:border-sky-400 active:scale-95"
+        class={`group flex flex-col items-center gap-1 min-w-0 p-2 md:p-3 ${dq.window}
+          border-sky-300/40 transition-transform duration-200 hover:-translate-y-1 active:scale-95`}
       >
-        <span class="text-3xl md:text-4xl drop-shadow group-hover:scale-110 transition-transform">
+        <span class="text-3xl md:text-4xl group-hover:scale-110 transition-transform">
           {piece.icon}
         </span>
-        <span class="font-bold text-sky-100 text-[11px] md:text-sm leading-tight drop-shadow truncate max-w-full">
+        <span class="font-display font-bold text-sky-100 text-[11px] md:text-sm leading-tight truncate max-w-full">
           {piece.name}
         </span>
-        <span class="text-[9px] font-mono uppercase font-bold text-sky-300 border border-sky-500/60 bg-sky-950/70 rounded px-1">
+        <span class={`${dq.badge} uppercase`}>
           🧰 {EQUIPMENT_SLOT_LABELS[piece.slot]}
         </span>
 
         <span class="flex flex-wrap justify-center gap-0.5">
           {#each equipLines(piece) as line}
             <span
-              class="text-[9px] md:text-[10px] font-mono font-bold text-sky-200 bg-stone-950/70
-                border border-stone-700/80 rounded px-1 leading-[14px] truncate max-w-full"
+              class="text-[9px] md:text-[10px] font-mono font-bold text-sky-100 bg-[#070d18]/80
+                border border-sky-100/20 rounded px-1 leading-[14px] truncate max-w-full"
             >
               {line}
             </span>
@@ -131,8 +142,8 @@
 
   <button
     on:click={onSkip}
-    class="text-sm px-3 py-1 rounded-full border border-stone-600 text-stone-400
-      hover:text-stone-200 hover:border-stone-400 transition-colors"
+    class="text-sm px-3 py-1 rounded border border-sky-100/25 text-sky-100/70
+      hover:text-white hover:border-sky-100/50 transition-colors"
   >
     Passer
   </button>

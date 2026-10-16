@@ -2,10 +2,13 @@
  * Renderer WebGL « toon » des monstres — couche fine au-dessus du **rig**
  * (`monsterRig.ts`). Les données du personnage (segments, poses, actions)
  * sont calculées côté rig pur ; ce module :
- *  1. compile les shaders (cel-shading + rim light, inchangés),
+ *  1. compile les shaders (aplat **2 tons** + **contour encré**, façon chibi
+ *     fantasy / Dragon Quest),
  *  2. téléverse chaque segment du rig dans ses buffers,
  *  3. à chaque frame : échantillonne la pose (action en cours ou garde),
- *     compose la hiérarchie parent → enfant, dessine segment par segment,
+ *     compose la hiérarchie parent → enfant, puis dessine **deux passes** :
+ *     d'abord la coque du contour (faces arrière gonflées le long des
+ *     normales, aplat d'encre), ensuite le corps toon par-dessus,
  *  4. lisse les poses (aucun saut entre deux actions),
  *  5. plafonne le devicePixelRatio et abaisse la densité de maillage sur
  *     mobile (perf first).
@@ -16,6 +19,7 @@ import {
   GUARD_POSE,
   JOINT_IDS,
   RIG_ACTIONS,
+  buildHumanRig,
   buildRig,
   mat3NormalFromMat4,
   mat4Identity,
@@ -28,6 +32,7 @@ import {
   rigPartMatrices,
   sampleRigPose,
   scaleRigPose,
+  type GearSlot,
   type JointId,
   type JointPose,
   type RigActionKind,
@@ -41,6 +46,34 @@ export interface Monster3DOptions {
   isLowHp: boolean;
   isStrong: boolean;
   hasWisdom: boolean;
+  /**
+   * Espèce rendue : `human` pour le **champion** (corps humain, équipement
+   * visible), `monster` pour les créatures ennemies. L'espèce pilote aussi
+   * *quel* rig est construit ; un changement d'espèce ou d'équipement
+   * reconstruit la géométrie.
+   */
+  species?: 'monster' | 'human';
+  /** Emplacements d'équipement portés (rig humain uniquement). */
+  gear?: readonly GearSlot[];
+  /**
+   * Source **vivante** de l'équipement porté. Le `Monster` est muté sur place
+   * à l'équipement (la fiche n'est pas un état réactif Svelte) : le renderer
+   * relit cet accesseur à chaque frame, si bien qu'enfiler une pièce met à
+   * jour le maillage humanoïde immédiatement, sans remontage du composant.
+   */
+  gearProvider?: () => readonly GearSlot[];
+}
+
+/** Signature stable d'un jeu d'équipements (triée) pour la clé de cache. */
+function gearKey(gear: readonly GearSlot[] | undefined): string {
+  return [...(gear ?? [])].sort().join('+');
+}
+
+/** Emplacements d'équipement effectifs d'un jeu d'options (rig humain seul). */
+function resolveGear(options: Monster3DOptions): GearSlot[] {
+  if ((options.species ?? 'monster') !== 'human') return [];
+  const gear = options.gearProvider?.() ?? options.gear ?? [];
+  return [...gear].sort();
 }
 
 /** Action demandée par la couche UI (SpriteDisplayer ⇒ renderer). */
@@ -58,14 +91,19 @@ const VERTEX_SHADER_SRC = `
   uniform mat4 uProjection;
   uniform mat4 uModelView;
   uniform mat3 uNormalMatrix;
+  // Gonflement le long des normales, en unités du rig : 0 pour le corps,
+  // > 0 pour la coque du contour encré.
+  uniform float uInflate;
 
   varying vec3 vNormal;
   varying vec3 vViewPosition;
   varying vec3 vColor;
 
   void main() {
+    // Le garde-fou 1e-5 évite un normalize(0) sur les normales dégénérées.
+    vec3 inflated = aPosition + normalize(aNormal + vec3(1e-5)) * uInflate;
     vNormal = normalize(uNormalMatrix * aNormal);
-    vec4 viewPos = uModelView * vec4(aPosition, 1.0);
+    vec4 viewPos = uModelView * vec4(inflated, 1.0);
     vViewPosition = -viewPos.xyz;
     vColor = aColor;
     gl_Position = uProjection * viewPos;
@@ -82,32 +120,35 @@ const FRAGMENT_SHADER_SRC = `
   uniform vec3 uLightDir;
   uniform vec3 uAuraColor;
   uniform float uIsBoss;
+  // 1.0 : passe « contour encré » — aplat d'encre pur, aucun éclairage.
+  uniform float uOutline;
 
   void main() {
+    // Contour : trait plein, la découpe du bord est adoucie par l'anticrénelage
+    // du canvas (aucun lissage de fragment à coder ici).
+    if (uOutline > 0.5) {
+      gl_FragColor = vec4(0.07, 0.06, 0.10, 1.0);
+      return;
+    }
+
     vec3 N = normalize(vNormal);
     vec3 L = normalize(uLightDir);
-    vec3 V = normalize(vViewPosition);
 
-    // Éclairage toon en 3 paliers nets (Cel-Shading)
+    // Ombrage PLAT en DEUX tons (toon Dragon Quest) : une ombre franche et une
+    // lumière pleine, sans palier intermédiaire — le contour encré sépare
+    // ensuite les volumes de l'équipement et des membres.
     float NdotL = dot(N, L);
-    float lightStep = 0.35;
-    if (NdotL > 0.45) {
-      lightStep = 1.0;
-    } else if (NdotL > -0.05) {
-      lightStep = 0.7;
-    }
+    float lightStep = NdotL > 0.12 ? 1.0 : 0.62;
+    vec3 finalColor = vColor * lightStep;
 
-    // Reflet de bordure 3D (Rim Light / Fresnel)
-    float rim = 1.0 - max(dot(N, V), 0.0);
-    rim = smoothstep(0.55, 0.85, rim);
-    vec3 rimColor = vec3(0.9, 0.95, 1.0) * rim * 0.45;
-
-    // Éclat d'aura pour les Boss
+    // Aura des Boss : seul relief toléré sur l'aplat (liseré élémentaire).
     if (uIsBoss > 0.5) {
-      rimColor += uAuraColor * rim * 0.6;
+      vec3 V = normalize(vViewPosition);
+      float rim = 1.0 - max(dot(N, V), 0.0);
+      rim = smoothstep(0.55, 0.9, rim);
+      finalColor += uAuraColor * rim * 0.55;
     }
 
-    vec3 finalColor = (vColor * lightStep) + rimColor;
     gl_FragColor = vec4(finalColor, 1.0);
   }
 `;
@@ -116,6 +157,13 @@ const FRAGMENT_SHADER_SRC = `
 const DPR_CAP = 1.5;
 /** Sous ce seuil (CSS px de hauteur du canvas), maillage allégé. */
 const LOW_QUALITY_HEIGHT = 340;
+/**
+ * Épaisseur du contour encré, en unités du rig (le maillage fait ~1,7 de haut).
+ * Le maillage mobile étant plus grossier, la coque y est un peu plus épaisse
+ * pour garder un trait continu.
+ */
+const OUTLINE_WIDTH_HIGH = 0.015;
+const OUTLINE_WIDTH_LOW = 0.019;
 
 interface PartBuffers {
   id: JointId;
@@ -135,6 +183,8 @@ export class MonsterWebGLRenderer {
   private uLightLoc: WebGLUniformLocation | null = null;
   private uAuraLoc: WebGLUniformLocation | null = null;
   private uBossLoc: WebGLUniformLocation | null = null;
+  private uOutlineLoc: WebGLUniformLocation | null = null;
+  private uInflateLoc: WebGLUniformLocation | null = null;
 
   private aPosLoc = -1;
   private aNormLoc = -1;
@@ -175,11 +225,13 @@ export class MonsterWebGLRenderer {
   }
 
   public updateOptions(options: Monster3DOptions) {
-    const typeChanged =
+    const rebuilt =
       this.options.type !== options.type ||
-      this.options.isBoss !== options.isBoss;
+      this.options.isBoss !== options.isBoss ||
+      (this.options.species ?? 'monster') !== (options.species ?? 'monster') ||
+      gearKey(resolveGear(this.options)) !== gearKey(resolveGear(options));
     this.options = options;
-    if (typeChanged) {
+    if (rebuilt) {
       this.buildGeometry();
     }
   }
@@ -239,6 +291,8 @@ export class MonsterWebGLRenderer {
     this.uLightLoc = gl.getUniformLocation(this.program, 'uLightDir');
     this.uAuraLoc = gl.getUniformLocation(this.program, 'uAuraColor');
     this.uBossLoc = gl.getUniformLocation(this.program, 'uIsBoss');
+    this.uOutlineLoc = gl.getUniformLocation(this.program, 'uOutline');
+    this.uInflateLoc = gl.getUniformLocation(this.program, 'uInflate');
   }
 
   private currentQuality(): RigQuality {
@@ -255,12 +309,16 @@ export class MonsterWebGLRenderer {
   private buildGeometry() {
     if (!this.gl) return;
     const quality = this.currentQuality();
-    const key = `${this.options.type}|${this.options.isBoss}|${quality}`;
+    const species = this.options.species ?? 'monster';
+    const gear = resolveGear(this.options);
+    const key = `${species}|${this.options.type}|${this.options.isBoss}|${quality}|${gear.join('+')}`;
     if (this.builtKey === key && this.buffers.length > 0) return;
 
     // Remplace le cache de buffers précédent ; les anciens sont libérés en
     // fin de vie du renderer (destroy).
-    this.rig = buildRig(this.options.type, this.options.isBoss, quality);
+    this.rig = species === 'human'
+      ? buildHumanRig({ type: this.options.type, quality, gear })
+      : buildRig(this.options.type, this.options.isBoss, quality);
     this.builtKey = key;
 
     const gl = this.gl;
@@ -431,6 +489,37 @@ export class MonsterWebGLRenderer {
     gl.enableVertexAttribArray(this.aNormLoc);
     gl.enableVertexAttribArray(this.aColLoc);
 
+    // Passe 1 — **contour encré** : la coque du personnage est gonflée le long
+    // de ses normales et ses faces avant sont éliminées. Seuls ses bords
+    // débordent autour de la silhouette : un trait d'encre franc (Dragon Quest),
+    // qui sépare aussi les pièces d'équipement entre elles (lecture
+    // « construction kit »).
+    gl.cullFace(gl.FRONT);
+    gl.uniform1f(this.uOutlineLoc, 1.0);
+    gl.uniform1f(
+      this.uInflateLoc,
+      this.currentQuality() === 'low' ? OUTLINE_WIDTH_LOW : OUTLINE_WIDTH_HIGH,
+    );
+    this.drawParts(globalMV, partMats, partMV, normMat);
+
+    // Passe 2 — corps toon : aplat 2 tons par-dessus le trait.
+    gl.cullFace(gl.BACK);
+    gl.uniform1f(this.uOutlineLoc, 0.0);
+    gl.uniform1f(this.uInflateLoc, 0.0);
+    this.drawParts(globalMV, partMats, partMV, normMat);
+  }
+
+  /**
+   * Dessine tous les segments du rig avec l'état de programme courant (le
+   * même parcours sert aux deux passes : contour et corps).
+   */
+  private drawParts(
+    globalMV: Float32Array,
+    partMats: Record<string, Float32Array>,
+    partMV: Float32Array,
+    normMat: Float32Array,
+  ) {
+    const gl = this.gl!;
     for (const buf of this.buffers) {
       const partMat = partMats[buf.id];
       if (!partMat) continue;

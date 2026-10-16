@@ -1,11 +1,17 @@
 <script lang="ts">
   import { styles } from "../../styles/style";
   import { buildConsumableShopItems, type ShopItem } from "../../../core/entities/Relic";
-  import { relicEffectLines } from "../../styles/relicEffects";
   import type { Monster } from "../../../core/entities/Monster";
   import type { InventorySlot } from "../../../core/entities/Consumable";
   import { STATUS_CONFIGS } from "../../../core/entities/StatusEffect";
   import { EQUIPMENT_SLOT_LABELS } from "../../../core/entities/Equipment";
+  // Filtres d'affichage (testables, cf. tests/ShopFilters.test.ts).
+  import {
+    matchesShopCategory as matchesCategory,
+    matchesShopStatFilter as matchesStatFilter,
+    type ShopCategoryTab as CategoryTab,
+    type ShopStatFilter as StatFilter,
+  } from "../../styles/shopFilters";
 
   export let stock: ShopItem[] | null;
   export let gold: number;
@@ -14,9 +20,7 @@
   export let onBuy: (item: ShopItem) => void;
   export let onLeave: () => void;
 
-  type CategoryTab = "all"| "consumable"| "relic"| "heal"| "equipment";
   type SortOption = "default"| "price-asc"| "price-desc"| "affordable"| "type";
-  type StatFilter = "all"| "strength"| "speed"| "constitution"| "wisdom"| "instinct"| "charisma"| "ac"| "heal"| "combat";
 
   let activeCategory: CategoryTab = "all";
   let sortBy: SortOption = "default";
@@ -35,14 +39,12 @@
   })();
 
   $: consumablesCount = effectiveStock.filter((i) => i.kind === "consumable").length;
-  $: relicsCount = effectiveStock.filter((i) => i.kind === "relic").length;
   $: healCount = effectiveStock.filter((i) => i.kind === "heal").length;
   $: equipmentCount = effectiveStock.filter((i) => i.kind === "equipment").length;
 
   $: CATEGORY_TABS = [
     { id: "all" as CategoryTab, label: "Tout le Magasin", icon: "🌟", count: effectiveStock.length },
     { id: "consumable" as CategoryTab, label: "Potions & Sacoche", icon: "🎒", count: consumablesCount },
-    { id: "relic" as CategoryTab, label: "Reliques Passives", icon: "💍", count: relicsCount },
     { id: "equipment" as CategoryTab, label: "Forge & Équipements", icon: "🧰", count: equipmentCount },
     { id: "heal" as CategoryTab, label: "Auberge", icon: "🏨", count: healCount },
   ];
@@ -77,74 +79,16 @@
 
   function getConsumableBadge(item: ShopItem): { label: string; colorClass: string } {
     if (!item.consumable) return { label: "Potion", colorClass: "border-cyan-500/40 bg-cyan-950/40 text-cyan-300" };
-    if (item.consumable.cureStatus === "all") return { label: "✨ Panacée Universelle", colorClass: "border-purple-400/60 bg-purple-950/60 text-purple-200" };
+    if (item.consumable.cureStatus === "all") return { label: "✨ Panacée Universelle", colorClass: "border-purple-400/60 bg-purple-950/60 text-sky-100" };
     if (item.consumable.cureStatus === "burn") return { label: "🔥 Anti-Brûlure", colorClass: "border-orange-500/60 bg-orange-950/60 text-orange-200" };
     if (item.consumable.cureStatus === "freeze") return { label: "❄️ Anti-Gel", colorClass: "border-cyan-400/60 bg-cyan-950/60 text-cyan-200" };
     if (item.consumable.cureStatus === "paralysis") return { label: "⚡ Anti-Paralysie", colorClass: "border-yellow-400/60 bg-yellow-950/60 text-yellow-200" };
-    if (item.consumable.cureStatus === "poison") return { label: "🌿 Anti-Poison", colorClass: "border-emerald-400/60 bg-emerald-950/60 text-emerald-200" };
+    if (item.consumable.cureStatus === "poison") return { label: "🌿 Anti-Poison", colorClass: "border-emerald-400/60 bg-emerald-950/60 text-emerald-100" };
     if (item.consumable.healPercent) return { label: `💚 Soin +${item.consumable.healPercent}%`, colorClass: "border-emerald-500/60 bg-emerald-950/60 text-emerald-300" };
-    if (item.consumable.resetCooldowns) return { label: "⚡ Reset Cooldowns", colorClass: "border-amber-400/60 bg-amber-950/60 text-amber-200" };
+    if (item.consumable.resetCooldowns) return { label: "⚡ Reset Cooldowns", colorClass: "border-amber-400/60 bg-[#1b1a10]/60 text-amber-100" };
     if (item.consumable.acBonus) return { label: `🛡️ +${item.consumable.acBonus} CA`, colorClass: "border-blue-400/60 bg-blue-950/60 text-blue-200" };
     if (item.consumable.statBoost) return { label: `🥊 +${item.consumable.statBoost.value} Force`, colorClass: "border-rose-400/60 bg-rose-950/60 text-rose-200" };
     return { label: "🎒 Potion", colorClass: "border-cyan-500/40 bg-cyan-950/40 text-cyan-300" };
-  }
-
-  function matchesCategory(item: ShopItem, cat: CategoryTab): boolean {
-    if (cat === "all") return true;
-    return item.kind === cat;
-  }
-
-  function matchesStatFilter(item: ShopItem, filter: StatFilter): boolean {
-    // Les pièces d'équipement sont filtrées par leurs propres effets.
-    if (item.kind === "equipment" && item.equipment) {
-      const effect = item.equipment.effect;
-      if (filter === "heal") return Boolean(effect.healStartPercent);
-      if (filter === "ac") return Boolean(effect.acBonus);
-      return Boolean(effect.stat?.[filter as "strength"]);
-    }
-    if (filter === "all") return true;
-    if (filter === "heal") {
-      return (
-        item.kind === "heal" ||
-        Boolean(item.consumable?.healPercent || item.consumable?.healFlat) ||
-        Boolean(item.relic?.effect.healStartPercent)
-      );
-    }
-    if (item.consumable) {
-      if (filter === "combat") return Boolean(item.consumable.cureStatus || item.consumable.resetCooldowns || item.consumable.statBoost);
-      if (filter === "ac") return Boolean(item.consumable.acBonus);
-      if (filter === "strength" && item.consumable.statBoost?.stat === "strength") return true;
-      if (filter === "speed" && item.consumable.statBoost?.stat === "speed") return true;
-      if (filter === "constitution" && item.consumable.statBoost?.stat === "constitution") return true;
-      if (filter === "wisdom" && item.consumable.statBoost?.stat === "wisdom") return true;
-      if (filter === "instinct" && item.consumable.statBoost?.stat === "instinct") return true;
-      if (filter === "charisma" && item.consumable.statBoost?.stat === "charisma") return true;
-      return false;
-    }
-    if (!item.relic) return false;
-    const effect = item.relic.effect;
-    switch (filter) {
-      case "strength":
-        return Boolean(effect.stat?.strength);
-      case "speed":
-        return Boolean(effect.stat?.speed);
-      case "constitution":
-        return Boolean(effect.stat?.constitution);
-      case "wisdom":
-        return Boolean(effect.stat?.wisdom);
-      case "instinct":
-        return Boolean(effect.stat?.instinct);
-      case "charisma":
-        return Boolean(effect.stat?.charisma);
-      case "ac":
-        return Boolean(effect.acBonus);
-      case "combat":
-        return Boolean(
-          effect.damagePercent || effect.lifestealPercent || effect.critRange || effect.experiencePercent
-        );
-      default:
-        return true;
-    }
   }
 
   $: filteredAndSortedStock = (() => {
@@ -169,7 +113,7 @@
         });
       case "type":
         return list.sort((a, b) => {
-          const order = { consumable: 0, relic: 1, equipment: 2, heal: 3 };
+          const order = { consumable: 0, equipment: 1, heal: 2 };
           if (order[a.kind] !== order[b.kind]) return order[a.kind] - order[b.kind];
           return a.label.localeCompare(b.label);
         });
@@ -180,24 +124,24 @@
   })();
 
   $: consumableItems = filteredAndSortedStock.filter((i) => i.kind === "consumable");
-  $: relicItems = filteredAndSortedStock.filter((i) => i.kind === "relic");
   $: healItems = filteredAndSortedStock.filter((i) => i.kind === "heal");
   $: equipmentItems = filteredAndSortedStock.filter((i) => i.kind === "equipment");
 </script>
 
 <div
-  class="flex flex-col flex-grow rounded-xl border-2 sm:border-4 border-stone-600
-    bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950
+  class="flex flex-col flex-grow rounded-xl border-2 sm:border-4 border-sky-100/20
+    bg-[#0d1526]
     p-3 md:p-5 mb-2 shadow-xl overflow-x-clip gap-3">
   <!-- En-tête de la Boutique -->
-  <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2 border-b border-stone-700/80">
+  <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2 border-b border-sky-100/20">
     <div>
-      <h2 class="font-serif font-bold tracking-widest text-amber-200 uppercase text-base sm:text-lg flex items-center gap-2">
+      <h2 class="font-display font-bold tracking-widest text-amber-100 uppercase text-base sm:text-lg flex items-center gap-2">
         <span>🛒</span>
         <span>Boutique d'Aventurier</span>
       </h2>
-      <p class="text-xs text-stone-400">
-        Préparez votre périple : achetez des potions anti-statut pour votre sacoche ou des reliques passives.
+      <p class="text-xs text-sky-200/65">
+        Préparez votre périple : potions pour votre sacoche et équipements à porter.
+        Les reliques ne s'achètent pas — elles sont le pouvoir des monstres vaincus.
       </p>
     </div>
 
@@ -226,7 +170,7 @@
     <div class="p-2.5 rounded-xl border border-rose-500/50 bg-gradient-to-r from-rose-950/60 via-stone-900 to-amber-950/40 flex flex-wrap items-center justify-between gap-2 text-xs shadow-md">
       <div class="flex items-center gap-2 min-w-0 flex-wrap">
         <span class="text-lg animate-pulse">⚠️</span>
-        <span class="text-rose-200 font-serif min-w-0">
+        <span class="text-rose-200 font-display min-w-0">
           <strong>{player.name}</strong> subit des statuts :
           {#each player.statuses as s}
             {@const cfg = STATUS_CONFIGS[s.type]}
@@ -249,22 +193,22 @@
   {/if}
 
   <!-- Onglets de Catégories de Rayon -->
-  <div class="flex flex-wrap items-center gap-1.5 border-b border-stone-800 pb-2">
+  <div class="flex flex-wrap items-center gap-1.5 border-b border-sky-100/15 pb-2">
     {#each CATEGORY_TABS as tab}
       <button
         type="button"
         on:click={() => (activeCategory = tab.id)}
-        class="px-3 py-1.5 rounded-xl font-serif text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 border
+        class="px-3 py-1.5 rounded-xl font-display text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 border
           {activeCategory === tab.id
             ? tab.id === 'consumable'
               ? 'border-cyan-400 bg-gradient-to-b from-cyan-500/30 to-cyan-950/80 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)] scale-102'
-              : 'border-amber-400 bg-gradient-to-b from-amber-500/30 to-amber-900/40 text-amber-200 shadow-md scale-102'
+              : 'border-amber-400 bg-gradient-to-b from-amber-500/30 to-amber-900/40 text-amber-100 shadow-md scale-102'
             : tab.id === 'consumable'
               ? 'border-cyan-900/60 bg-cyan-950/30 text-cyan-300 hover:text-cyan-100 hover:border-cyan-500/60'
-              : 'border-stone-800 bg-stone-950/60 text-stone-400 hover:text-stone-200 hover:border-stone-700'}">
+              : 'border-sky-100/15 bg-[#070d18]/80 text-sky-200/65 hover:text-sky-50 hover:border-sky-100/20'}">
         <span>{tab.icon}</span>
         <span>{tab.label}</span>
-        <span class="text-[10px] px-1.5 py-0.5 rounded-full font-mono {activeCategory === tab.id ? 'bg-black/40 text-white' : 'bg-stone-900 text-stone-400'}">
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full font-mono {activeCategory === tab.id ? 'bg-black/40 text-white' : 'bg-[#0d1526] text-sky-200/65'}">
           {tab.count}
         </span>
       </button>
@@ -272,9 +216,9 @@
   </div>
 
   <!-- Barre de Filtres par Statistique & Tri -->
-  <div class="flex flex-col gap-2 p-2.5 rounded-xl border border-stone-800 bg-stone-900/60">
+  <div class="flex flex-col gap-2 p-2.5 rounded-xl border border-sky-100/15 bg-[#0d1526]/60">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-1.5 text-xs font-mono text-stone-400">
+      <div class="flex items-center gap-1.5 text-xs font-mono text-sky-200/65">
         <span>🔍</span>
         <span>Affinité :</span>
       </div>
@@ -284,10 +228,10 @@
           <button
             type="button"
             on:click={() => (filterStat = opt.id)}
-            class="px-2 py-0.5 rounded-lg text-[11px] font-serif transition-all cursor-pointer flex items-center gap-1 border
+            class="px-2 py-0.5 rounded-lg text-[11px] font-display transition-all cursor-pointer flex items-center gap-1 border
               {filterStat === opt.id
-                ? 'border-amber-400 bg-amber-500/25 text-amber-200 font-bold shadow-sm'
-                : 'border-stone-800 bg-black/30 text-stone-400 hover:text-stone-200 hover:border-stone-700'}">
+                ? 'border-amber-400 bg-amber-500/25 text-amber-100 font-bold shadow-sm'
+                : 'border-sky-100/15 bg-black/30 text-sky-200/65 hover:text-sky-50 hover:border-sky-100/20'}">
             <span>{opt.icon}</span>
             <span>{opt.label}</span>
           </button>
@@ -296,7 +240,7 @@
           <button
             type="button"
             on:click={() => (filterStat = "all")}
-            class="text-[10px] font-mono text-amber-400 hover:text-amber-200 cursor-pointer ml-1">
+            class="text-[10px] font-mono text-amber-100 hover:text-amber-100 cursor-pointer ml-1">
             ✕ Tous
           </button>
         {/if}
@@ -304,8 +248,8 @@
     </div>
 
     <!-- Outils de Tri -->
-    <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-stone-800/80">
-      <div class="flex items-center gap-1.5 text-xs font-mono text-stone-400">
+    <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-sky-100/15/80">
+      <div class="flex items-center gap-1.5 text-xs font-mono text-sky-200/65">
         <span>🔽</span>
         <span>Trier :</span>
       </div>
@@ -314,40 +258,40 @@
         <button
           type="button"
           on:click={() => (sortBy = "default")}
-          class="px-2 py-0.5 rounded font-serif text-xs transition-all cursor-pointer border
+          class="px-2 py-0.5 rounded font-display text-xs transition-all cursor-pointer border
             {sortBy === 'default'
-              ? 'border-amber-400 bg-amber-500/20 text-amber-200 font-bold'
-              : 'border-stone-700 bg-stone-900/60 text-stone-400 hover:text-stone-200'}">
+              ? 'border-amber-400 bg-amber-500/20 text-amber-100 font-bold'
+              : 'border-sky-100/20 bg-[#0d1526]/60 text-sky-200/65 hover:text-sky-50'}">
           Rayon
         </button>
 
         <button
           type="button"
           on:click={() => (sortBy = "affordable")}
-          class="px-2 py-0.5 rounded font-serif text-xs transition-all cursor-pointer border
+          class="px-2 py-0.5 rounded font-display text-xs transition-all cursor-pointer border
             {sortBy === 'affordable'
-              ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200 font-bold'
-              : 'border-stone-700 bg-stone-900/60 text-stone-400 hover:text-stone-200'}">
+              ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100 font-bold'
+              : 'border-sky-100/20 bg-[#0d1526]/60 text-sky-200/65 hover:text-sky-50'}">
           ✨ Achetables
         </button>
 
         <button
           type="button"
           on:click={() => (sortBy = "price-asc")}
-          class="px-2 py-0.5 rounded font-serif text-xs transition-all cursor-pointer border
+          class="px-2 py-0.5 rounded font-display text-xs transition-all cursor-pointer border
             {sortBy === 'price-asc'
-              ? 'border-amber-400 bg-amber-500/20 text-amber-200 font-bold'
-              : 'border-stone-700 bg-stone-900/60 text-stone-400 hover:text-stone-200'}">
+              ? 'border-amber-400 bg-amber-500/20 text-amber-100 font-bold'
+              : 'border-sky-100/20 bg-[#0d1526]/60 text-sky-200/65 hover:text-sky-50'}">
           Prix ↗
         </button>
 
         <button
           type="button"
           on:click={() => (sortBy = "price-desc")}
-          class="px-2 py-0.5 rounded font-serif text-xs transition-all cursor-pointer border
+          class="px-2 py-0.5 rounded font-display text-xs transition-all cursor-pointer border
             {sortBy === 'price-desc'
-              ? 'border-amber-400 bg-amber-500/20 text-amber-200 font-bold'
-              : 'border-stone-700 bg-stone-900/60 text-stone-400 hover:text-stone-200'}">
+              ? 'border-amber-400 bg-amber-500/20 text-amber-100 font-bold'
+              : 'border-sky-100/20 bg-[#0d1526]/60 text-sky-200/65 hover:text-sky-50'}">
           Prix ↘
         </button>
       </div>
@@ -357,7 +301,7 @@
   <!-- Contenu de la boutique (le panneau parent gère le défilement) -->
   <div class="flex-grow space-y-5 p-1 pr-1.5">
     {#if filteredAndSortedStock.length === 0}
-      <div class="flex flex-col items-center justify-center py-10 gap-2 text-stone-400 text-sm">
+      <div class="flex flex-col items-center justify-center py-10 gap-2 text-sky-200/65 text-sm">
         <span class="text-3xl">🔍</span>
         <p class="italic">Aucun article ne correspond aux filtres sélectionnés dans ce rayon.</p>
         <button
@@ -366,7 +310,7 @@
             activeCategory = "all";
             filterStat = "all";
           }}
-          class="mt-1 px-3 py-1 rounded-lg border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-serif cursor-pointer hover:bg-amber-900/60">
+          class="mt-1 px-3 py-1 rounded-lg border border-amber-200/40 bg-[#1b1a10]/60 text-amber-100 text-xs font-display cursor-pointer hover:bg-amber-900/60">
           Réinitialiser les filtres
         </button>
       </div>
@@ -378,7 +322,7 @@
             <div class="flex items-center gap-2">
               <span class="text-2xl p-1 rounded-lg bg-cyan-500/20 border border-cyan-400/40">🧪</span>
               <div>
-                <h3 class="font-serif font-bold text-sm sm:text-base text-cyan-200 tracking-wider uppercase flex items-center gap-2">
+                <h3 class="font-display font-bold text-sm sm:text-base text-cyan-200 tracking-wider uppercase flex items-center gap-2">
                   <span>Étal de l'Alchimiste</span>
                   <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-900/80 border border-cyan-400/60 text-cyan-100 font-bold">
                     Consommables de Sacoche
@@ -408,7 +352,7 @@
                     ? 'border-emerald-400 bg-gradient-to-b from-emerald-950/60 to-cyan-950/50 shadow-[0_0_15px_rgba(16,185,129,0.3)] ring-1 ring-emerald-400'
                     : affordable
                       ? 'border-cyan-500/60 bg-gradient-to-b from-cyan-950/40 via-stone-900/90 to-stone-950 hover:border-cyan-400 hover:shadow-[0_0_12px_rgba(6,182,212,0.25)]'
-                      : 'border-stone-800 bg-stone-900/70 text-stone-400'}">
+                      : 'border-sky-100/15 bg-[#0d1526]/80 text-sky-200/65'}">
                 {#if isRecommended}
                   <div class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-emerald-500 border border-emerald-200 text-stone-950 font-mono font-extrabold text-[9px] uppercase tracking-wider shadow-md animate-pulse">
                     ✨ Purge Recommandée !
@@ -426,17 +370,17 @@
                     </span>
 
                     {#if inBag > 0}
-                      <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-emerald-500/50 bg-emerald-950/60 text-emerald-300">
+                      <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-emerald-200/35 bg-emerald-950/60 text-emerald-300">
                         En sacoche: x{inBag}
                       </span>
                     {/if}
                   </div>
 
-                  <h4 class="font-serif font-bold text-sm tracking-wide text-cyan-100">
+                  <h4 class="font-display font-bold text-sm tracking-wide text-cyan-100">
                     {item.label}
                   </h4>
 
-                  <p class="text-xs mt-1 text-stone-300/80 leading-relaxed min-h-[36px]">
+                  <p class="text-xs mt-1 text-sky-100/80/80 leading-relaxed min-h-[36px]">
                     {item.desc}
                   </p>
                 </div>
@@ -449,95 +393,10 @@
                     class="w-full py-2 rounded-lg border font-mono font-bold text-xs uppercase tracking-wider
                       transition-all active:scale-95 shadow-sm
                       {affordable
-                        ? 'border-cyan-300 bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-500 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.35)]'
-                        : 'border-stone-800 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
+                        ? 'border-cyan-300 bg-[#16233a] text-emerald-100 hover:brightness-110 cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.35)]'
+                        : 'border-sky-100/15 bg-[#0d1526]/80 text-sky-200/50 cursor-not-allowed'}">
                     {affordable ? `Acheter (+1) · ${item.price} 🪙` : `Manque ${item.price - gold} 🪙`}
                   </button>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
-
-      <!-- SECTION RELIQUES PASSIFS -->
-      {#if relicItems.length > 0 && (activeCategory === "all" || activeCategory === "relic")}
-        <section class="rounded-2xl border-2 border-amber-600/40 bg-gradient-to-b from-amber-950/20 via-stone-900/90 to-stone-950 p-3 sm:p-4 shadow-md">
-          <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-amber-800/40">
-            <span class="text-2xl p-1 rounded-lg bg-amber-500/20 border border-amber-400/40">💍</span>
-            <div>
-              <h3 class="font-serif font-bold text-sm sm:text-base text-amber-200 tracking-wider uppercase">
-                Reliques & Artefacts Anciens
-              </h3>
-              <p class="text-xs text-stone-400">
-                Objets rares offrant des bonus statistiques et passifs permanents tout au long de la run.
-              </p>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {#each relicItems as item}
-              {@const affordable = !item.bought && gold >= item.price}
-
-              <div
-                class="flex flex-col justify-between rounded-xl border-2 p-3 text-center transition-all shadow-md
-                  {item.bought
-                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200/70'
-                    : affordable
-                      ? 'border-amber-500/50 bg-gradient-to-b from-amber-950/25 to-stone-900/80 hover:border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.15)]'
-                      : 'border-stone-800 bg-stone-900/60 text-stone-400'}">
-                <div>
-                  <div class="w-12 h-12 mx-auto rounded-xl bg-black/50 border border-amber-600/40 flex items-center justify-center text-3xl mb-2 shadow-inner">
-                    {item.icon}
-                  </div>
-
-                  <div class="flex items-center justify-center gap-1.5 mb-1.5">
-                    <span class="text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-950/40 text-amber-300">
-                      💍 Relique Passive
-                    </span>
-                  </div>
-
-                  <h4 class="font-serif font-bold text-sm tracking-wide text-stone-100">
-                    {item.label}
-                  </h4>
-
-                  <p class="text-xs mt-1 text-stone-300/80 leading-relaxed min-h-[36px]">
-                    {item.desc}
-                  </p>
-
-                  <!-- Effets chiffrés : comparer deux reliques avant d'acheter -->
-                  {#if item.relic}
-                    <ul class="mt-1.5 flex flex-wrap justify-center gap-1">
-                      {#each relicEffectLines(item.relic) as line (line.label)}
-                        <li
-                          class="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded border
-                            border-stone-700/80 bg-stone-950/60 text-[10px] leading-tight">
-                          <span class="text-stone-400">{line.label}</span>
-                          <span class="font-mono font-bold text-amber-200">{line.value}</span>
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                </div>
-
-                <div class="mt-3 pt-2.5 border-t border-stone-800">
-                  {#if item.bought}
-                    <span class="block py-1.5 rounded-lg border border-emerald-400/40 bg-emerald-950/60 font-mono font-bold text-emerald-300 text-xs uppercase tracking-widest shadow-inner">
-                      Acheté ✓
-                    </span>
-                  {:else}
-                    <button
-                      type="button"
-                      on:click={() => onBuy(item)}
-                      disabled={!affordable}
-                      class="w-full py-2 rounded-lg border font-mono font-bold text-xs uppercase tracking-widest
-                        transition-all active:scale-95 shadow-sm
-                        {affordable
-                          ? 'border-amber-300 bg-gradient-to-r from-amber-400 to-amber-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(251,191,36,0.3)]'
-                          : 'border-stone-700 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
-                      {affordable ? `Acheter · ${item.price} 🪙` : gold < item.price ? `Manque ${item.price - gold} 🪙` : "Épuisé"}
-                    </button>
-                  {/if}
                 </div>
               </div>
             {/each}
@@ -551,11 +410,14 @@
           <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-sky-800/40">
             <span class="text-2xl p-1 rounded-lg bg-sky-500/20 border border-sky-400/40">🧰</span>
             <div>
-              <h3 class="font-serif font-bold text-sm sm:text-base text-sky-200 tracking-wider uppercase">
+              <h3 class="font-display font-bold text-sm sm:text-base text-sky-200 tracking-wider uppercase">
                 Forge & Équipements
               </h3>
-              <p class="text-xs text-stone-400">
-                Pièces portées sur le monstre (Arme / Armure / Casque / Bouclier / Accessoire).
+              <p class="text-xs text-sky-200/65">
+                Pièces portées sur le monstre (Arme / Armure / Casque / Bouclier / Accessoire) —
+                chaque visite présente au moins une <span class="text-sky-200 font-bold">arme</span>,
+                une <span class="text-sky-200 font-bold">armure</span> et un
+                <span class="text-sky-200 font-bold">accessoire</span>.
                 Une pièce achetée rejoint la <span class="text-sky-300 font-bold">sacoche — inactive tant qu'elle n'est pas portée</span>.
               </p>
             </div>
@@ -568,10 +430,10 @@
               <div
                 class="flex flex-col justify-between rounded-xl border-2 p-3 text-center transition-all shadow-md
                   {item.bought
-                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200/70'
+                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-100/70'
                     : affordable
                       ? 'border-sky-500/50 bg-gradient-to-b from-sky-950/25 to-stone-900/80 hover:border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.15)]'
-                      : 'border-stone-800 bg-stone-900/60 text-stone-400'}">
+                      : 'border-sky-100/15 bg-[#0d1526]/60 text-sky-200/65'}">
                 <div>
                   <div class="w-12 h-12 mx-auto rounded-xl bg-black/50 border border-sky-600/40 flex items-center justify-center text-3xl mb-2 shadow-inner">
                     {item.icon}
@@ -583,16 +445,16 @@
                     </span>
                   </div>
 
-                  <h4 class="font-serif font-bold text-sm tracking-wide text-stone-100">
+                  <h4 class="font-display font-bold text-sm tracking-wide text-sky-50">
                     {item.label}
                   </h4>
 
-                  <p class="text-xs mt-1 text-stone-300/80 leading-relaxed min-h-[36px]">
+                  <p class="text-xs mt-1 text-sky-100/80/80 leading-relaxed min-h-[36px]">
                     {item.desc}
                   </p>
                 </div>
 
-                <div class="mt-3 pt-2.5 border-t border-stone-800">
+                <div class="mt-3 pt-2.5 border-t border-sky-100/15">
                   {#if item.bought}
                     <span class="block py-1.5 rounded-lg border border-emerald-400/40 bg-emerald-950/60 font-mono font-bold text-emerald-300 text-xs uppercase tracking-widest shadow-inner">
                       Acheté ✓
@@ -605,8 +467,8 @@
                       class="w-full py-2 rounded-lg border font-mono font-bold text-xs uppercase tracking-widest
                         transition-all active:scale-95 shadow-sm
                         {affordable
-                          ? 'border-sky-300 bg-gradient-to-r from-sky-400 to-blue-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(56,189,248,0.3)]'
-                          : 'border-stone-700 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
+                          ? 'border-sky-300 bg-[#16233a] text-sky-100 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(56,189,248,0.3)]'
+                          : 'border-sky-100/20 bg-[#0d1526]/80 text-sky-200/50 cursor-not-allowed'}">
                       {affordable ? `Acheter · ${item.price} 🪙` : gold < item.price ? `Manque ${item.price - gold} 🪙` : "Épuisé"}
                     </button>
                   {/if}
@@ -623,10 +485,10 @@
           <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-emerald-800/40">
             <span class="text-2xl p-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40">🏨</span>
             <div>
-              <h3 class="font-serif font-bold text-sm sm:text-base text-emerald-200 tracking-wider uppercase">
+              <h3 class="font-display font-bold text-sm sm:text-base text-emerald-100 tracking-wider uppercase">
                 Auberge & Soins Immédiats
               </h3>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-sky-200/65">
                 Restaurez l'intégralité des points de vie de votre champion sur place.
               </p>
             </div>
@@ -640,10 +502,10 @@
               <div
                 class="flex flex-col justify-between rounded-xl border-2 p-3 text-center transition-all shadow-md
                   {item.bought
-                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200/70'
+                    ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-100/70'
                     : affordable
-                      ? 'border-emerald-500/50 bg-gradient-to-b from-emerald-950/25 to-stone-900/80 hover:border-emerald-400'
-                      : 'border-stone-800 bg-stone-900/60 text-stone-400'}">
+                      ? 'border-emerald-200/35 bg-gradient-to-b from-emerald-950/25 to-stone-900/80 hover:border-emerald-400'
+                      : 'border-sky-100/15 bg-[#0d1526]/60 text-sky-200/65'}">
                 <div>
                   <div class="w-12 h-12 mx-auto rounded-xl bg-black/50 border border-emerald-600/40 flex items-center justify-center text-3xl mb-2 shadow-inner">
                     {item.icon}
@@ -655,16 +517,16 @@
                     </span>
                   </div>
 
-                  <h4 class="font-serif font-bold text-sm tracking-wide text-stone-100">
+                  <h4 class="font-display font-bold text-sm tracking-wide text-sky-50">
                     {item.label}
                   </h4>
 
-                  <p class="text-xs mt-1 text-stone-300/80 leading-relaxed min-h-[36px]">
+                  <p class="text-xs mt-1 text-sky-100/80/80 leading-relaxed min-h-[36px]">
                     {item.desc}
                   </p>
                 </div>
 
-                <div class="mt-3 pt-2.5 border-t border-stone-800">
+                <div class="mt-3 pt-2.5 border-t border-sky-100/15">
                   {#if item.bought}
                     <span class="block py-1.5 rounded-lg border border-emerald-400/40 bg-emerald-950/60 font-mono font-bold text-emerald-300 text-xs uppercase tracking-widest shadow-inner">
                       Soin Reçu ✓
@@ -677,8 +539,8 @@
                       class="w-full py-2 rounded-lg border font-mono font-bold text-xs uppercase tracking-widest
                         transition-all active:scale-95 shadow-sm
                         {affordable
-                          ? 'border-emerald-300 bg-gradient-to-r from-emerald-400 to-teal-600 text-stone-950 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.3)]'
-                          : 'border-stone-700 bg-stone-950/80 text-stone-500 cursor-not-allowed'}">
+                          ? 'border-emerald-300 bg-[#16233a] text-emerald-100 hover:brightness-110 cursor-pointer shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                          : 'border-sky-100/20 bg-[#0d1526]/80 text-sky-200/50 cursor-not-allowed'}">
                       {isHealBlocked
                         ? "PV déjà au max" : affordable
                           ? `Se Reposer · ${item.price} 🪙`
@@ -701,7 +563,7 @@
     <button
       type="button"
       on:click={onLeave}
-      class="{styles.buttons.base} {styles.buttons.primary} !px-8 !py-2.5 text-xs sm:text-sm font-serif uppercase tracking-wider">
+      class="{styles.buttons.base} {styles.buttons.primary} !px-8 !py-2.5 text-xs sm:text-sm font-display uppercase tracking-wider">
       Poursuivre la Route →
     </button>
   </div>

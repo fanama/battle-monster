@@ -2,7 +2,7 @@ import { writable, type Writable } from "svelte/store";
 import type { BattleState, RunState } from "../../core/entities/BattleState";
 import { Monster } from "../../core/entities/Monster";
 import { MonsterIO } from "../../core/entities/Monster";
-import type { Move } from "../../core/entities/Move";
+import { TYPE_LABELS, type Move, type MonsterType } from "../../core/entities/Move";
 import type { Relic, ShopItem } from "../../core/entities/Relic";
 import {
   relicDamagePercent,
@@ -10,7 +10,6 @@ import {
   relicMaxCritRange,
   relicExperiencePercent,
   rollShopStock,
-  RELIC_CATALOG,
 } from "../../core/entities/Relic";
 import { STARTER_INVENTORY } from "../../core/entities/Consumable";
 import {
@@ -35,10 +34,20 @@ import {
   type RunSave,
   type SaveRepository,
   type ChampionRepository,
+  type ProgressionRepository,
   type SavedChampion,
 } from "../../core/services/ports";
 import { playSound } from "../audio/gameAudio";
 import { fireCelebration } from "./juiceStore";
+
+/**
+ * Progression de repli quand aucune n'est injectée (tests, environnements sans
+ * localStorage) : « Normal seul », rien ne se débloque.
+ */
+const NOOP_PROGRESSION: ProgressionRepository = {
+  getUnlockedTypes: () => ["normal"],
+  unlockTypes: () => [],
+};
 
 // Timings (ms) for the dynamic battle loop — pure responsabilité UI du store.
 // Étirés pour la lisibilité des animations 3D articulées (attaque ~620-750 ms
@@ -70,6 +79,7 @@ export class BattleStore {
   private readonly controller: BattleController;
   private readonly saveRepository: SaveRepository;
   private readonly championRepository: ChampionRepository;
+  private readonly progressionRepository: ProgressionRepository;
 
   /** Timers de nettoyage des feedbacks flottants (un par camp). */
   private readonly feedbackTimers: Partial<
@@ -88,6 +98,12 @@ export class BattleStore {
   /** Champions victorieux sauvegardés (Panthéon) disponibles pour une nouvelle partie. */
   public readonly savedChampions: Writable<SavedChampion[]>;
 
+  /**
+   * Éléments **débloqués** (progression persistante). Alimente l'écran de
+   * création : seuls ces types (+ Normal, le défaut) sont sélectionnables.
+   */
+  public readonly unlockedTypes: Writable<MonsterType[]>;
+
   /** Modale de gestion/sélection des capacités ouverte. */
   public readonly isMoveModalOpen: Writable<boolean>;
 
@@ -98,14 +114,17 @@ export class BattleStore {
     controller: BattleController,
     saveRepository: SaveRepository,
     championRepository: ChampionRepository,
+    progressionRepository: ProgressionRepository = NOOP_PROGRESSION,
   ) {
     this.controller = controller;
     this.saveRepository = saveRepository;
     this.championRepository = championRepository;
+    this.progressionRepository = progressionRepository;
     this.store = writable(this._getInitialState());
     this.subscribe = this.store.subscribe;
     this.savedRun = writable(saveRepository.load() != null);
     this.savedChampions = writable(championRepository.list());
+    this.unlockedTypes = writable(progressionRepository.getUnlockedTypes());
     this.isMoveModalOpen = writable(false);
     this.isLevelUpMovePrompt = writable(false);
   }
@@ -149,6 +168,7 @@ export class BattleStore {
       /** Roguelike choisi : l'équipement est effacé — chaque run se ré-équipe. */
       equipmentBag: [],
       equipOffers: null,
+      unlockedThisRegion: [],
     };
   }
 
@@ -169,6 +189,7 @@ export class BattleStore {
       bossBattle: false,
       relicOffers: null,
       equipOffers: null,
+      unlockedThisRegion: [],
     };
   }
 
@@ -234,6 +255,9 @@ export class BattleStore {
       // `each` keyé à l'affichage. Les pièces portées vivent déjà dans le
       // champ `equipped` du monstre, restauré par `MonsterIO.fromSnapshot`.
       equipmentBag: dedupeEquipmentBag(save.run.equipmentBag ?? []),
+      // Éléments révélés par le dernier boss : absent des sauvegardes
+      // antérieures au déblocage → aucune offre en attente.
+      unlockedThisRegion: save.run.unlockedThisRegion ?? [],
       // Offres d'équipement : dé-du-plées elles aussi (même clé `each` de
       // l'écran de butin) — une sauvegarde ancienne pouvait les dupliquer.
       equipOffers: save.run.equipOffers
@@ -241,20 +265,21 @@ export class BattleStore {
         : null,
       shopStock:
         save.run.shopStock &&
-        save.run.shopStock.some((i) => i.kind === "consumable")
+        save.run.shopStock.some((i) => i.kind === "consumable") &&
+        // Sauvegarde antérieure au retrait du rayon reliques : si elle en
+        // contient encore, on régénère un stock conforme (potions + forge)
+        // pour que la boutique ne propose jamais de relique à l'achat.
+        !save.run.shopStock.some(
+          (i) => (i as { kind: string }).kind === "relic",
+        )
           ? save.run.shopStock
           : save.run.phase === "shop"
-            ? rollShopStock(
-                RELIC_CATALOG.length,
-                undefined,
-                save.run.regionIndex,
-                2,
-                (save.run.relics ?? []).map((r) => r.id),
-                [
-                  ...dedupeEquipmentBag(save.run.equipmentBag ?? []).map((p) => p.id),
-                  ...player.getEquippedList().map((p) => p.id),
-                ],
-              )
+            ? rollShopStock(undefined, save.run.regionIndex, 4, [
+                ...dedupeEquipmentBag(save.run.equipmentBag ?? []).map(
+                  (p) => p.id,
+                ),
+                ...player.getEquippedList().map((p) => p.id),
+              ])
             : save.run.shopStock,
     };
 
@@ -510,15 +535,14 @@ export class BattleStore {
         });
       }
 
-      // Boutique : TOUT le catalogue est accessible (toutes les reliques + potion
-      // + un rayon d'équipements adapté à la profondeur de la région).
-      // Anti-doublon : reliques ET pièces déjà possédées (sacoche + portées).
+      // Boutique : **potions et équipements uniquement** (aucune relique —
+      // le pouvoir des monstres ne s'achète pas). Le rayon Forge s'ouvre sur
+      // une **arme, une armure et un accessoire garantis** + 1 pièce au choix.
+      // Anti-doublon : pièces déjà possédées (sacoche + portées).
       const shopStock = rollShopStock(
-        RELIC_CATALOG.length,
         undefined,
         run.regionIndex,
-        2,
-        run.relics.map((r) => r.id),
+        4,
         this._ownedEquipmentIds(state),
       );
       const next: BattleState = {
@@ -537,17 +561,12 @@ export class BattleStore {
       const run = state.run;
       if (run.phase !== "shop" || !state.playerMonster || !run.shopStock)
         return state;
-      // Anti-doublon (plafonds de reliques, unicité par pièce) : une relique
-      // déjà possédée n'est plus vendable — refus explicite, or intact.
-      // Anti-doublon : relique déjà possédée, OU pièce d'équipement déjà
-      // détenue (sacoche + portée). Refus explicite, or intact.
+      // Anti-doublon (unicité par pièce) : une pièce déjà détenue
+      // (sacoche + portée) n'est plus vendable — refus explicite, or intact.
       const alreadyOwned =
-        (item.kind === "relic" &&
-          item.relic != null &&
-          this.controller.ownsRelic(run, item.relic.id)) ||
-        (item.kind === "equipment" &&
-          item.equipment != null &&
-          this._ownedEquipmentIds(state).includes(item.equipment.id));
+        item.kind === "equipment" &&
+        item.equipment != null &&
+        this._ownedEquipmentIds(state).includes(item.equipment.id);
       if (alreadyOwned) {
         return {
           ...state,
@@ -577,13 +596,6 @@ export class BattleStore {
           ...logs,
           `🎒 ${item.icon} ${item.label} ajouté à votre sacoche.`,
         ];
-      } else if (item.relic) {
-        this.controller.applyRelic(player, item.relic);
-        nextRun = this.controller.grantRelic(
-          { ...run, phase: "shop" },
-          item.relic,
-        );
-        logs = [...logs, `✨ ${item.icon} ${item.label} achetée.`];
       } else if (item.kind === "equipment" && item.equipment) {
         // La pièce rejoint la SACOCHE (inactive) : elle ne s'active qu'une
         // fois portée via la fenêtre « Équipement ».
@@ -989,6 +1001,8 @@ export class BattleStore {
       isBossFight: isBoss,
     });
 
+    let run = result.run;
+
     if (isBoss && state.playerMonster) {
       const region = REGIONS[state.run.regionIndex];
       // Fin de région : le champion est gravé TEL QUEL. Les objets à effet
@@ -1004,10 +1018,51 @@ export class BattleStore {
       result.logs.push(
         `🏆 ${state.playerMonster.name} a été gravé au Panthéon des Champions !`,
       );
+
+      // Battre un boss **révèle un élément** (`RegionDef.unlocks`), défini-
+      // tivement disponible aux prochains champions. Seuls les types encore
+      // inconnus sont annoncés ; `unlockedThisRegion` ouvre la fenêtre
+      // d'adoption pour le champion en cours.
+      const newlyUnlocked = this.progressionRepository.unlockTypes(region.unlocks);
+      if (newlyUnlocked.length > 0) {
+        this.unlockedTypes.set(this.progressionRepository.getUnlockedTypes());
+        result.logs.push(
+          `🔓 Élément révélé : ${newlyUnlocked.map((t) => TYPE_LABELS[t]).join(', ')} !`,
+        );
+      }
+      run = { ...result.run, unlockedThisRegion: newlyUnlocked };
     }
 
-    return { ...state, run: result.run, logs: [...state.logs, ...result.logs] };
+    return { ...state, run, logs: [...state.logs, ...result.logs] };
   }
+
+  /**
+   * Adopte un élément révélé par le boss, à l'écran de fin de région : le
+   * champion **change de type en pleine run** et reçoit le panel de ce type
+   * (via `BattleController.retypeChampion`). Hors de la fenêtre d'adoption
+   * (phase `regionClear`, élément non révélé), l'action est ignorée.
+   */
+  public adoptUnlockedType = (type: MonsterType) => {
+    this.store.update((state) => {
+      if (!state.playerMonster) return state;
+      if (state.run.phase !== "regionClear") return state;
+      if (!(state.run.unlockedThisRegion ?? []).includes(type)) return state;
+
+      const player = this.controller.retypeChampion(state.playerMonster, type);
+      const run: RunState = { ...state.run, unlockedThisRegion: [] };
+      const next: BattleState = {
+        ...state,
+        playerMonster: player,
+        run,
+        logs: [
+          ...state.logs,
+          `🔆 ${player.name} adopte l'élément ${TYPE_LABELS[type]} — son panel est reconstruit.`,
+        ],
+      };
+      this._persistState(next);
+      return next;
+    });
+  };
 
   /**
    * Programme la fin de round (récompenses, relique, région conquise, ou
@@ -1288,6 +1343,7 @@ export function createBattleStore(
   controller: BattleController,
   saveRepository: SaveRepository,
   championRepository: ChampionRepository,
+  progressionRepository?: ProgressionRepository,
 ): BattleStore {
-  return new BattleStore(controller, saveRepository, championRepository);
+  return new BattleStore(controller, saveRepository, championRepository, progressionRepository);
 }

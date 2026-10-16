@@ -140,7 +140,7 @@ describe('Fusion des objets durables dans la fiche du champion', () => {
     // tombées DIRECTEMENT en sacoche, plus une 3ᵉ pièce à choisir dans les
     // offres mixées. La fusion consommables est remplacée.
     let seed = 0.42;
-    const ctrl = new BattleController({} as never, { random: () => seed } as never);
+    const ctrl = new BattleController({ random: () => seed } as never);
     const run = ctrl.handlePlayerVictory({
       player: new Monster('m', 'Chef', 'fire', 5, 12, 12, 12, 12, 12, 12, [strike]),
       enemy: new Monster('e', 'Boss', 'rock', 6, 14, 14, 14, 14, 14, 14, [strike]),
@@ -169,7 +169,7 @@ describe('Fusion des objets durables dans la fiche du champion', () => {
   });
 
   test('un sauvage vaincu : 1 pièce garantie + offres mixtes (2 reliques, 1 pièce)', () => {
-    const ctrl = new BattleController({} as never, { random: () => 0.1 } as never);
+    const ctrl = new BattleController({ random: () => 0.1 } as never);
     const run = ctrl.handlePlayerVictory({
       player: new Monster('m', 'Chef', 'fire', 5, 12, 12, 12, 12, 12, 12, [strike]),
       enemy: new Monster('e', 'Sauvage', 'grass', 4, 12, 12, 12, 12, 12, 12, [strike]),

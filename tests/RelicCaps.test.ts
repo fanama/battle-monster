@@ -143,14 +143,17 @@ describe('Anti-doublon : une même relique ne se remporte jamais deux fois', () 
     }
   });
 
-  test('le rayon reliques de la boutique ne propose plus le possédé', () => {
-    const stock = rollShopStock(6, undefined, 0, 2, ['relic-crystal']);
-    const relicOffers = stock.filter(i => i.kind === 'relic');
-    for (const item of relicOffers) {
-      expect(item.relic?.id).not.toBe('relic-crystal');
+  test('la boutique ne vend aucune relique : potions et équipements seulement', () => {
+    for (let i = 0; i < 20; i++) {
+      const stock = rollShopStock(undefined, 0, 2);
+      // Le pouvoir des monstres ne s'achète pas : aucune offre de relique.
+      expect(stock.some((item) => item.kind === 'relic')).toBe(false);
+      for (const item of stock) {
+        expect((item as { relic?: unknown }).relic).toBeUndefined();
+      }
+      // Il reste de quoi dépenser : potions ET équipements.
+      expect(stock.some((item) => item.kind === 'consumable')).toBe(true);
+      expect(stock.filter((item) => item.kind === 'equipment').length).toBe(2);
     }
-    // Avec exclusions vides : poly intact (les 6 offres rentrent).
-    const stock2 = rollShopStock(6, undefined, 0, 2);
-    expect(stock2.filter(i => i.kind === 'relic').length).toBe(6);
   });
 });

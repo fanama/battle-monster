@@ -2,7 +2,7 @@ export const monsterStyles = {
   container: {
     base: `
       relative flex flex-col items-center
-      bg-gradient-to-b from-stone-800 to-stone-900 border-2 md:border-4 rounded-xl
+      bg-[#0d1526] border-2 md:border-4 rounded-xl
       shadow-2xl overflow-hidden
       w-[48%] xs:w-44 sm:w-52 md:w-56 lg:w-60
       transition-all duration-300
@@ -31,10 +31,10 @@ export const monsterStyles = {
     wrapper: `
       relative w-full 
       h-24 xs:h-28 sm:h-32 md:h-40 
-      bg-stone-900 border-b-2 sm:border-b-4 border-stone-950 
+      bg-[#0d1526] border-b-2 sm:border-b-4 border-stone-950 
       flex items-center justify-center overflow-hidden
     `,
-    overlay: "absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/10 to-transparent z-0",
+    overlay: "absolute inset-0 bg-gradient-to-t from-[#0b1020] via-[#0b1020]/10 to-transparent z-0",
   },
   nameTag: {
     wrapper_base: `
@@ -55,11 +55,11 @@ export const monsterStyles = {
   },
   info: {
     container: "w-full p-1.5 xs:p-2 pt-2.5 xs:pt-3 md:p-3 md:pt-4 flex flex-col gap-1 md:gap-2",
-    healthWrapper: "relative bg-stone-950/50 p-1 rounded border border-stone-600",
+    healthWrapper: "relative bg-[#0d1526]/50 p-1 rounded border border-sky-100/20",
     moveGrid: `
       grid grid-cols-1 
       gap-x-2
-      text-[9px] xs:text-[10px] md:text-xs text-stone-300 
+      text-[9px] xs:text-[10px] md:text-xs text-sky-100/80 
       px-1 
       h-12 xs:h-14 md:h-20 
       overflow-y-auto

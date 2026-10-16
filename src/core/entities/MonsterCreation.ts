@@ -116,13 +116,42 @@ export interface MonsterDraft {
   allocation: FateAllocation;
 }
 
+/**
+ * Type par défaut d'un champion fraîchement créé.
+ *
+ * Depuis le déblocage des éléments : un nouveau run **ne choisit plus son type**
+ * — le champion naît **Normal**, et les autres éléments s'ouvrent en battant les
+ * boss de région (voir `RegionDef.unlocks`). Normal n'est donc jamais « à
+ * débloquer » : c'est le point de départ permanent.
+ */
+export const DEFAULT_CHAMPION_TYPE: MonsterType = 'normal';
+
+/** Les 6 types, dans l'ordre d'affichage (Normal d'abord : le défaut). */
+export const ALL_MONSTER_TYPES: MonsterType[] = [
+  'normal',
+  'fire',
+  'water',
+  'grass',
+  'electric',
+  'rock',
+];
+
+/**
+ * Un type est-il jouable pour un nouveau champion ?
+ * `normal` est toujours disponible (défaut) ; les autres exigent d'avoir été
+ * débloqués (`unlocked`, persistés d'une run à l'autre).
+ */
+export function isTypeUnlocked(type: MonsterType, unlocked: readonly MonsterType[]): boolean {
+  return type === DEFAULT_CHAMPION_TYPE || unlocked.includes(type);
+}
+
 /** Répartition vierge (0 point placé). */
 export function emptyAllocation(): FateAllocation {
   return { strength: 0, speed: 0, constitution: 0, wisdom: 0 };
 }
 
-/** Brouillon initial pour un type donné. */
-export function createDraft(type: MonsterType = 'fire', name = ''): MonsterDraft {
+/** Brouillon initial : **Normal par défaut** (seul type toujours disponible). */
+export function createDraft(type: MonsterType = DEFAULT_CHAMPION_TYPE, name = ''): MonsterDraft {
   return { name, type, allocation: emptyAllocation() };
 }
 

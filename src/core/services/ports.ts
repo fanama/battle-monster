@@ -65,3 +65,21 @@ export interface ChampionRepository {
   remove(id: string): void;
   clear(): void;
 }
+
+/**
+ * Progression **persistante du joueur**, au-delà de la run en cours.
+ * Impl. : LocalStorageProgressionRepository.
+ *
+ * Aujourd'hui : les **éléments débloqués**. Un nouveau champion naît Normal ;
+ * chaque boss de région battu révèle un élément (`RegionDef.unlocks`), défini-
+ * tivement disponible à la création des champions suivants.
+ */
+export interface ProgressionRepository {
+  /** Éléments jouables pour un nouveau champion (contient toujours `normal`). */
+  getUnlockedTypes(): MonsterType[];
+  /**
+   * Débloque les éléments demandés. Retourne **ceux réellement nouveaux**
+   * (un élément déjà débloqué n'est pas re-signalé — pas de double annonce).
+   */
+  unlockTypes(types: readonly MonsterType[]): MonsterType[];
+}

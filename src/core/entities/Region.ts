@@ -30,6 +30,13 @@ export interface RegionDef {
   wildLevelOffsets: readonly number[];
   bossName: string;
   bossType: MonsterType;
+  /**
+   * Éléments **débloqués** pour les prochains champions en battant le boss de
+   * la région (« le type s'obtient en battant un boss »). Chaque région ouvre
+   * l'élément de son propre boss ; la dernière, dont le boss est neutre
+   * (`normal`, déjà le défaut), révèle les deux derniers éléments restants.
+   */
+  unlocks: readonly MonsterType[];
 }
 
 /** Progression roguelike : 4 régions, la 4ᵉ donne le titre de Champion. */
@@ -49,6 +56,7 @@ export const REGIONS: RegionDef[] = [
     wildLevelOffsets: [-2, -1, 0],
     bossName: 'Gardien des Racines',
     bossType: 'grass',
+    unlocks: ['grass'],
   },
   {
     id: 'region-abysse',
@@ -62,6 +70,7 @@ export const REGIONS: RegionDef[] = [
     wildLevelOffsets: [-1, -1, 0],
     bossName: 'Reine des Flots',
     bossType: 'water',
+    unlocks: ['water'],
   },
   {
     id: 'region-braise',
@@ -75,6 +84,7 @@ export const REGIONS: RegionDef[] = [
     wildLevelOffsets: [-1, 0, 0],
     bossName: 'Dragon de Magma',
     bossType: 'fire',
+    unlocks: ['fire'],
   },
   {
     id: 'region-celeste',
@@ -88,5 +98,6 @@ export const REGIONS: RegionDef[] = [
     wildLevelOffsets: [0, 0, 1],
     bossName: 'Titan Élémentaire',
     bossType: 'normal',
+    unlocks: ['electric', 'rock'],
   },
 ];

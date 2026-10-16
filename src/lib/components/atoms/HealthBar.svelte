@@ -58,13 +58,8 @@
     style="width: {percent}%; background: {gradient}; transition: width 0.25s ease-out;"
   ></div>
 
-  <!-- Gloss « bonbon » : reflet clair en haut de la jauge (accent Pokémon) -->
-  <div
-    class="pointer-events-none absolute inset-x-2 top-[1.5px] h-[30%] rounded-full
-      bg-gradient-to-b from-white/45 to-white/5"
-    aria-hidden="true"
-  ></div>
-  <!-- Ticks façon jauge rétro : découpe la barre en tranches lisibles -->
+  <!-- Ticks façon jauge rétro : découpe la barre en tranches lisibles. Le
+       reflet « bonbon » a été retiré — la jauge DQ est plate. -->
   <div
     class="pointer-events-none absolute inset-0"
     style="background-image: repeating-linear-gradient(90deg, transparent 0 14px, rgba(0,0,0,0.28) 14px 16px)"

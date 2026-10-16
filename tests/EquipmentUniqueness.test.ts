@@ -71,7 +71,7 @@ describe('Tirage d’équipement : exclusion du possédé', () => {
 
 describe('Victoire : aucune clé dupliquée dans la sacoche', () => {
   test('butin de boss : 2 pièces DISTINCTES même avec un tirage constant', () => {
-    const ctrl = new BattleController({} as never, { random: () => 0 } as never);
+    const ctrl = new BattleController({ random: () => 0 } as never);
     const run = ctrl.handlePlayerVictory({
       player: newPlayer(),
       enemy: new Monster('e', 'Boss', 'rock', 6, 14, 14, 14, 14, 14, 14, [strike]),
@@ -90,7 +90,7 @@ describe('Victoire : aucune clé dupliquée dans la sacoche', () => {
   });
 
   test('sauvage vaincu : drop garanti et offre sont deux pièces distinctes', () => {
-    const ctrl = new BattleController({} as never, { random: () => 0.01 } as never);
+    const ctrl = new BattleController({ random: () => 0.01 } as never);
     const run = ctrl.handlePlayerVictory({
       player: newPlayer(),
       enemy: new Monster('e', 'Sauvage', 'grass', 4, 12, 12, 12, 12, 12, 12, [strike]),
@@ -105,7 +105,7 @@ describe('Victoire : aucune clé dupliquée dans la sacoche', () => {
   });
 
   test('une pièce déjà portée n’est pas re-lâchée', () => {
-    const ctrl = new BattleController({} as never, { random: () => 0 } as never);
+    const ctrl = new BattleController({ random: () => 0 } as never);
     const player = newPlayer();
     const worn = EQUIPMENT_CATALOG.find(p => p.price <= 65)!;
     player.equip(worn);

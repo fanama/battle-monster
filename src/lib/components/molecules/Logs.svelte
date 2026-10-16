@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { dq } from "../../styles/style";
 
   export let logs: string[] = [];
   /** Occupe toute la hauteur du panneau (onglet Journal) au lieu d'une hauteur fixe. */
@@ -42,24 +43,16 @@
   bind:this={logsContainer}
   on:scroll={handleScroll}
   class="
-    /* Structure & Size */
-    {fill ? 'h-full min-h-0' : 'h-40 md:h-64'} overflow-y-auto flex flex-col gap-1 p-3 md:p-4 rounded-sm
-    
-    /* D&D Aesthetics */
-    bg-[#fdf6e3] border-4 border-double border-amber-900/60
-    shadow-[inset_0_2px_15px_rgba(0,0,0,0.1)]
-    
-    /* Typography */
-    font-mono text-sm leading-5 text-amber-950 font-medium
-    
-    /* Performance */
+    {fill ? 'h-full min-h-0' : 'h-40 md:h-64'} overflow-y-auto flex flex-col gap-1 p-3 md:p-4
+    {dq.inset}
+    font-mono text-xs sm:text-sm leading-5 text-sky-100/85
     contain-strict
   "
 >
   {#each logs as log}
     <div class="whitespace-pre-wrap break-all flex items-start group">
       <span
-        class="text-amber-700/70 mr-2 select-none font-bold group-hover:text-red-700 transition-colors"
+        class="text-amber-100/50 mr-2 select-none font-bold group-hover:text-amber-100 transition-colors"
       >
         &gt;
       </span>

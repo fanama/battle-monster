@@ -1,6 +1,10 @@
-import type { MonsterStat } from './Move';
+import type { MonsterStat, MonsterType } from './Move';
 import { CONSUMABLE_CATALOG, type ConsumableItem } from './Consumable';
-import { EQUIPMENT_CATALOG, type Equipment } from './Equipment';
+import {
+  EQUIPMENT_CATALOG,
+  type Equipment,
+  type EquipmentSlot,
+} from './Equipment';
 export type { ConsumableItem, Equipment };
 
 /**
@@ -32,10 +36,22 @@ export interface Relic {
   effect: RelicEffect;
   /** Prix en or (boutique). Les reliques gagnées en combat restent gratuites. */
   price: number;
+  /**
+   * Provenance : le **monstre vaincu** dont cette relique est le pouvoir.
+   * Absent pour une relique achetée en boutique. L'effet, le prix et l'`id`
+   * restent ceux du catalogue — seule l'identité affichée change.
+   */
+  powerOf?: { name: string; type: MonsterType };
 }
 
-/** Article vendu en boutique. */
-export type ShopItemKind = 'relic' | 'heal' | 'consumable' | 'equipment';
+/** Identité minimale d'un monstre source d'un pouvoir (nom + type). */
+export interface RelicSource {
+  name: string;
+  type: MonsterType;
+}
+
+/** Article vendu en boutique. Les reliques n'y figurent plus (pouvoir des monstres). */
+export type ShopItemKind = 'heal' | 'consumable' | 'equipment';
 
 export interface ShopItem {
   id: string;
@@ -44,8 +60,6 @@ export interface ShopItem {
   label: string;
   icon: string;
   desc: string;
-  /** Relique vendue (si `kind === 'relic'`). */
-  relic?: Relic;
   /** Consommable vendu (si `kind === 'consumable'`). */
   consumable?: ConsumableItem;
   /** Pièce d'équipement vendue (si `kind === 'equipment'`). */
@@ -835,41 +849,127 @@ export function rollRelicOffers(
   return offers;
 }
 
+/**
+ * Revêt une relique de base du **pouvoir du monstre vaincu** : l'objet devient
+ * explicitement le pouvoir arraché à cette créature. L'`id`, l'`effect` et le
+ * `price` sont **conservés à l'identique** — l'anti-doublon continue de
+ * fonctionner par `id` et les plafonds d'équilibrage ne bougent pas ; seuls
+ * l'identité affichée et le champ `powerOf` changent.
+ */
+export function themeRelicAsMonsterPower(base: Relic, source: RelicSource): Relic {
+  return {
+    ...base,
+    description: `${base.description} · Pouvoir arraché à ${source.name}.`,
+    powerOf: { name: source.name, type: source.type },
+  };
+}
+
+/**
+ * Offres de reliques **tirées d'un monstre vaincu** (reliques ordinaires) :
+ * même vivier et mêmes exclusions que `rollRelicOffers`, puis chaque relique
+ * est rethémée en pouvoir de ce monstre. `random` injectable pour les tests.
+ */
+export function rollMonsterPowerOffers(
+  source: RelicSource,
+  count = 2,
+  random: () => number = Math.random,
+  excludeRelicIds: readonly string[] = [],
+): Relic[] {
+  return rollRelicOffers(count, random, excludeRelicIds).map(r =>
+    themeRelicAsMonsterPower(r, source),
+  );
+}
+
+/**
+ * Offres de reliques **rares** tirées d'un monstre vaincu (boss) : même vivier
+ * que `rollRareRelicOffers`, rethémées en pouvoir du monstre. `random`
+ * injectable pour les tests.
+ */
+export function rollRareMonsterPowerOffers(
+  source: RelicSource,
+  count = 2,
+  random: () => number = Math.random,
+  excludeRelicIds: readonly string[] = [],
+): Relic[] {
+  return rollRareRelicOffers(count, random, excludeRelicIds).map(r =>
+    themeRelicAsMonsterPower(r, source),
+  );
+}
+
 /** Prix de la potion de boutique (soin total des PV). */
 export const POTION_PRICE = 30;
 
 /**
+ * Familles **toujours en vitrine** dans le rayon Forge : une **arme**, une
+ * **armure** et un **accessoire**. Les pièces suivantes du rayon (au-delà de
+ * trois) sont tirées dans le poly entier — casques et boucliers compris.
+ */
+export const SHOP_SLOT_PRIORITY: readonly EquipmentSlot[] = [
+  'weapon',
+  'armor',
+  'accessory',
+];
+
+/**
  * Rayon d'équipements d'une boutique (capacités signature) : `count` pièces
  * distinctes tirées dans le budget de la région (le poly s'étend avec la
- * profondeur du run — cf. `rollEquipmentDrop`). **Anti-doublon** :
- * `excludeIds` liste les pièces déjà possédées (sacoche + portées) — une
- * pièce vendue deux fois créerait des clés dupliquées inexistantes.
+ * profondeur du run — cf. `rollEquipmentDrop`).
+ *
+ * **Armes, armures et accessoires garantis** : les premières pièces sont tirées
+ * une par famille dans `SHOP_SLOT_PRIORITY`, le reliquat dans le poly entier.
+ * Une boutique ne peut donc pas ouvrir sans une arme, une armure et un
+ * accessoire à vendre (tant que le budget régional et l'anti-doublon le
+ * permettent).
+ *
+ * **Anti-doublon** : `excludeIds` liste les pièces déjà possédées (sacoche +
+ * portées) — une pièce vendue deux fois créerait des clés dupliquées
+ * inexistantes.
  */
 export function buildEquipmentShopItems(
   regionIndex: number,
-  count = 2,
+  count = 3,
   random: () => number = Math.random,
   excludeIds: readonly string[] = [],
 ): ShopItem[] {
   const maxPrice = [65, 80, 95, Infinity][Math.min(3, Math.max(0, regionIndex))]!;
   const owned = new Set(excludeIds);
-  const pool = [...EQUIPMENT_CATALOG.filter(p => !owned.has(p.id) && p.price <= maxPrice)];
-  const items: ShopItem[] = [];
-  for (let i = 0; i < count && pool.length > 0; i++) {
-    const index = Math.floor(random() * pool.length);
-    const piece = pool.splice(index, 1)[0]!;
-    items.push({
-      id: `shop-${piece.id}`,
-      kind: 'equipment',
-      price: piece.price,
-      label: piece.name,
-      icon: piece.icon,
-      desc: piece.description,
-      equipment: piece,
-      bought: false,
-    });
+  const poolFor = (slot?: EquipmentSlot): Equipment[] =>
+    EQUIPMENT_CATALOG.filter(
+      p =>
+        !owned.has(p.id) &&
+        p.price <= maxPrice &&
+        (slot === undefined || p.slot === slot),
+    );
+
+  const picks: Equipment[] = [];
+  const draw = (pool: Equipment[]): void => {
+    const free = pool.filter(p => !picks.some(pick => pick.id === p.id));
+    if (free.length === 0) return;
+    picks.push(free[Math.floor(random() * free.length)]!);
+  };
+
+  // 1. Une pièce par famille garantie (arme → armure → accessoire)…
+  for (const slot of SHOP_SLOT_PRIORITY) {
+    if (picks.length >= count) break;
+    draw(poolFor(slot));
   }
-  return items;
+  // 2. …puis le reste du rayon dans le poly entier (casques, boucliers…).
+  while (picks.length < count) {
+    const before = picks.length;
+    draw(poolFor());
+    if (picks.length === before) break; // plus rien de disponible
+  }
+
+  return picks.map(piece => ({
+    id: `shop-${piece.id}`,
+    kind: 'equipment' as const,
+    price: piece.price,
+    label: piece.name,
+    icon: piece.icon,
+    desc: piece.description,
+    equipment: piece,
+    bought: false,
+  }));
 }
 
 /**
@@ -891,22 +991,28 @@ export function buildConsumableShopItems(): ShopItem[] {
 }
 
 /**
- * Génère le stock d'une boutique : reliques distinctes + 1 soin à l'auberge +
- * TOUS les objets consommables du catalogue + un rayon d'équipements
- * (`equipmentCount` pièces adaptées à la profondeur de la région).
+ * Génère le stock d'une boutique : **potions et équipements uniquement**.
+ *
+ *  - **Potions** : TOUT le catalogue de consommables (rachetable) + 1 potion de
+ *    soin immédiat à l'auberge ;
+ *  - **Équipements** : un rayon de `equipmentCount` pièces adaptées à la
+ *    profondeur de la région, avec **une arme, une armure et un accessoire
+ *    garantis** (cf. `buildEquipmentShopItems`).
+ *
+ * **Aucune relique n'est vendue** : l'or n'achète que du consommable et du
+ * matériel. Les reliques ne s'obtiennent qu'en battant des monstres (leur
+ * pouvoir) — la boutique ne les propose plus.
+ *
  * `random` est injectable pour des tests déterministes (défaut : Math.random).
+ * `excludeEquipmentIds` : anti-doublon (pièces déjà possédées : sacoche + portées).
  */
 export function rollShopStock(
-  count = 2,
   random: () => number = Math.random,
   regionIndex = 0,
-  equipmentCount = 2,
-  /** Anti-doublon : reliques déjà possédées par le run, retirées du rayon. */
-  excludeRelicIds: readonly string[] = [],
-  /** Anti-doublon : pièces d'équipement déjà possédées (sacoche + portées). */
+  equipmentCount = 3,
   excludeEquipmentIds: readonly string[] = [],
 ): ShopItem[] {
-  // 1. Rayon Alchimie & Consommables (toutes les potions utiles)
+  // 1. Potions & consommables (tout le catalogue)
   const stock: ShopItem[] = buildConsumableShopItems();
 
   // 2. Potion de soin immédiat à l'auberge
@@ -920,22 +1026,7 @@ export function rollShopStock(
     bought: false,
   });
 
-  // 3. Reliques passives distinctes
-  const relicOffers = rollRelicOffers(count, random, excludeRelicIds);
-  for (const relic of relicOffers) {
-    stock.push({
-      id: `shop-${relic.id}`,
-      kind: 'relic',
-      price: relic.price,
-      label: relic.name,
-      icon: relic.icon,
-      desc: relic.description,
-      relic,
-      bought: false,
-    });
-  }
-
-  // 4. Rayon Forge & Équipements (capacités signature)
+  // 3. Rayon Forge & Équipements (capacités signature)
   stock.push(...buildEquipmentShopItems(regionIndex, equipmentCount, random, excludeEquipmentIds));
 
   return stock;

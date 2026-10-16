@@ -76,8 +76,7 @@ describe('Arène en vue Street Fighter', () => {
   });
 
   test('la scène a un décor (horizon + sol) et non un simple aplat', () => {
-    expect(app).toContain('Ligne d\'horizon');
-    expect(app).toContain('Lignes de sol en perspective');
+    expect(app).toContain('<ArenaEnvironment />');
     expect(styles).toMatch(/arena: `[\s\S]*?overflow-hidden/);
   });
 });

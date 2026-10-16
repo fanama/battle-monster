@@ -5,6 +5,7 @@ import { MoveRepository } from '../infra/repositories/MoveRepositories';
 import { MonsterForge } from '../infra/repositories/MonsterForge';
 import { LocalStorageRunRepository } from '../infra/repositories/LocalStorageRunRepository';
 import { LocalStorageChampionRepository } from '../infra/repositories/LocalStorageChampionRepository';
+import { LocalStorageProgressionRepository } from '../infra/repositories/LocalStorageProgressionRepository';
 import { createBattleStore, type BattleStore } from './stores/battleStore';
 
 /**
@@ -21,6 +22,8 @@ export interface Container {
   controller: BattleController;
   saveRepo: LocalStorageRunRepository;
   championRepo: LocalStorageChampionRepository;
+  /** Progression persistante (éléments débloqués par les boss). */
+  progressionRepo: LocalStorageProgressionRepository;
   store: BattleStore;
 }
 
@@ -32,6 +35,7 @@ export function createContainer(): Container {
   const enemies = new RandomEnemyFactory(moves);
   const saveRepo = new LocalStorageRunRepository();
   const championRepo = new LocalStorageChampionRepository();
+  const progressionRepo = new LocalStorageProgressionRepository();
 
   // Domaine, câblé via injection de dépendance. Une SEULE instance de `Dice`
   // est partagée entre l'engine et le controller (initiative, jets, dégâts).
@@ -40,9 +44,9 @@ export function createContainer(): Container {
   const controller = new BattleController({ engine, moveProvider: moves, enemyFactory: enemies, dice });
 
   // Store Svelte — wrapper mince autour du controller (+ persistance).
-  const store = createBattleStore(controller, saveRepo, championRepo);
+  const store = createBattleStore(controller, saveRepo, championRepo, progressionRepo);
 
-  return { engine, moves, forge, enemies, controller, saveRepo, championRepo, store };
+  return { engine, moves, forge, enemies, controller, saveRepo, championRepo, progressionRepo, store };
 }
 
 export const container = createContainer();

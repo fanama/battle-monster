@@ -3,6 +3,7 @@
   import type { Relic } from "../../../core/entities/Relic";
   import type { InventorySlot } from "../../../core/entities/Consumable";
   import { REGION_COLORS } from "../../styles/regionColors";
+  import { dq } from "../../styles/style";
 
   export let regionIndex: number;
   export let mapLayer: number;
@@ -48,12 +49,12 @@
 
 <div
   class="w-full max-w-4xl mx-auto shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1
-    px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs text-stone-300"
+    px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs text-sky-100/75"
 >
-  <!-- Région courante (pastille dégradée + nom coloré) -->
+  <!-- Région courante -->
   <span class="inline-flex items-center gap-1.5 shrink-0">
-    <span class="w-2.5 h-2.5 rounded-full bg-gradient-to-br {regionColors.accent} shadow"></span>
-    <span class="font-serif font-bold tracking-widest uppercase {regionColors.text}">
+    <span class="w-2.5 h-2.5 rounded-full bg-gradient-to-br {regionColors.accent}"></span>
+    <span class="font-display font-bold tracking-[0.14em] uppercase {regionColors.text}">
       🏴 {region.name}
     </span>
   </span>
@@ -66,21 +67,18 @@
       <span
         class="w-2 h-3.5 rounded-sm transition-all
           {done
-            ? 'bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.6)]'
+            ? 'bg-emerald-400/80'
             : isCurrent
-              ? 'bg-amber-400 scale-y-110 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
-              : 'bg-stone-700 border border-stone-600'}"
+              ? 'bg-amber-300'
+              : 'bg-slate-700'}"
       ></span>
     {/each}
-    <span
-      class="text-sm leading-none
-        {isBossFight ? 'text-rose-400 animate-pulse' : 'text-stone-600'}"
-    >
+    <span class="text-sm leading-none {isBossFight ? 'text-rose-300' : 'text-sky-100/30'}">
       👑
     </span>
   </div>
 
-  <!-- Reliques collectées (anneau doré) : échantillon + pastille vers la modale -->
+  <!-- Reliques : échantillon + pastille vers l'onglet dédié -->
   <div class="flex items-center gap-1 shrink-0">
     {#if relics.length > 0}
       {#each visibleRelics as relic, relicIndex}
@@ -89,7 +87,10 @@
             type="button"
             data-relic-trigger={relic.id}
             on:click={() => (onOpenRelics ? onOpenRelics() : toggleRelicTooltip(relic.id))}
-            class="inline-flex h-8 w-8 sm:h-6 sm:w-6 touch-manipulation cursor-help items-center justify-center rounded-full border border-amber-300/70 bg-gradient-to-br from-amber-700 to-amber-900 text-sm shadow-[0_0_6px_rgba(251,191,36,0.4)] transition-transform group-hover:-translate-y-0.5 group-hover:border-amber-200 group-hover:shadow-[0_0_10px_rgba(251,191,36,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+            class="inline-flex h-8 w-8 sm:h-6 sm:w-6 touch-manipulation cursor-help items-center justify-center rounded
+              border border-amber-200/40 bg-[#1b1a10]/85 text-sm transition-colors
+              group-hover:border-amber-200/80 group-hover:bg-[#252211]
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/50"
             aria-label={`${relic.name} : ${relic.description}`}
             aria-describedby={`relic-description-${relic.id}`}
             aria-expanded={expandedRelicId === relic.id}
@@ -100,13 +101,15 @@
           <span
             id={`relic-description-${relic.id}`}
             role="tooltip"
-            class="pointer-events-none absolute top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-amber-400/70 bg-stone-950/95 px-3 py-2 text-left shadow-xl backdrop-blur-sm transition-all duration-150 sm:left-1/2 sm:right-auto sm:-translate-x-1/2
+            class="pointer-events-none absolute top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-md
+              border border-sky-100/25 bg-[#0d1526]/97 px-3 py-2 text-left shadow-xl transition-all duration-150
+              sm:left-1/2 sm:right-auto sm:-translate-x-1/2
               {expandedRelicId === relic.id ? 'visible translate-y-0 opacity-100' : 'invisible translate-y-1 opacity-0'}
               {relicIndex > (visibleRelics.length - 1) / 2 ? 'right-0' : 'left-0'}
               group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:visible group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
           >
-            <span class="block font-serif text-xs font-bold text-amber-200">{relic.name}</span>
-            <span class="mt-1 block text-[11px] leading-relaxed text-stone-300">{relic.description}</span>
+            <span class="block font-display text-xs font-bold text-amber-100">{relic.name}</span>
+            <span class="mt-1 block text-[11px] leading-relaxed text-sky-100/80">{relic.description}</span>
           </span>
         </span>
       {/each}
@@ -115,9 +118,9 @@
         <button
           type="button"
           on:click={() => onOpenRelics?.()}
-          class="inline-flex h-8 sm:h-6 items-center gap-1 px-1.5 sm:px-2 rounded-full border border-amber-400/60
-            bg-amber-950/70 hover:bg-amber-900/80 text-amber-200 text-[11px] font-mono font-bold
-            touch-manipulation cursor-pointer transition-colors shrink-0"
+          class="inline-flex h-8 sm:h-6 items-center gap-1 px-1.5 sm:px-2 rounded
+            border border-amber-200/40 bg-[#1b1a10]/85 hover:bg-[#252211] text-amber-100
+            text-[11px] font-mono font-bold touch-manipulation cursor-pointer transition-colors shrink-0"
           title="Voir les {relics.length} reliques obtenues"
           aria-label={`Voir les ${relics.length} reliques obtenues`}
         >
@@ -125,7 +128,7 @@
         </button>
       {/if}
     {:else}
-      <span class="text-stone-500 text-[10px] uppercase tracking-wider">aucune relique</span>
+      <span class={`${dq.hint} uppercase tracking-wider`}>aucune relique</span>
     {/if}
   </div>
 
@@ -134,7 +137,9 @@
     <button
       type="button"
       on:click={onOpenInventory}
-      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border border-amber-500/40 bg-stone-900/80 hover:bg-amber-950/40 text-amber-200 text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border border-amber-200/40
+        bg-[#16233a] hover:bg-[#1d2d49] text-amber-100 text-[11px] sm:text-xs font-mono font-bold
+        transition-colors cursor-pointer shrink-0"
       title="Ouvrir la sacoche d'objets et potions"
     >
       <span>🎒</span>
@@ -143,11 +148,12 @@
   {/if}
 
   <!-- Or + score -->
-  <span class="flex items-center gap-2.5 shrink-0 sm:ml-auto">    <span class="font-mono font-bold text-amber-200" title="Or">
-      💰 <span class="text-yellow-300">{gold}</span>
+  <span class="flex items-center gap-2.5 shrink-0 sm:ml-auto">
+    <span class="font-mono font-bold text-amber-100" title="Or">
+      💰 <span class={dq.value}>{gold}</span>
     </span>
-    <span class="font-mono font-bold text-amber-200" title="Score">
-      ⭐ <span class="text-yellow-300">{score}</span>
+    <span class="font-mono font-bold text-amber-100" title="Score">
+      ⭐ <span class={dq.value}>{score}</span>
     </span>
   </span>
 </div>

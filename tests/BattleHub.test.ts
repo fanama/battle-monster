@@ -47,17 +47,17 @@ describe('Décor d’arène façon Dragon Quest', () => {
     expect(app).toContain('dq-moon');
   });
 
-  test('l’horizon est bleu nuit (ligne de voie lumineuse)', () => {
-    expect(app).toContain('rgba(147,197,253,0.5)');
+  test('l’horizon est un décor 3D (calque WebGL, ligne lumineuse)', () => {
+    expect(app).toContain('<ArenaEnvironment />');
   });
 
   test('une vignette assombrit les bords (encadré de combat DQ)', () => {
     expect(app).toContain('dq-vignette');
   });
 
-  test('le sol garde la perspective et gagne une lueur centrale', () => {
-    // Lignes de sol en perspective, bleutées.
-    expect(app).toContain('repeating-linear-gradient(to bottom, rgba(147,197,253,0.09)');
+  test('le sol est un décor 3D et gagne une lueur centrale', () => {
+    // Le sol, la grille et les piliers viennent du calque WebGL.
+    expect(app).not.toContain('repeating-linear-gradient(to bottom, rgba(147,197,253,0.09)');
     // Halo de terrain au centre (entre les deux combattants).
     expect(app).toContain('radial-gradient(ellipse 58% 42% at 50% 76%');
   });

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { attackFamily } from '../src/lib/renderers/spellVfx';
 
 /**
  * Garde-fous sur les trois familles d'animation d'attaque.
@@ -30,37 +31,31 @@ function keyframeBody(name: string): string {
   return nextRule === -1 ? rest : rest.slice(0, nextRule);
 }
 
-/** Reproduit la règle de routage déclarée dans le composant. */
-function attackKind(move: {
-  power: number;
-  isPhysical: boolean;
-} | null): string | null {
-  if (!move) return null;
-  if (move.power === 0) return 'utility';
-  return move.isPhysical ? 'melee' : 'ranged';
-}
-
 describe('Familles d’animation d’attaque', () => {
   test('le composant.route le coup vers l’une des trois familles', () => {
-    expect(SRC).toContain("$: attackKind = !isAttacking || !lastMove");
-    expect(SRC).toMatch(/lastMove\.power === 0\s*\?\s*'utility'/);
-    expect(SRC).toMatch(/lastMove\.isPhysical\s*\?\s*'melee'\s*:\s*'ranged'/);
+    // La règle vit désormais dans `spellVfx.attackFamily` (**source de vérité
+    // unique**) : la pose articulée et le projectile 3D de l'arène la partagent,
+    // donc ils ne peuvent plus diverger. Le composant ne fait que la consommer.
+    expect(SRC).toContain('import { attackFamily } from "../../renderers/spellVfx"');
+    expect(SRC).toContain(
+      '$: attackKind = !isAttacking || !lastMove ? null : attackFamily(lastMove);',
+    );
   });
 
   test("l'attaque physique → charge au corps à corps (melee)", () => {
-    expect(attackKind({ power: 40, isPhysical: true })).toBe('melee');
-    expect(attackKind({ power: 140, isPhysical: true })).toBe('melee');
+    expect(attackFamily({ power: 40, isPhysical: true })).toBe('melee');
+    expect(attackFamily({ power: 140, isPhysical: true })).toBe('melee');
   });
 
   test('l’attaque magique à distance → ranged', () => {
-    expect(attackKind({ power: 55, isPhysical: false })).toBe('ranged');
+    expect(attackFamily({ power: 55, isPhysical: false })).toBe('ranged');
     // Un sort de soin reste `utility`, même s’il est magique.
-    expect(attackKind({ power: 0, isPhysical: false })).toBe('utility');
+    expect(attackFamily({ power: 0, isPhysical: false })).toBe('utility');
   });
 
   test('soin et buff → utility (canalisation)', () => {
-    expect(attackKind({ power: 0, isPhysical: false })).toBe('utility');
-    expect(attackKind({ power: 0, isPhysical: true })).toBe('utility');
+    expect(attackFamily({ power: 0, isPhysical: false })).toBe('utility');
+    expect(attackFamily({ power: 0, isPhysical: true })).toBe('utility');
   });
 
   test('les six classes CSS sont câblées sur le composant', () => {
@@ -194,7 +189,11 @@ describe('Familles d’animation d’attaque', () => {
     expect(pxBounds('melee-enemy')).toBe(pxBounds('melee-player'));
   });
 
-  test('l’attaque à distance envoie un projectile qui traverse l’arène', () => {
+  test('l’attaque à distance a un projectile, avec le 3D en primaire et le CSS en repli', () => {
+    // Le projectile 3D de l'arène (`ArenaSpellLayer`) est la version principale :
+    // il relie réellement les deux combattants. L'orbe CSS reste le repli quand
+    // le contexte WebGL manque — il n'est donc jamais du code mort.
+    expect(SRC).toContain("attackKind === 'ranged' && isAttacking && !$spellVfxReady");
     expect(SRC).toContain('class:projectile-fx-player=');
     expect(SRC).toContain('class:projectile-fx-enemy=');
     expect(SRC).toContain('@keyframes projectile-player');
